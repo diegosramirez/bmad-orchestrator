@@ -98,6 +98,29 @@ def test_no_changes_skips_commit_and_push(settings, mock_git, tmp_path, monkeypa
     mock_git.push.assert_not_called()
 
 
+def test_empty_commit_on_failure(settings, mock_git, tmp_path, monkeypatch):
+    """When failure_state is set and no files changed, create an empty commit for the draft PR."""
+    monkeypatch.chdir(tmp_path)
+
+    mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
+    mock_git.has_staged_changes.return_value = False
+    mock_git.get_head_sha.return_value = "same_sha"
+    mock_git.rev_parse.return_value = "same_sha"
+    mock_git.commit.return_value = "empty-commit-sha"
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="TEST-10",
+        failure_state="Pipeline failed after 2 loop(s).",
+    ))
+
+    assert result["commit_sha"] == "empty-commit-sha"
+    mock_git.commit.assert_called_once()
+    _, kwargs = mock_git.commit.call_args
+    assert kwargs["allow_empty"] is True
+    mock_git.push.assert_called_once()
+
+
 def test_dry_run_still_returns_sha(settings, mock_git):
     dry_settings = settings.model_copy(update={"dry_run": True})
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"

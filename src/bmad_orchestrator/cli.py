@@ -643,86 +643,17 @@ def run(
                 )
             )
         elif failure:
-            console.print(f"\n[bold yellow]Review loops exhausted.[/bold yellow] {failure[:400]}")
-
-            if not dry_run and final.values.get("touched_files"):
-                if non_interactive:
-                    choice = "commit"
-                    console.print("[dim]Non-interactive: Force-commit current state as a draft PR[/dim]")
-                else:
-                    import questionary as _q
-                    choice = _q.select(
-                        "What would you like to do?",
-                        choices=[
-                            _q.Choice("Force-commit current state as a draft PR", value="commit"),
-                            _q.Choice("Retry with additional guidance",            value="retry"),
-                            _q.Choice("Abort (exit without committing)",           value="abort"),
-                        ],
-                    ).ask()
-
-                if choice == "commit":
-                    # Clear failure_state/code_review_issues and, in non-interactive mode,
-                    # force tests_passing so the router proceeds to commit_and_push.
-                    update: dict[str, object] = {
-                        "failure_state": None,
-                        "code_review_issues": [],
-                        "tests_passing": None
-                    }
-                    if non_interactive:
-                        update["tests_passing"] = True
-                        update["test_failure_output"] = None
-
-                    graph.update_state(
-                        config,
-                        update,
-                        as_node="code_review",
+            # Graph now routes fail_with_state → commit_and_push → create_pull_request
+            # automatically, so a draft PR with failure context should already exist.
+            console.print(f"\n[bold yellow]Pipeline failed.[/bold yellow] {failure[:400]}")
+            draft_pr = final.values.get("pr_url")
+            if draft_pr:
+                console.print(
+                    Panel(
+                        f"[bold yellow]Draft PR (with failure context):[/bold yellow] {draft_pr}",
+                        title="[bold yellow]Failed — draft PR created[/bold yellow]",
                     )
-                    for event in graph.stream(None, config=config, stream_mode="updates"):
-                        for node_name in event:
-                            console.print(f"  [green]✓[/green] {node_name}")
-                    final = graph.get_state(config)
-                    if final and final.values.get("pr_url"):
-                        console.print(Panel(
-                            f"[bold green]Draft PR:[/bold green] {final.values['pr_url']}",
-                            title="[bold green]Done (with review warnings)[/bold green]",
-                        ))
-                    _print_token_report(claude)
-                    _post_token_report_to_jira(
-                        claude, settings,
-                        (final.values.get("notify_jira_story_key") if final and final.values else None) or story_key,
-                    )
-                    log_path = _save_log(thread_id)
-                    console.print(f"[dim]Log saved to {log_path}[/dim]")
-                    return
-
-                elif choice == "retry":
-                    user_guidance = _q.text(
-                        "Guidance for the next attempt (e.g. 'keep karma, ignore vitest'):"
-                    ).ask() or ""
-                    update: dict = {"failure_state": None, "review_loop_count": 0}
-                    if user_guidance:
-                        update["retry_guidance"] = user_guidance
-                    graph.update_state(config, update, as_node="code_review")
-                    for event in graph.stream(None, config=config, stream_mode="updates"):
-                        for node_name in event:
-                            console.print(f"  [green]✓[/green] {node_name}")
-                    _print_token_report(claude)
-                    _post_token_report_to_jira(
-                        claude, settings,
-                        (final.values.get("notify_jira_story_key") if final and final.values else None) or story_key,
-                    )
-                    log_path = _save_log(thread_id)
-                    console.print(f"[dim]Log saved to {log_path}[/dim]")
-                    return
-
-            _print_token_report(claude)
-            _post_token_report_to_jira(
-                claude, settings,
-                (final.values.get("notify_jira_story_key") if final and final.values else None) or story_key,
-            )
-            log_path = _save_log(thread_id)
-            console.print(f"[dim]Log saved to {log_path}[/dim]")
-            raise typer.Exit(1)
+                )
         elif dry_run:
             console.print("\n[bold cyan]Dry run complete — no side effects applied.[/bold cyan]")
 

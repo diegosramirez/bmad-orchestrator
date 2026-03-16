@@ -255,12 +255,16 @@ def make_review_router(
 def make_fail_with_state_node(
     settings: Settings,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
-    """Terminal node: sets failure_state so the CLI reports the failure clearly."""
+    """Terminal node: sets failure_state so the CLI reports the failure clearly.
+
+    Also generates an architect diagnostic via Claude to help with the next retry.
+    """
 
     def fail_with_state(state: OrchestratorState) -> dict[str, Any]:
         issues = state["code_review_issues"]
         loop_count = state["review_loop_count"]
         tests_passing = state.get("tests_passing")
+        test_failure_output = state.get("test_failure_output") or ""
         threshold = _blocking_threshold(loop_count)
         blocking = [
             i for i in issues if i["severity"] in threshold
@@ -281,6 +285,12 @@ def make_fail_with_state_node(
             f"Pipeline failed after {loop_count} loop(s). "
             + " ".join(parts)
         )
+
+        # Generate architect diagnostic for the draft PR
+        diagnostic = _generate_failure_diagnostic(
+            blocking, test_failure_output, loop_count,
+        )
+
         log_entry: ExecutionLogEntry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "node": "fail_with_state",
@@ -288,6 +298,50 @@ def make_fail_with_state_node(
             "dry_run": settings.dry_run,
         }
         logger.error("review_loop_exhausted", message=message)
-        return {"failure_state": message, "execution_log": [log_entry]}
+        return {
+            "failure_state": message,
+            "failure_diagnostic": diagnostic,
+            "execution_log": [log_entry],
+        }
 
     return fail_with_state
+
+
+def _generate_failure_diagnostic(
+    blocking_issues: list[Any],
+    test_failure_output: str,
+    loop_count: int,
+) -> str:
+    """Build a structured diagnostic string from the failure context.
+
+    This is a deterministic summary (no LLM call) to keep the node fast and
+    side-effect-free.  The draft PR body uses this to help the next retry.
+    """
+    lines: list[str] = []
+    lines.append(f"Pipeline exhausted after {loop_count} review loop(s).")
+
+    if blocking_issues:
+        lines.append("")
+        lines.append("### Unresolved Issues")
+        for issue in blocking_issues[:5]:
+            sev = issue["severity"].upper()
+            desc = issue["description"][:200]
+            lines.append(f"- **[{sev}]** `{issue['file']}`: {desc}")
+
+    if test_failure_output:
+        lines.append("")
+        lines.append("### Test Failures")
+        # Cap output to keep PR body within limits
+        trimmed = test_failure_output[:1500]
+        if len(test_failure_output) > 1500:
+            trimmed += "\n… (truncated)"
+        lines.append(f"```\n{trimmed}\n```")
+
+    lines.append("")
+    lines.append("### Recommended Next Steps")
+    lines.append("- Review the issues above and provide `--guidance` on the next run")
+    lines.append(
+        "- Re-run with the same `branch` input to continue from this code state"
+    )
+
+    return "\n".join(lines)

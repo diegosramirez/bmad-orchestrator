@@ -221,7 +221,7 @@ def build_graph(
             "fail_with_state": "fail_with_state",
         },
     )
-    builder.add_edge("fail_with_state", END)
+    builder.add_edge("fail_with_state", "commit_and_push")
     # Back-edge: fix loop → code review (developer self-verifies inside the node)
     builder.add_edge("dev_story_fix_loop", "code_review")
 
@@ -277,6 +277,7 @@ def make_initial_state(
         qa_results=[],
         execution_log=[],
         failure_state=None,
+        failure_diagnostic=None,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=None,

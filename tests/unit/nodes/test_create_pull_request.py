@@ -76,3 +76,59 @@ def test_creates_draft_pr_when_draft_pr_enabled(mock_github):
     assert result["pr_url"] == "https://github.com/org/repo/pull/99"
     _, kwargs = mock_github.create_pr.call_args
     assert kwargs["draft"] is True
+
+
+def test_forces_draft_pr_on_failure(settings, mock_github):
+    """When failure_state is set, PR is always created as draft regardless of settings."""
+    mock_github.pr_exists.return_value = None
+    mock_github.create_pr.return_value = "https://github.com/org/repo/pull/55"
+
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(
+        branch_name="bmad/team-alpha/TEST-10-add-auth",
+        current_story_id="TEST-10",
+        commit_sha="abc123",
+        failure_state="Pipeline failed after 2 loop(s). Tests are FAILING.",
+        failure_diagnostic="Pipeline exhausted after 2 review loop(s).",
+    ))
+
+    assert result["pr_url"] == "https://github.com/org/repo/pull/55"
+    _, kwargs = mock_github.create_pr.call_args
+    assert kwargs["draft"] is True
+    # PR body should contain failure section
+    body = kwargs["body"]
+    assert "Pipeline Failed" in body
+    assert "How to Continue" in body
+
+
+def test_failure_pr_body_includes_issues_and_diagnostic(settings, mock_github):
+    """PR body on failure includes unresolved issues, diagnostic, and resumption instructions."""
+    mock_github.pr_exists.return_value = None
+    mock_github.create_pr.return_value = "https://github.com/org/repo/pull/60"
+
+    diag = (
+        "Pipeline exhausted after 2 review loop(s).\n\n"
+        "### Unresolved Issues\n"
+        "- **[HIGH]** `src/app.ts`: Missing error handling"
+    )
+    node = make_create_pull_request_node(mock_github, settings)
+    node(make_state(
+        branch_name="bmad/team-alpha/TEST-10-add-auth",
+        current_story_id="TEST-10",
+        commit_sha="abc123",
+        failure_state="Pipeline failed after 2 loop(s).",
+        failure_diagnostic=diag,
+        code_review_issues=[{
+            "severity": "high",
+            "file": "src/app.ts",
+            "line": 42,
+            "description": "Missing error handling",
+            "fix_required": True,
+        }],
+    ))
+
+    body = mock_github.create_pr.call_args[1]["body"]
+    assert "src/app.ts" in body
+    assert "Missing error handling" in body
+    assert "bmad/team-alpha/TEST-10-add-auth" in body
+    assert "--story-key TEST-10" in body

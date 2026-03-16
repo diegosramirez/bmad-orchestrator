@@ -124,6 +124,8 @@ class GitService:
         message: str,
         author_name: str | None = None,
         author_email: str | None = None,
+        *,
+        allow_empty: bool = False,
     ) -> str:
         name = author_name or self.settings.git_author_name
         email = author_email or self.settings.git_author_email
@@ -134,7 +136,10 @@ class GitService:
             "GIT_COMMITTER_EMAIL": email,
         }
         env = {**os.environ, **env_override}
-        _run(["git", "commit", "-m", message], env=env)
+        cmd = ["git", "commit", "-m", message]
+        if allow_empty:
+            cmd.append("--allow-empty")
+        _run(cmd, env=env)
         result = _run(["git", "rev-parse", "HEAD"])
         sha = result.stdout.strip()
         logger.info("committed", sha=sha[:12])

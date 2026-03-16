@@ -238,3 +238,44 @@ def test_router_failure_state_routes_to_fail(settings):
         failure_state="Infrastructure failure: Docker not running",
     )
     assert router(state) == "fail_with_state"
+
+
+# ── fail_with_state generates failure_diagnostic ──────────────────────────────
+
+def test_fail_with_state_returns_failure_diagnostic(settings):
+    """fail_with_state should return a failure_diagnostic string."""
+    from bmad_orchestrator.nodes.code_review import make_fail_with_state_node
+    node = make_fail_with_state_node(settings)
+    result = node(make_state(
+        review_loop_count=2,
+        code_review_issues=[{
+            "severity": "critical", "file": "src/app.ts", "line": 42,
+            "description": "Missing error handling for API calls",
+            "fix_required": True,
+        }],
+        tests_passing=False,
+        test_failure_output="Error: Cannot read property 'subscribe' of undefined",
+    ))
+    diag = result["failure_diagnostic"]
+    assert diag is not None
+    assert "Unresolved Issues" in diag
+    assert "src/app.ts" in diag
+    assert "Test Failures" in diag
+    assert "subscribe" in diag
+    assert "Recommended Next Steps" in diag
+
+
+def test_fail_with_state_diagnostic_without_test_failures(settings):
+    """Diagnostic omits test section when tests_passing is not False."""
+    from bmad_orchestrator.nodes.code_review import make_fail_with_state_node
+    node = make_fail_with_state_node(settings)
+    result = node(make_state(
+        review_loop_count=2,
+        code_review_issues=[{
+            "severity": "critical", "file": "db.py", "line": 1,
+            "description": "SQL injection", "fix_required": True,
+        }],
+    ))
+    diag = result["failure_diagnostic"]
+    assert "Unresolved Issues" in diag
+    assert "Test Failures" not in diag

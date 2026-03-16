@@ -67,6 +67,11 @@ on:
         type: boolean
         default: false
       # ── Other flags ──────────────────────────────────────────────────
+      branch:
+        description: "Existing branch to continue from (e.g. bmad/sam1/SAM1-54-improve-dashboard)"
+        required: false
+        default: ""
+        type: string
       extra_flags:
         description: "Extra CLI flags (e.g. --epic-key PUG-123 --story-key PUG-456)"
         required: false
@@ -133,6 +138,13 @@ jobs:
           git config user.name "BMAD Orchestrator"
           git config user.email "bmad@noreply.local"
           git config url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Checkout existing branch
+        if: inputs.branch != ''
+        working-directory: target-repo
+        run: |
+          git fetch origin "${{ inputs.branch }}"
+          git checkout "${{ inputs.branch }}"
 
       - name: Build skip-nodes flag
         id: skip

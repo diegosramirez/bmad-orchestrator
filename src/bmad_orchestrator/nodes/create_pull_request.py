@@ -43,6 +43,55 @@ _SKIP_DIRS = frozenset({
 })
 
 
+def _build_failure_section(state: OrchestratorState) -> str:
+    """Build a failure/diagnostic section prepended to the PR body when the pipeline failed."""
+    failure_state = state.get("failure_state") or ""
+    diagnostic = state.get("failure_diagnostic") or ""
+    issues = state["code_review_issues"]
+
+    lines: list[str] = []
+    lines.append("## ⚠️ Pipeline Failed\n")
+    lines.append(f"**Reason:** {failure_state}\n")
+
+    if issues:
+        lines.append("### Unresolved Issues")
+        for issue in issues[:10]:
+            sev = issue["severity"].upper()
+            desc = issue["description"][:200]
+            lines.append(f"- **[{sev}]** `{issue['file']}`: {desc}")
+        lines.append("")
+
+    test_output = state.get("test_failure_output") or ""
+    if test_output:
+        trimmed = test_output[:1500]
+        if len(test_output) > 1500:
+            trimmed += "\n… (truncated)"
+        lines.append("### Test Failures")
+        lines.append(f"```\n{trimmed}\n```\n")
+
+    if diagnostic:
+        lines.append("### Diagnostic")
+        lines.append(diagnostic)
+        lines.append("")
+
+    # Add resumption instructions
+    branch = state.get("branch_name") or ""
+    story_id = state.get("current_story_id") or ""
+    lines.append("### How to Continue")
+    lines.append("Re-run the workflow with these settings:")
+    lines.append(f"- **Branch:** `{branch}`")
+    lines.append(
+        "- **Skip:** check_epic_state, create_or_correct_epic, "
+        "create_story_tasks, party_mode_refinement"
+    )
+    if story_id:
+        lines.append(f"- **Extra flags:** `--story-key {story_id}`")
+    lines.append("")
+    lines.append("---\n")
+
+    return "\n".join(lines)
+
+
 def _build_pr_body(state: OrchestratorState) -> str:
     story_id = state["current_story_id"] or "UNKNOWN"
     story_content = state["story_content"] or state["input_prompt"]
@@ -91,7 +140,12 @@ def _build_pr_body(state: OrchestratorState) -> str:
     )
 
     issues = state["code_review_issues"]
-    if issues:
+    if state.get("failure_state"):
+        review_summary = (
+            f"Pipeline failed with {len(issues)} unresolved issue(s) after "
+            f"{state['review_loop_count']} review loop(s)."
+        )
+    elif issues:
         review_summary = (
             f"All {len(issues)} identified issue(s) resolved over "
             f"{state['review_loop_count']} review loop(s)."
@@ -99,7 +153,12 @@ def _build_pr_body(state: OrchestratorState) -> str:
     else:
         review_summary = "No code review issues found."
 
-    body = _PR_BODY_TEMPLATE.format(
+    # Prepend failure section if pipeline failed
+    failure_prefix = ""
+    if state.get("failure_state"):
+        failure_prefix = _build_failure_section(state)
+
+    body = failure_prefix + _PR_BODY_TEMPLATE.format(
         story_id=story_id,
         story_summary=story_summary[:120],
         acceptance_criteria=ac_lines,
@@ -172,12 +231,15 @@ def make_create_pull_request_node(
         # Falls back to settings.github_base_branch (default: "main") when not set.
         base = state["base_branch"] or settings.github_base_branch
 
+        # Force draft when pipeline failed so the PR is clearly WIP
+        is_draft = settings.draft_pr or bool(state.get("failure_state"))
+
         pr_url = github.create_pr(
             title=title,
             body=_build_pr_body(state),
             head_branch=branch_name,
             base_branch=base,
-            draft=settings.draft_pr,
+            draft=is_draft,
         )
 
         return {

@@ -146,6 +146,20 @@ def test_commit_real_path(settings):
     assert sha == "abc123def"
 
 
+def test_commit_allow_empty(settings):
+    svc = GitService(_live(settings))
+    responses = [
+        MagicMock(returncode=0, stdout="", stderr=""),
+        MagicMock(returncode=0, stdout="abc123def\n", stderr=""),
+    ]
+    target = "bmad_orchestrator.services.git_service.subprocess.run"
+    with patch(target, side_effect=responses) as mock_run:
+        sha = svc.commit("empty commit", allow_empty=True)
+    assert sha == "abc123def"
+    commit_args = mock_run.call_args_list[0][0][0]
+    assert "--allow-empty" in commit_args
+
+
 def test_has_staged_changes_true(settings):
     svc = GitService(_live(settings))
     with patch("bmad_orchestrator.services.git_service.subprocess.run") as mock_run:

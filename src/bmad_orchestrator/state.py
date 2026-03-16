@@ -83,6 +83,9 @@ class OrchestratorState(TypedDict):
     execution_log: Annotated[list[ExecutionLogEntry], operator.add]
     failure_state: str | None
 
+    # ── Failure diagnostic (architect analysis when review loops exhaust) ─────
+    failure_diagnostic: str | None
+
     # ── User guidance (injected on --retry / --resume --guidance "...") ───────
     retry_guidance: str | None
 
