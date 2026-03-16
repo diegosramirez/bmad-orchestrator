@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     slack_notify: bool = False
     slack_bot_token: SecretStr | None = None
     slack_channel: str | None = None
+    slack_verbose: bool = False
 
     # ── Skip nodes ──────────────────────────────────────────────────────────
     skip_nodes: list[str] = []

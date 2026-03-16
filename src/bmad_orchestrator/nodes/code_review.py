@@ -57,6 +57,8 @@ class ReviewResult(BaseModel):
 def make_code_review_node(
     agent: ClaudeAgentService,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("architect", settings.bmad_install_dir)
 
@@ -144,6 +146,7 @@ def make_code_review_node(
             max_turns=10,
             max_budget_usd=0.50,
             cwd=_resolve_cwd(settings, state),
+            on_event=on_event,
         )
 
         # Parse structured output from the agent session.

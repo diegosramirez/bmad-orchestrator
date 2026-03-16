@@ -136,7 +136,6 @@ def _format_agent_timeline(structlog_text: str) -> str:
     # Group by agent (or "System" for events without agent=)
     output: list[str] = ["## Agent Timeline\n"]
     current_agent: str | None = None
-    table_open = False
 
     for hms, level, event, _rest, kv in entries:
         # Skip events with empty details from _SUMMARY_EVENTS
@@ -147,18 +146,12 @@ def _format_agent_timeline(structlog_text: str) -> str:
         rel = _relative_time(hms, start_time)
 
         if agent != current_agent:
-            if table_open:
-                output.append("")
-            output.append(f"### {agent}\n")
-            output.append("| Time | Event | Details |")
-            output.append("|------|-------|---------|")
+            output.append(f"\n### {agent}\n")
             current_agent = agent
-            table_open = True
 
         details = _format_details(event, kv)
-        # Escape pipe characters in details for markdown tables
-        details = details.replace("|", "\\|")
-        output.append(f"| {hms} ({rel}) | `{event}` | {details} |")
+        detail_suffix = f" — {details}" if details else ""
+        output.append(f"- **{hms}** ({rel}) `{event}`{detail_suffix}")
 
     output.append("")
     return "\n".join(output)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 import anthropic
@@ -120,6 +121,7 @@ class ClaudeService:
         user_message: str,
         max_tokens: int = 4096,
         agent_id: str = "unknown",
+        on_event: Callable[[str], None] | None = None,
     ) -> str:
         """Call Claude and return the raw text response."""
         agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
@@ -129,10 +131,13 @@ class ClaudeService:
                         prompt=_truncate(user_message, 120))
             return "[DRY RUN \u2014 no Claude call made]"
 
+        _emit = on_event or (lambda _: None)
+
         logger.info("claude_request", agent=agent_name, method="complete",
                     prompt=_truncate(user_message, 120))
         logger.debug("claude_request_full", agent=agent_name, method="complete",
                      user_message=user_message)
+        _emit(f"\U0001f916 *{agent_name}* calling Claude — complete")
 
         model = self._model_for(agent_id)
         t0 = time.perf_counter()
@@ -161,6 +166,10 @@ class ClaudeService:
                     duration_s=round(elapsed, 2))
         logger.debug("claude_response_full", agent=agent_name, method="complete",
                      full_response=content.text)
+        _emit(
+            f"\U0001f4dd *{agent_name}* response — {round(elapsed, 1)}s, "
+            f"{response.usage.input_tokens}\u2192{response.usage.output_tokens} tokens"
+        )
 
         self._usage.append({
             "agent_id": agent_id,
@@ -180,6 +189,7 @@ class ClaudeService:
         schema: type[T],
         max_tokens: int = 4096,
         agent_id: str = "unknown",
+        on_event: Callable[[str], None] | None = None,
     ) -> T:
         """
         Call Claude with forced structured JSON output via tool_use.
@@ -218,10 +228,13 @@ class ClaudeService:
         tool_name = schema.__name__
         tool_schema = schema.model_json_schema()
 
+        _emit = on_event or (lambda _: None)
+
         logger.info("claude_request", agent=agent_name, method="complete_structured",
                     schema=schema.__name__, prompt=_truncate(user_message, 120))
         logger.debug("claude_request_full", agent=agent_name, method="complete_structured",
                      user_message=user_message)
+        _emit(f"\U0001f916 *{agent_name}* calling Claude — {schema.__name__}")
 
         model = self._model_for(agent_id)
         t0 = time.perf_counter()
@@ -283,6 +296,10 @@ class ClaudeService:
                     tokens_in=response.usage.input_tokens,
                     tokens_out=response.usage.output_tokens,
                     duration_s=round(elapsed, 2))
+        _emit(
+            f"\U0001f4dd *{agent_name}* response — {schema.__name__}, {round(elapsed, 1)}s, "
+            f"{response.usage.input_tokens}\u2192{response.usage.output_tokens} tokens"
+        )
 
         self._usage.append({
             "agent_id": agent_id,
@@ -301,6 +318,7 @@ class ClaudeService:
         user_message: str,
         options: list[str],
         agent_id: str = "unknown",
+        on_event: Callable[[str], None] | None = None,
     ) -> str:
         """
         Ask Claude to pick one option from a fixed list.
@@ -313,7 +331,7 @@ class ClaudeService:
             f"No explanation, just the option."
         )
         result = self.complete(system_prompt, full_prompt, max_tokens=64,
-                               agent_id=agent_id)
+                               agent_id=agent_id, on_event=on_event)
         result = result.strip().lower()
         for opt in options:
             if opt.lower() in result:

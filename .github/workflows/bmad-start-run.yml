@@ -68,6 +68,11 @@ on:
         description: "Skip: Create GitHub PR"
         type: boolean
         default: false
+      # ── Slack verbose ────────────────────────────────────────────────
+      slack_verbose:
+        description: "Verbose: stream agent events to Slack thread"
+        type: boolean
+        default: false
       # ── Other flags ──────────────────────────────────────────────────
       branch:
         description: "Existing branch to continue from (e.g. bmad/sam1/SAM1-54-improve-dashboard)"
@@ -106,6 +111,7 @@ jobs:
       BMAD_SLACK_NOTIFY: ${{ vars.BMAD_SLACK_NOTIFY || 'false' }}
       BMAD_SLACK_BOT_TOKEN: ${{ secrets.BMAD_SLACK_BOT_TOKEN }}
       BMAD_SLACK_CHANNEL: ${{ vars.BMAD_SLACK_CHANNEL }}
+      BMAD_SLACK_VERBOSE: ${{ inputs.slack_verbose }}
 
       # ── Orchestrator settings ──────────────────────────────────────────
       BMAD_DRAFT_PR: "true"

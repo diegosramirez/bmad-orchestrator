@@ -20,6 +20,8 @@ NODE_NAME = "dev_story_fix_loop"
 def make_fix_loop_node(
     agent: ClaudeAgentService,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("developer", settings.bmad_install_dir)
 
@@ -114,6 +116,7 @@ def make_fix_loop_node(
             agent_id="developer",
             cwd=_resolve_cwd(settings, state),
             max_turns=10,
+            on_event=on_event,
         )
 
         touched = result.touched_files

@@ -43,6 +43,8 @@ class ProjectCommands(BaseModel):
 def make_detect_commands_node(
     claude: ClaudeService,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     """Factory for the detect_commands node.
 
@@ -113,6 +115,7 @@ def make_detect_commands_node(
             schema=ProjectCommands,
             max_tokens=1024,
             agent_id="build-expert",
+            on_event=on_event,
         )
 
         logger.info(

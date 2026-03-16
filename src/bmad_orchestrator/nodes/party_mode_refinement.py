@@ -78,6 +78,8 @@ def make_party_mode_node(
     claude: ClaudeService,
     jira: JiraServiceProtocol,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     designer_prompt = build_system_prompt("designer", settings.bmad_install_dir)
     architect_prompt = build_system_prompt("architect", settings.bmad_install_dir)
@@ -113,6 +115,7 @@ def make_party_mode_node(
                         ),
                         schema=UserStorySummary,
                         agent_id="scrum_master",
+                        on_event=on_event,
                     )
                     if corrected.summary.strip():
                         jira.update_story_summary(story_id, corrected.summary.strip())
@@ -142,6 +145,7 @@ def make_party_mode_node(
                     f"Be concise and actionable."
                 ),
                 agent_id="designer",
+                on_event=on_event,
             )
 
         def _architect_call() -> str:
@@ -162,6 +166,7 @@ def make_party_mode_node(
                     f"Be concise and actionable."
                 ),
                 agent_id="architect_party",
+                on_event=on_event,
             )
 
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -202,6 +207,7 @@ def make_party_mode_node(
                 f"Be concise and actionable."
             ),
             agent_id="developer_party",
+            on_event=on_event,
         )
         log_entries.append({
             "timestamp": now,
@@ -256,6 +262,7 @@ def make_party_mode_node(
             schema=RefinedStory,
             max_tokens=16384,
             agent_id="scrum_master",
+            on_event=on_event,
         )
         log_entries.append({
             "timestamp": now,
@@ -302,6 +309,7 @@ def make_party_mode_node(
                     ),
                     schema=_SubtaskList,
                     agent_id="scrum_master",
+                    on_event=on_event,
                 )
                 for task in sublist.tasks:
                     jira.create_task(story_id, task.summary, task.description)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,7 @@ class ClaudeAgentService:
         max_turns: int = _DEFAULT_MAX_TURNS,
         effort: str = _DEFAULT_EFFORT,
         max_budget_usd: float = _DEFAULT_MAX_BUDGET_USD,
+        on_event: Callable[[str], None] | None = None,
     ) -> AgentResult:
         """Run a Claude Agent SDK session synchronously.
 
@@ -99,6 +101,7 @@ class ClaudeAgentService:
                 max_turns=max_turns,
                 effort=effort,
                 max_budget_usd=max_budget_usd,
+                on_event=on_event,
             )
         )
 
@@ -115,8 +118,10 @@ class ClaudeAgentService:
         max_turns: int,
         effort: str = _DEFAULT_EFFORT,
         max_budget_usd: float = _DEFAULT_MAX_BUDGET_USD,
+        on_event: Callable[[str], None] | None = None,
     ) -> AgentResult:
         agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
+        _emit = on_event or (lambda _: None)
         touched: list[str] = []
 
         output_format = None
@@ -198,6 +203,8 @@ class ClaudeAgentService:
                             tool=block.name,
                             detail=detail or None,
                         )
+                        _detail = f" \u2014 `{detail[:80]}`" if detail else ""
+                        _emit(f"\U0001f527 *{agent_name}* T{turn}: {block.name}{_detail}")
                     elif isinstance(block, ToolResultBlock):
                         lvl = "error" if block.is_error else "info"
                         content = (
@@ -223,6 +230,7 @@ class ClaudeAgentService:
                                 turn=turn,
                                 text=text[:300],
                             )
+                            _emit(f"\U0001f4ac *{agent_name}* T{turn}: {text[:200]}")
                     else:
                         # ThinkingBlock or unknown — log type
                         logger.debug(
@@ -291,6 +299,11 @@ class ClaudeAgentService:
             tokens_in=usage.get("input_tokens", 0),
             tokens_out=usage.get("output_tokens", 0),
             cost_usd=result_msg.total_cost_usd,
+        )
+        cost = f"${result_msg.total_cost_usd:.2f}" if result_msg.total_cost_usd else "n/a"
+        _emit(
+            f"\u2705 *{agent_name}* session complete \u2014 "
+            f"{result_msg.num_turns} turns, {len(touched)} files, {cost}"
         )
 
         return AgentResult(

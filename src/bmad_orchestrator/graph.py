@@ -155,16 +155,21 @@ def _wrap_with_slack_notifications(
     settings: Settings,
     node_name: str,
     node_fn: Callable[[OrchestratorState], dict[str, Any]],
+    thread_ts_holder: list[str | None],
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     """Wrap a node to post Slack messages in a per-run thread.
 
     The first node creates a root message (run header) and stores its ``ts``
     in state as ``slack_thread_ts``.  Subsequent nodes post replies to that
-    thread.
+    thread.  *thread_ts_holder* is a mutable single-element list shared across
+    all wrapped nodes so the verbose event callback can read the current ts.
     """
 
     def _wrapped(state: OrchestratorState) -> dict[str, Any]:
         thread_ts = state.get("slack_thread_ts")
+        # Keep the shared holder in sync for the verbose callback
+        if thread_ts and thread_ts_holder[0] is None:
+            thread_ts_holder[0] = thread_ts
         out = node_fn(state)
 
         label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
@@ -186,6 +191,7 @@ def _wrap_with_slack_notifications(
             header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
             ts = slack.post_message(f"{header}\n{text}")
             if ts:
+                thread_ts_holder[0] = ts
                 return {**out, "slack_thread_ts": ts}
         else:
             slack.post_thread_reply(thread_ts, text)
@@ -193,6 +199,31 @@ def _wrap_with_slack_notifications(
         return out
 
     return _wrapped
+
+
+def _make_verbose_callback(
+    slack: SlackServiceProtocol,
+    settings: Settings,
+    thread_ts_holder: list[str | None],
+) -> Callable[[str], None]:
+    """Create the on_event callback for verbose Slack mode.
+
+    Returns a no-op if verbose mode is disabled.  Otherwise returns a function
+    that posts each message as a thread reply, silently swallowing errors so
+    that a Slack hiccup never crashes the pipeline.
+    """
+    if not settings.slack_verbose or not settings.slack_notify:
+        return lambda _msg: None
+
+    def _post(msg: str) -> None:
+        ts = thread_ts_holder[0]
+        if ts:
+            try:
+                slack.post_thread_reply(ts, msg)
+            except Exception:  # noqa: BLE001
+                pass  # never crash the pipeline for a Slack failure
+
+    return _post
 
 
 def build_graph(
@@ -220,6 +251,10 @@ def build_graph(
     github = create_github_service(git_settings)
     slack = create_slack_service(settings)
 
+    # ── Verbose Slack callback (shared mutable holder for thread_ts) ────────
+    thread_ts_holder: list[str | None] = [None]
+    on_event = _make_verbose_callback(slack, settings, thread_ts_holder)
+
     # ── BMAD workflow runner (loads real workflow files for epic/story creation) ─
     bmad_runner = BmadWorkflowRunner(claude, settings)
 
@@ -231,24 +266,29 @@ def build_graph(
         """Register a real node or a no-op skip node, wrapped with notifications."""
         raw = _make_skip_node(name) if name in skip else factory_fn
         wrapped = _wrap_with_step_notifications(jira, settings, name, raw)
-        wrapped = _wrap_with_slack_notifications(slack, settings, name, wrapped)
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, name, wrapped, thread_ts_holder,
+        )
         builder.add_node(name, wrapped)
 
-    _node("check_epic_state", make_check_epic_state_node(jira, claude, settings))
+    _node(
+        "check_epic_state",
+        make_check_epic_state_node(jira, claude, settings, on_event=on_event),
+    )
     _node(
         "create_or_correct_epic",
-        make_create_or_correct_epic_node(jira, claude, settings, bmad_runner),
+        make_create_or_correct_epic_node(jira, claude, settings, bmad_runner, on_event=on_event),
     )
     _node(
         "create_story_tasks",
-        make_create_story_tasks_node(jira, claude, settings, bmad_runner),
+        make_create_story_tasks_node(jira, claude, settings, bmad_runner, on_event=on_event),
     )
-    _node("party_mode_refinement", make_party_mode_node(claude, jira, settings))
-    _node("detect_commands", make_detect_commands_node(claude, settings))
-    _node("dev_story", make_dev_story_node(claude_agent, settings))
-    _node("qa_automation", make_qa_automation_node(claude_agent, settings))
-    _node("code_review", make_code_review_node(claude_agent, settings))
-    _node("dev_story_fix_loop", make_fix_loop_node(claude_agent, settings))
+    _node("party_mode_refinement", make_party_mode_node(claude, jira, settings, on_event=on_event))
+    _node("detect_commands", make_detect_commands_node(claude, settings, on_event=on_event))
+    _node("dev_story", make_dev_story_node(claude_agent, settings, on_event=on_event))
+    _node("qa_automation", make_qa_automation_node(claude_agent, settings, on_event=on_event))
+    _node("code_review", make_code_review_node(claude_agent, settings, on_event=on_event))
+    _node("dev_story_fix_loop", make_fix_loop_node(claude_agent, settings, on_event=on_event))
     _node("fail_with_state", make_fail_with_state_node(settings))
     _node("commit_and_push", make_commit_and_push_node(git, settings))
     _node("create_pull_request", make_create_pull_request_node(github, settings))

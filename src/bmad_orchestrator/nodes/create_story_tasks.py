@@ -97,6 +97,8 @@ def make_create_story_tasks_node(
     claude: ClaudeService,
     settings: Settings,
     bmad_runner: BmadWorkflowRunner | None = None,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
 
@@ -179,6 +181,7 @@ def make_create_story_tasks_node(
                 schema=StoryDraft,
                 agent_id="scrum_master",
                 max_tokens=16384,
+                on_event=on_event,
             )
 
         # Normalise description headings to avoid 1./a./i. outlines in Jira.
@@ -212,6 +215,7 @@ def make_create_story_tasks_node(
             ),
             schema=StoryQualityAssessment,
             agent_id="scrum_master",
+            on_event=on_event,
         )
 
         if not quality.is_clear:
@@ -251,6 +255,7 @@ def make_create_story_tasks_node(
                 schema=StoryDraft,
                 agent_id="scrum_master",
                 max_tokens=16384,
+                on_event=on_event,
             )
 
         story = jira.create_story(

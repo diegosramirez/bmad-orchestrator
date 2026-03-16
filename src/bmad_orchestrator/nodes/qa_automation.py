@@ -19,6 +19,8 @@ NODE_NAME = "qa_automation"
 def make_qa_automation_node(
     agent: ClaudeAgentService,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("qa", settings.bmad_install_dir)
 
@@ -81,6 +83,7 @@ def make_qa_automation_node(
             agent_id="qa",
             cwd=_resolve_cwd(settings, state),
             max_turns=10,
+            on_event=on_event,
         )
 
         touched = result.touched_files

@@ -27,6 +27,8 @@ def make_check_epic_state_node(
     jira: JiraServiceProtocol,
     claude: ClaudeService,
     settings: Settings,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("pm", settings.bmad_install_dir)
 
@@ -84,6 +86,7 @@ def make_check_epic_state_node(
             ),
             schema=EpicRoutingDecision,
             agent_id="pm",
+            on_event=on_event,
         )
 
         if decision.decision == "add_to_existing":

@@ -40,6 +40,8 @@ def make_create_or_correct_epic_node(
     claude: ClaudeService,
     settings: Settings,
     bmad_runner: BmadWorkflowRunner | None = None,
+    *,
+    on_event: Callable[[str], None] | None = None,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("pm", settings.bmad_install_dir)
 
@@ -82,6 +84,7 @@ def make_create_or_correct_epic_node(
                     ),
                     schema=EpicCorrectionDecision,
                     agent_id="pm",
+                    on_event=on_event,
                 )
             if decision.needs_update and decision.updated_description:
                 normalised = normalise_jira_headings(decision.updated_description)
@@ -131,6 +134,7 @@ def make_create_or_correct_epic_node(
                 user_message=user_msg,
                 schema=EpicDraft,
                 agent_id="pm",
+                on_event=on_event,
             )
 
         normalised_description = normalise_jira_headings(draft.description)

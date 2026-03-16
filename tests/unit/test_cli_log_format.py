@@ -61,9 +61,9 @@ class TestFormatAgentTimeline:
         result = _format_agent_timeline(self.SAMPLE_LOG)
         assert "## Agent Timeline" in result
 
-    def test_contains_table_headers(self) -> None:
+    def test_uses_list_format(self) -> None:
         result = _format_agent_timeline(self.SAMPLE_LOG)
-        assert "| Time | Event | Details |" in result
+        assert "- **13:39:21**" in result
 
     def test_claude_request_shows_method_and_schema(self) -> None:
         result = _format_agent_timeline(self.SAMPLE_LOG)
@@ -102,10 +102,11 @@ class TestFormatAgentTimeline:
         assert _format_agent_timeline("") == ""
         assert _format_agent_timeline("not a log line\n") == ""
 
-    def test_pipe_chars_escaped(self) -> None:
+    def test_pipe_chars_not_escaped_in_list_format(self) -> None:
         log = (
             "2026-03-16T13:39:21.000000Z [info     ] some_event"
             "                     detail='a|b'\n"
         )
         result = _format_agent_timeline(log)
-        assert "a\\|b" in result
+        # List format doesn't need pipe escaping (no markdown tables)
+        assert "a|b" in result
