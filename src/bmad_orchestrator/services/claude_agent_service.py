@@ -140,7 +140,10 @@ class ClaudeAgentService:
             output_format=output_format,
             effort=effort,
             max_budget_usd=max_budget_usd,
-            env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000"},
+            env={
+                "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+                "ANTHROPIC_API_KEY": self.settings.anthropic_api_key.get_secret_value(),
+            },
         )
 
         logger.info(
