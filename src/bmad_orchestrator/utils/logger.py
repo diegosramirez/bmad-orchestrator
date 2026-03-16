@@ -49,8 +49,9 @@ def configure_logging(
 
     - In a non-TTY environment (CI, production): emit JSON.
     - In a TTY (developer terminal): emit colored key=value.
-    - When verbose=True, set log level to DEBUG (10) instead of INFO (20)
-      and tee all output to an in-memory buffer for the .md log file.
+    - All log levels (DEBUG+) are always captured in the in-memory buffer
+      for the .md log file, regardless of verbose setting.
+    - When verbose=True, console output includes DEBUG; otherwise INFO+.
     """
     if json_logs is None:
         json_logs = not sys.stderr.isatty()
@@ -69,44 +70,61 @@ def configure_logging(
     else:
         renderer = structlog.dev.ConsoleRenderer()
 
-    level = 10 if verbose else 20  # DEBUG vs INFO
+    console_level = 10 if verbose else 20  # DEBUG vs INFO for console
 
-    # When verbose, tee every log line into an in-memory buffer for the .md file.
-    # When not verbose, use the plain renderer (no buffer writes).
-    final_renderer: Any
-    if verbose:
-        file_renderer: structlog.types.Processor = (
-            structlog.dev.ConsoleRenderer(colors=False)
-        )
-        final_renderer = _TeeFileRenderer(
-            console_renderer=renderer, file_renderer=file_renderer,
-        )
-    else:
-        final_renderer = renderer
+    # Always tee log lines into an in-memory buffer for the .md log file.
+    # The buffer captures ALL log levels (DEBUG+) so the log file has full
+    # agent conversations.  Console output respects the verbose flag.
+    file_renderer: structlog.types.Processor = (
+        structlog.dev.ConsoleRenderer(colors=False)
+    )
+    final_renderer: Any = _TeeFileRenderer(
+        console_renderer=renderer,
+        file_renderer=file_renderer,
+        console_level=console_level,
+    )
 
+    # Always set DEBUG (10) so all messages reach the tee renderer.
+    # The tee renderer filters console output by console_level.
     structlog.configure(
         processors=[
             *shared_processors,
             structlog.processors.format_exc_info,
             final_renderer,
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(level),
+        wrapper_class=structlog.make_filtering_bound_logger(10),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
 
+_LOG_LEVEL_MAP: dict[str, int] = {
+    "debug": 10,
+    "info": 20,
+    "warning": 30,
+    "error": 40,
+    "critical": 50,
+}
+
+
 class _TeeFileRenderer:
-    """Processor that renders to console normally AND appends plain text to the buffer."""
+    """Processor that renders to console normally AND appends plain text to the buffer.
+
+    All log levels are always written to the in-memory buffer (for the .md log
+    file).  Console output is filtered by *console_level* so that ``--verbose``
+    controls terminal noise without losing detail in the log file.
+    """
 
     def __init__(
         self,
         console_renderer: structlog.types.Processor,
         file_renderer: structlog.types.Processor,
+        console_level: int = 20,
     ) -> None:
         self._console = console_renderer
         self._file = file_renderer
+        self._console_level = console_level
 
     def __call__(
         self,
@@ -118,6 +136,12 @@ class _TeeFileRenderer:
         file_line = str(self._file(logger, method_name, dict(event_dict)))
         with _log_lock:
             _log_buffer.write(file_line + "\n")
+
+        # Filter console output by level
+        level = _LOG_LEVEL_MAP.get(str(event_dict.get("level", "info")), 20)
+        if level < self._console_level:
+            raise structlog.DropEvent
+
         # Render for console (may include ANSI colors)
         return self._console(logger, method_name, event_dict)  # type: ignore[return-value]
 

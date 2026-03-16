@@ -50,18 +50,50 @@ def test_configure_logging_does_not_raise() -> None:
     configure_logging(json_logs=True, verbose=False)
 
 
-def test_non_verbose_does_not_write_to_buffer() -> None:
-    """When verbose=False, log messages should NOT be tee'd to the buffer."""
+def test_non_verbose_still_writes_to_buffer() -> None:
+    """Even when verbose=False, log messages are tee'd to the buffer for the log file."""
     get_log_contents()  # clear
     configure_logging(json_logs=False, verbose=False)
 
     import structlog
 
     logger = structlog.get_logger("test")
-    logger.info("should_not_appear_in_buffer")
+    logger.info("should_appear_in_buffer")
 
     buf = get_log_contents()
-    assert buf == ""
+    assert "should_appear_in_buffer" in buf
+
+
+def test_tee_renderer_filters_console_by_level() -> None:
+    """_TeeFileRenderer drops console output below console_level but always writes to buffer."""
+    import structlog
+
+    get_log_contents()  # clear
+
+    def fake_console(logger: object, method: str, ed: dict) -> str:
+        return f"[console] {ed.get('event', '')}"
+
+    def fake_file(logger: object, method: str, ed: dict) -> str:
+        return f"[file] {ed.get('event', '')}"
+
+    renderer = _TeeFileRenderer(
+        console_renderer=fake_console,  # type: ignore[arg-type]
+        file_renderer=fake_file,  # type: ignore[arg-type]
+        console_level=20,  # INFO — should drop debug
+    )
+
+    # Debug-level message should be written to buffer but raise DropEvent for console
+    import pytest
+
+    with pytest.raises(structlog.DropEvent):
+        renderer(None, "debug", {"event": "debug_msg", "level": "debug"})
+
+    buf = get_log_contents()
+    assert "[file] debug_msg" in buf
+
+    # Info-level message should pass through to console
+    result = renderer(None, "info", {"event": "info_msg", "level": "info"})
+    assert result == "[console] info_msg"
 
 
 def test_verbose_writes_to_buffer() -> None:

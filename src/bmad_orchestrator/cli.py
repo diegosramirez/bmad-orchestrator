@@ -305,12 +305,23 @@ def run(
         os.environ["BMAD_VERBOSE"] = "true"
 
     # ── Story-key auto-resolution ─────────────────────────────────────────
-    # When --story-key is provided, derive team_id, prompt, epic_key, and
-    # story content from Jira so the user doesn't have to pass them and
-    # so downstream nodes have the story context even when create_story_tasks
-    # is skipped.
+    # When --story-key is provided (or the prompt looks like a Jira key),
+    # derive team_id, prompt, epic_key, and story content from Jira so the
+    # user doesn't have to pass them and so downstream nodes have the story
+    # context even when create_story_tasks is skipped.
     _story_content: str | None = None
     _acceptance_criteria: list[str] | None = None
+
+    # Auto-detect: if prompt looks like a Jira key and --story-key wasn't
+    # explicitly provided, treat the prompt as the story key.
+    if not story_key and prompt:
+        from bmad_orchestrator.utils.cli_prompts import is_jira_key
+
+        if is_jira_key(prompt.strip()):
+            story_key = prompt.strip()
+            console.print(
+                f"[dim]Auto-detected story key from prompt: {story_key}[/dim]"
+            )
 
     if story_key:
         _settings = Settings()  # type: ignore[call-arg]
