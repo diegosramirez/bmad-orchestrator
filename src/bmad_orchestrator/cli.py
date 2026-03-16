@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,6 +25,145 @@ _LOGS_DIR = _BMAD_HOME / "logs"
 _LAST_RUN_FILE = _BMAD_HOME / ".last_run"
 
 
+_LOG_LINE_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2})\.\d+Z)"
+    r" \[(\w+)\s*\] "
+    r"(\S+)"
+    r"\s*(.*)?$"
+)
+
+# Key-value patterns in structlog trailing text: key='value' or key=value
+_KV_RE = re.compile(r"(\w+)=(?:'([^']*(?:''[^']*)*)'|\"([^\"]*)\"|(\S+))")
+
+# Events that produce excessively long values — show only select keys
+_SUMMARY_EVENTS: dict[str, set[str]] = {
+    "claude_request": {"agent", "method", "schema"},
+    "claude_request_full": set(),  # skip entirely
+    "claude_response": {"agent", "duration_s", "tokens_in", "tokens_out", "method"},
+    "agent_system_message": {"agent", "subtype"},
+    "agent_user_message": {"agent", "turn"},
+    "agent_block": {"agent", "block_type", "turn"},
+}
+
+
+def _parse_kv(text: str) -> dict[str, str]:
+    """Extract key=value pairs from a structlog trailing string."""
+    result: dict[str, str] = {}
+    for m in _KV_RE.finditer(text):
+        key = m.group(1)
+        val = m.group(2) if m.group(2) is not None else (m.group(3) if m.group(3) is not None else m.group(4))
+        result[key] = val
+    return result
+
+
+def _relative_time(t: str, start: str) -> str:
+    """Compute +M:SS offset between two HH:MM:SS strings."""
+    def _secs(hms: str) -> int:
+        h, m, s = hms.split(":")
+        return int(h) * 3600 + int(m) * 60 + int(s)
+    diff = _secs(t) - _secs(start)
+    if diff < 0:
+        diff = 0
+    minutes, secs = divmod(diff, 60)
+    return f"+{minutes}:{secs:02d}"
+
+
+def _format_details(event: str, kv: dict[str, str]) -> str:
+    """Format the details column for a timeline row."""
+    allowed = _SUMMARY_EVENTS.get(event)
+    if allowed is not None:
+        if not allowed:
+            return ""  # skip this event entirely
+        parts = []
+        for k in ("method", "schema", "duration_s", "tokens_in", "tokens_out",
+                   "subtype", "block_type", "turn"):
+            if k in allowed and k in kv:
+                val = kv[k]
+                if k == "duration_s":
+                    parts.append(f"duration={val}s")
+                elif k == "tokens_in" and "tokens_out" in kv:
+                    parts.append(f"tokens={val}→{kv['tokens_out']}")
+                elif k == "tokens_out":
+                    continue  # handled with tokens_in
+                else:
+                    parts.append(f"{k}={val}")
+        return " ".join(parts)
+
+    # For agent tool use events, show tool and detail (truncated)
+    if event in ("agent_tool_use",):
+        tool = kv.get("tool", "")
+        detail = kv.get("detail", "")
+        if len(detail) > 120:
+            detail = detail[:120] + "..."
+        return f"tool={tool} `{detail}`" if detail else f"tool={tool}"
+
+    if event == "agent_text":
+        text = kv.get("text", "")
+        if len(text) > 150:
+            text = text[:150] + "..."
+        return text
+
+    # Default: show all kv pairs, truncating long values
+    parts = []
+    for k, v in kv.items():
+        if k == "agent":
+            continue  # shown in the section header
+        if len(v) > 80:
+            v = v[:80] + "..."
+        parts.append(f"{k}={v}")
+    return " ".join(parts)
+
+
+def _format_agent_timeline(structlog_text: str) -> str:
+    """Transform raw structlog output into a readable markdown timeline."""
+    lines = structlog_text.splitlines()
+    entries: list[tuple[str, str, str, str, dict[str, str]]] = []
+    start_time: str | None = None
+
+    for line in lines:
+        m = _LOG_LINE_RE.match(line)
+        if not m:
+            continue
+        _full_ts, hms, level, event, rest = m.groups()
+        if start_time is None:
+            start_time = hms
+        kv = _parse_kv(rest or "")
+        entries.append((hms, level.strip(), event, rest or "", kv))
+
+    if not entries or start_time is None:
+        return ""
+
+    # Group by agent (or "System" for events without agent=)
+    output: list[str] = ["## Agent Timeline\n"]
+    current_agent: str | None = None
+    table_open = False
+
+    for hms, level, event, _rest, kv in entries:
+        # Skip events with empty details from _SUMMARY_EVENTS
+        if event in _SUMMARY_EVENTS and not _SUMMARY_EVENTS[event]:
+            continue
+
+        agent = kv.get("agent", "System")
+        rel = _relative_time(hms, start_time)
+
+        if agent != current_agent:
+            if table_open:
+                output.append("")
+            output.append(f"### {agent}\n")
+            output.append("| Time | Event | Details |")
+            output.append("|------|-------|---------|")
+            current_agent = agent
+            table_open = True
+
+        details = _format_details(event, kv)
+        # Escape pipe characters in details for markdown tables
+        details = details.replace("|", "\\|")
+        output.append(f"| {hms} ({rel}) | `{event}` | {details} |")
+
+    output.append("")
+    return "\n".join(output)
+
+
 def _save_log(thread_id: str) -> Path:
     """Export recorded console output + all structlog messages to a markdown file."""
     _LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,8 +174,13 @@ def _save_log(thread_id: str) -> Path:
     parts = ["# BMAD Orchestrator Run Log\n"]
     parts.append("## Console Output\n\n```\n" + console_text + "```\n")
     if structlog_text.strip():
+        timeline = _format_agent_timeline(structlog_text)
+        if timeline:
+            parts.append(timeline)
         parts.append(
-            "## Agent Logs\n\n```\n" + structlog_text + "```\n"
+            "\n<details>\n<summary>Raw structlog output</summary>\n\n```\n"
+            + structlog_text
+            + "```\n\n</details>\n"
         )
     log_path.write_text("\n".join(parts))
     return log_path
