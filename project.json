@@ -1,0 +1,39 @@
+{
+  "name": "ai-workflow",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/ai-workflow",
+  "sourceRoot": "apps/ai-workflow/src",
+  "tags": ["type:python", "scope:ai-tooling"],
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/ai-workflow",
+        "command": "uv sync --dev"
+      }
+    },
+    "test": {
+      "dependsOn": ["install"],
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/ai-workflow",
+        "command": "uv run pytest tests/unit/ -v --cov=bmad_orchestrator --cov-fail-under=90"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/ai-workflow",
+        "command": "uv run ruff check src/ tests/ && uv run mypy src/bmad_orchestrator/"
+      }
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/ai-workflow",
+        "command": "uv run bmad-orchestrator"
+      }
+    }
+  }
+}

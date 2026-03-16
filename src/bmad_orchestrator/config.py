@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+from pydantic import SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Default per-agent model overrides: Opus for requirement analysis, Haiku for
+# simple classification/detection tasks.  Users can override any of these via
+# the BMAD_AGENT_MODELS env var (JSON dict).
+_DEFAULT_AGENT_MODELS: dict[str, str] = {
+    # All agents use Opus for testing — revert to tiered models after evaluation
+    "pm": "claude-opus-4-6",
+    "designer": "claude-opus-4-6",
+    "architect_party": "claude-opus-4-6",
+    "developer_party": "claude-opus-4-6",
+    "scrum_master": "claude-opus-4-6",
+    "build-expert": "claude-opus-4-6",
+}
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="BMAD_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # ── Anthropic ──────────────────────────────────────────────────────────────
+    anthropic_api_key: SecretStr
+    model_name: str = "claude-opus-4-6"
+    temperature: float = 0.0
+    # Per-agent model overrides. JSON dict mapping agent_id → model name.
+    # E.g. BMAD_AGENT_MODELS='{"developer":"claude-opus-4","qa":"claude-haiku-4-5-20251001"}'
+    agent_models: dict[str, str] = {}
+
+    # ── Jira (optional when dummy_jira=True) ──────────────────────────────────
+    jira_base_url: str | None = None
+    jira_username: str | None = None
+    jira_api_token: SecretStr | None = None
+    jira_project_key: str = "DUMMY"
+
+    # ── GitHub (optional when dummy_github=True) ──────────────────────────────
+    github_repo: str | None = None
+    github_base_branch: str = "main"
+    github_token: SecretStr | None = None
+
+    # ── Git identity ───────────────────────────────────────────────────────────
+    git_author_name: str = "BMAD Orchestrator"
+    git_author_email: str = "bmad@noreply.local"
+
+    # ── Orchestrator ───────────────────────────────────────────────────────────
+    verbose: bool = False
+    dry_run: bool = False
+    jira_only: bool = False
+    checkpoint_db_path: str = "~/.bmad/checkpoints.db"
+    bmad_install_dir: str = ".claude"
+    # Root directory for _bmad framework (workflows, tasks). Relative to CWD or absolute.
+    bmad_root: str = "_bmad"
+    max_review_loops: int = 2
+    draft_pr: bool = False
+
+    # ── Dummy/Local mode ──────────────────────────────────────────────────────
+    dummy_jira: bool = False
+    dummy_github: bool = False
+    dummy_data_dir: str = "~/.bmad/dummy"
+    # Empty string = write files directly to repo root (global install mode).
+    # Set to a path (e.g. "_bmad-output/implementation-artifacts") to use a
+    # dedicated output directory instead.
+    artifacts_dir: str = ""
+
+    # ── Skip nodes ──────────────────────────────────────────────────────────
+    skip_nodes: list[str] = []
+
+    @model_validator(mode="after")
+    def _apply_default_agent_models(self) -> Settings:
+        """Merge user-provided agent_models on top of built-in defaults."""
+        merged = {**_DEFAULT_AGENT_MODELS, **self.agent_models}
+        self.agent_models = merged
+        return self
+
+    @model_validator(mode="after")
+    def _validate_service_credentials(self) -> Settings:
+        if not self.dummy_jira:
+            missing = [
+                name
+                for name in ("jira_base_url", "jira_username", "jira_api_token")
+                if getattr(self, name) is None
+            ]
+            if missing:
+                msg = f"Real Jira mode requires: {', '.join(missing)}"
+                raise ValueError(msg)
+        if not self.dummy_github and not self.github_repo:
+            msg = "Real GitHub mode requires: github_repo"
+            raise ValueError(msg)
+        if self.dummy_github and not self.github_repo:
+            self.github_repo = "local/dummy-repo"
+        return self

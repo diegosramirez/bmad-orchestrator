@@ -1,0 +1,61 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "bmad-orchestrator run",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/bmad-orchestrator",
+            "python": "${workspaceFolder}/.venv/bin/python3",
+            "args": [
+                "run",
+                "--team-id", "your-team-id",
+                "--prompt", "your prompt here",
+                "--dummy-jira",
+                "--dummy-github",
+                "--dry-run"
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
+            "justMyCode": false
+        },
+        {
+            "name": "bmad-orchestrator attach (terminal)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "pytest (current file)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "python": "${workspaceFolder}/.venv/bin/python3",
+            "args": [
+                "${file}",
+                "-v",
+                "-s"
+            ],
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "pytest (all unit tests)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "python": "${workspaceFolder}/.venv/bin/python3",
+            "args": [
+                "tests/unit/",
+                "-v",
+                "-s"
+            ],
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        }
+    ]
+}
