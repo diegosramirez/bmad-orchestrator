@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-from bmad_orchestrator.nodes.party_mode_refinement import RefinedStory, make_party_mode_node
+from bmad_orchestrator.nodes.party_mode_refinement import (
+    RefinedStory,
+    UserStorySummary,
+    make_party_mode_node,
+)
 from tests.conftest import make_state
 
 # ── RefinedStory stringified-JSON validator ──────────────────────────────────
@@ -94,8 +98,9 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
     mock_jira = MagicMock()
     # Designer/architect/developer outputs
     mock_claude.complete.return_value = "feedback"
-    # First structured call: RefinedStory, second: _SubtaskList
+    # Structured calls: 1) UserStorySummary (title fix), 2) RefinedStory, 3) _SubtaskList
     mock_claude.complete_structured.side_effect = [
+        UserStorySummary(summary="As a user, I want to improve dashboard copy so that it is clearer"),
         RefinedStory(
             updated_summary="Improved",
             updated_description="Refined description",

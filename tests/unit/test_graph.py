@@ -219,7 +219,7 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
 
     assert "🚀 Process started" in result["step_notification_comment_body"]
     assert (
-        "✅ Step completed: Dev story [2026-03-10 14:32]"
+        "[10 Mar 2026 - 14:32] ✅ Step completed: Dev story"
         in result["step_notification_comment_body"]
     )
     jira.add_comment.assert_called_once_with("SAM1-51", "🚀 Process started")
@@ -227,7 +227,7 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
     jira.update_comment.assert_called_with(
         "SAM1-51",
         "comment-123",
-        "🚀 Process started\n\n✅ Step completed: Dev story [2026-03-10 14:32]\n\n⏩ Process continuing...",
+        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n⏩ Process continuing...",
     )
 
 
@@ -269,7 +269,7 @@ def test_wrap_step_notifications_later_step_only_updates_comment(settings):
     jira.add_comment.assert_not_called()
     assert jira.update_comment.call_count == 1
     body = jira.update_comment.call_args_list[0][0][2]
-    assert "✅ Step completed: QA automation [2026-03-10 14:32]" in body
+    assert "[10 Mar 2026 - 14:32] ✅ Step completed: QA automation" in body
 
 
 def test_wrap_step_notifications_no_notify_key_skips_jira(settings):

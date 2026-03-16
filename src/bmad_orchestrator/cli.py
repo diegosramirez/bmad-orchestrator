@@ -395,7 +395,7 @@ def run(
         settings = settings.model_copy(
             update={"skip_nodes": [s.strip() for s in skip_nodes.split(",") if s.strip()]}
         )
-    elif not resume and not dry_run:
+    elif not resume and not dry_run and not non_interactive:
         # Interactive checkbox — pre-check story-related nodes if --story-key
         pre_checked: list[str] = []
         if story_key:
@@ -412,7 +412,7 @@ def run(
     original_prompt = prompt  # preserve for stable thread_id
     resolved_epic_key: str | None = epic_key  # --epic-key wins if provided
 
-    if not resume and not resolved_epic_key and not dry_run:
+    if not resume and not resolved_epic_key and not dry_run and not non_interactive:
         jira = create_jira_service(settings)
 
         if is_jira_key(prompt.strip()):
