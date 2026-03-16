@@ -138,6 +138,19 @@ def make_create_pull_request_node(
                 }],
             }
 
+        # Guard: if commit_and_push found no changes, skip PR creation
+        if not state["commit_sha"]:
+            logger.warning("skip_pr_no_commit")
+            return {
+                "pr_url": None,
+                "execution_log": [{
+                    "timestamp": now,
+                    "node": NODE_NAME,
+                    "message": "No commit was made — skipping PR creation",
+                    "dry_run": settings.dry_run,
+                }],
+            }
+
         branch_name = state["branch_name"] or ""
         existing = github.pr_exists(branch_name)
         if existing:

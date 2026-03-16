@@ -87,11 +87,24 @@ def make_commit_and_push_node(
         if git.has_staged_changes():
             sha = git.commit(commit_message) or "dry-run-sha"
         else:
+            # Check if HEAD differs from base — distinguishes a genuine resume
+            # (commit succeeded but push failed) from "no files were changed".
+            head_sha = git.get_head_sha()
+            base_sha = git.rev_parse(base_branch)
+            if head_sha == base_sha:
+                logger.warning("no_changes_to_commit", branch=branch_name)
+                log_entry["message"] = "No files changed — nothing to commit or push"
+                return {
+                    "base_branch": base_branch,
+                    "branch_name": branch_name,
+                    "commit_sha": None,
+                    "execution_log": [log_entry],
+                }
             # Retry scenario: commit succeeded in a previous run but push failed.
             # LangGraph didn't save the state update (nodes only update state on
             # return, never on exception). Re-use current HEAD sha and proceed to push.
             logger.info("skip_commit_already_done_resuming")
-            sha = git.get_head_sha() or "dry-run-sha"
+            sha = head_sha or "dry-run-sha"
         git.push(branch_name)
 
         log_entry["message"] = f"Committed {sha[:12]} to branch {branch_name}"

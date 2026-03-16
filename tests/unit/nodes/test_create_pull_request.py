@@ -13,6 +13,7 @@ def test_creates_pr_and_returns_url(settings, mock_github):
     result = node(make_state(
         branch_name="bmad/team-alpha/TEST-10-add-auth",
         current_story_id="TEST-10",
+        commit_sha="abc123",
     ))
 
     assert result["pr_url"] == "https://github.com/org/repo/pull/42"
@@ -34,10 +35,21 @@ def test_skips_when_pr_exists_on_github(settings, mock_github):
     mock_github.pr_exists.return_value = "https://github.com/org/repo/pull/7"
 
     node = make_create_pull_request_node(mock_github, settings)
-    result = node(make_state(branch_name="bmad/team/story"))
+    result = node(make_state(branch_name="bmad/team/story", commit_sha="abc123"))
 
     assert result["pr_url"] == "https://github.com/org/repo/pull/7"
     mock_github.create_pr.assert_not_called()
+
+
+def test_skips_pr_when_no_commit(settings, mock_github):
+    """When commit_sha is None (no changes), skip PR creation gracefully."""
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(branch_name="bmad/team/story", commit_sha=None))
+
+    assert result["pr_url"] is None
+    assert "No commit" in result["execution_log"][0]["message"]
+    mock_github.create_pr.assert_not_called()
+    mock_github.pr_exists.assert_not_called()
 
 
 def test_creates_draft_pr_when_draft_pr_enabled(mock_github):
@@ -58,6 +70,7 @@ def test_creates_draft_pr_when_draft_pr_enabled(mock_github):
     result = node(make_state(
         branch_name="bmad/team-alpha/TEST-20-new-feature",
         current_story_id="TEST-20",
+        commit_sha="abc123",
     ))
 
     assert result["pr_url"] == "https://github.com/org/repo/pull/99"

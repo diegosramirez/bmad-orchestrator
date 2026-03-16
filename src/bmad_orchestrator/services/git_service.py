@@ -113,6 +113,11 @@ class GitService:
         result = _run(["git", "rev-parse", "HEAD"])
         return result.stdout.strip()
 
+    def rev_parse(self, ref: str) -> str:
+        """Resolve a ref (branch name, tag, etc.) to its SHA."""
+        result = _run(["git", "rev-parse", ref])
+        return result.stdout.strip()
+
     @skip_if_dry_run(fake_return="dry-run-sha")
     def commit(
         self,
