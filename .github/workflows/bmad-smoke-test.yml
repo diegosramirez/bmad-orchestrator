@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       target_repo:
-        description: 'Target repository to test (e.g. digistore24/inventory-distribution)'
+        description: "Target repository to test (e.g. digistore24/inventory-distribution)"
         required: true
         type: string
       base_branch:
-        description: 'Base branch in target repo'
+        description: "Base branch in target repo"
         required: false
-        default: 'main'
+        default: "main"
         type: string
 
 jobs:
@@ -27,11 +27,12 @@ jobs:
         run: |
           gh repo clone "${{ inputs.target_repo }}" target-repo -- --branch "${{ inputs.base_branch }}"
 
-      - name: Configure git identity
+      - name: Configure git identity and auth
         working-directory: target-repo
         run: |
           git config user.name "BMAD Orchestrator"
           git config user.email "bmad@noreply.local"
+          git config url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Create smoke-test branch
         working-directory: target-repo
