@@ -25,8 +25,50 @@ on:
         required: false
         default: ""
         type: string
+      # ── Skip nodes (checkboxes) ─────────────────────────────────────
+      skip_check_epic_state:
+        description: "Skip: Validate epic status in Jira"
+        type: boolean
+        default: false
+      skip_create_or_correct_epic:
+        description: "Skip: Create or update the epic"
+        type: boolean
+        default: false
+      skip_create_story_tasks:
+        description: "Skip: Generate stories and tasks"
+        type: boolean
+        default: false
+      skip_party_mode_refinement:
+        description: "Skip: Multi-agent story refinement"
+        type: boolean
+        default: false
+      skip_detect_commands:
+        description: "Skip: AI-detect build/test/lint commands"
+        type: boolean
+        default: false
+      skip_dev_story:
+        description: "Skip: Generate implementation code"
+        type: boolean
+        default: false
+      skip_qa_automation:
+        description: "Skip: Generate QA tests"
+        type: boolean
+        default: false
+      skip_code_review:
+        description: "Skip: Architect code review loop"
+        type: boolean
+        default: false
+      skip_commit_and_push:
+        description: "Skip: Git commit and push"
+        type: boolean
+        default: false
+      skip_create_pull_request:
+        description: "Skip: Create GitHub PR"
+        type: boolean
+        default: false
+      # ── Other flags ──────────────────────────────────────────────────
       extra_flags:
-        description: "Extra CLI flags (e.g. --skip-nodes check_epic_state --epic-key PUG-123)"
+        description: "Extra CLI flags (e.g. --epic-key PUG-123 --story-key PUG-456)"
         required: false
         default: ""
         type: string
@@ -92,6 +134,29 @@ jobs:
           git config user.email "bmad@noreply.local"
           git config url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
 
+      - name: Build skip-nodes flag
+        id: skip
+        run: |
+          nodes=""
+          if [ "${{ inputs.skip_check_epic_state }}" = "true" ]; then nodes="$nodes,check_epic_state"; fi
+          if [ "${{ inputs.skip_create_or_correct_epic }}" = "true" ]; then nodes="$nodes,create_or_correct_epic"; fi
+          if [ "${{ inputs.skip_create_story_tasks }}" = "true" ]; then nodes="$nodes,create_story_tasks"; fi
+          if [ "${{ inputs.skip_party_mode_refinement }}" = "true" ]; then nodes="$nodes,party_mode_refinement"; fi
+          if [ "${{ inputs.skip_detect_commands }}" = "true" ]; then nodes="$nodes,detect_commands"; fi
+          if [ "${{ inputs.skip_dev_story }}" = "true" ]; then nodes="$nodes,dev_story"; fi
+          if [ "${{ inputs.skip_qa_automation }}" = "true" ]; then nodes="$nodes,qa_automation"; fi
+          if [ "${{ inputs.skip_code_review }}" = "true" ]; then nodes="$nodes,code_review"; fi
+          if [ "${{ inputs.skip_commit_and_push }}" = "true" ]; then nodes="$nodes,commit_and_push"; fi
+          if [ "${{ inputs.skip_create_pull_request }}" = "true" ]; then nodes="$nodes,create_pull_request"; fi
+          nodes="${nodes#,}"
+          if [ -n "$nodes" ]; then
+            echo "flag=--skip-nodes $nodes" >> "$GITHUB_OUTPUT"
+            echo "Skipping nodes: $nodes"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "No nodes skipped"
+          fi
+
       - name: Run orchestrator
         working-directory: target-repo
         env:
@@ -104,6 +169,7 @@ jobs:
           echo "Team ID:      ${{ inputs.team_id }}"
           echo "Run ID:       ${{ steps.run-id.outputs.id }}"
           echo "Prompt:       ${{ inputs.prompt }}"
+          echo "Skip nodes:   ${{ steps.skip.outputs.flag }}"
           echo "Extra flags:  ${{ inputs.extra_flags }}"
           echo "::endgroup::"
 
@@ -113,6 +179,7 @@ jobs:
             --team-id "${{ inputs.team_id }}" \
             --prompt "${{ inputs.prompt }}" \
             --non-interactive \
+            ${{ steps.skip.outputs.flag }} \
             ${{ inputs.extra_flags }}
           echo "::endgroup::"
 
