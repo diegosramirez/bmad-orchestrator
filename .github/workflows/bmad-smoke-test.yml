@@ -1,0 +1,94 @@
+name: BMAD Smoke Test — Verify Repo Permissions
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository to test (e.g. digistore24/inventory-distribution)'
+        required: true
+        type: string
+      base_branch:
+        description: 'Base branch in target repo'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  smoke-test:
+    name: Smoke Test — Branch + Draft PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+
+    steps:
+      - name: Clone target repository
+        run: |
+          gh repo clone "${{ inputs.target_repo }}" target-repo -- --branch "${{ inputs.base_branch }}"
+
+      - name: Configure git identity
+        working-directory: target-repo
+        run: |
+          git config user.name "BMAD Orchestrator"
+          git config user.email "bmad@noreply.local"
+
+      - name: Create smoke-test branch
+        working-directory: target-repo
+        id: branch
+        run: |
+          BRANCH="bmad/smoke-test-${{ github.run_id }}"
+          echo "name=${BRANCH}" >> "$GITHUB_OUTPUT"
+          git checkout -b "${BRANCH}"
+
+      - name: Write dummy file, commit, and push
+        working-directory: target-repo
+        run: |
+          cat > bmad-smoke-test.md <<'EOF'
+          # BMAD Smoke Test
+
+          This file was created by the BMAD smoke-test workflow to validate
+          repository permissions. It should be deleted automatically.
+
+          Run: ${{ github.run_id }}
+          EOF
+
+          git add bmad-smoke-test.md
+          git commit -m "chore: BMAD smoke test (auto-cleanup) [skip ci]"
+          git push -u origin "${{ steps.branch.outputs.name }}"
+
+      - name: Create draft PR
+        working-directory: target-repo
+        id: pr
+        run: |
+          PR_URL=$(gh pr create \
+            --title "chore: BMAD smoke test — auto-cleanup [skip ci]" \
+            --body "Automated smoke test to verify BMAD orchestrator permissions. This PR will be closed and the branch deleted automatically." \
+            --base "${{ inputs.base_branch }}" \
+            --head "${{ steps.branch.outputs.name }}" \
+            --draft)
+          echo "url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "✅ Draft PR created: ${PR_URL}"
+
+      - name: Close PR and delete branch (cleanup)
+        if: always() && steps.pr.outputs.url != ''
+        working-directory: target-repo
+        run: |
+          echo "Closing PR and deleting branch..."
+          gh pr close "${{ steps.pr.outputs.url }}" --delete-branch
+          echo "✅ Cleanup complete"
+
+      - name: Report result
+        if: always()
+        run: |
+          echo "## Smoke Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Clone target repo | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Create branch | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Push to remote | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Create draft PR | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cleanup | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target: \`${{ inputs.target_repo }}\` (branch: \`${{ inputs.base_branch }}\`)" >> "$GITHUB_STEP_SUMMARY"

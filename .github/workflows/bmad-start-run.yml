@@ -1,0 +1,135 @@
+name: BMAD Orchestrator — Start Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository (e.g. digistore24/inventory-distribution)'
+        required: true
+        type: string
+      base_branch:
+        description: 'Base branch in target repo'
+        required: false
+        default: 'main'
+        type: string
+      prompt:
+        description: 'Feature description or Jira epic key'
+        required: true
+        type: string
+      team_id:
+        description: 'Team identifier'
+        required: true
+        type: string
+      run_id:
+        description: 'Run ID (auto-generated if empty)'
+        required: false
+        default: ''
+        type: string
+      extra_flags:
+        description: 'Extra CLI flags (e.g. --skip-nodes check_epic_state --epic-key PUG-123)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  orchestrator-run:
+    name: Run BMAD Orchestrator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      # ── Anthropic ──────────────────────────────────────────────────────
+      BMAD_ANTHROPIC_API_KEY: ${{ secrets.BMAD_ANTHROPIC_API_KEY }}
+
+      # ── Jira ───────────────────────────────────────────────────────────
+      BMAD_JIRA_BASE_URL: ${{ secrets.BMAD_JIRA_BASE_URL }}
+      BMAD_JIRA_USERNAME: ${{ secrets.BMAD_JIRA_USERNAME }}
+      BMAD_JIRA_API_TOKEN: ${{ secrets.BMAD_JIRA_API_TOKEN }}
+      BMAD_JIRA_PROJECT_KEY: ${{ secrets.BMAD_JIRA_PROJECT_KEY }}
+
+      # ── GitHub (target repo) ───────────────────────────────────────────
+      BMAD_GITHUB_REPO: ${{ inputs.target_repo }}
+      BMAD_GITHUB_BASE_BRANCH: ${{ inputs.base_branch }}
+      BMAD_GITHUB_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+
+      # ── Orchestrator settings ──────────────────────────────────────────
+      BMAD_DRAFT_PR: 'true'
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: '128000'
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: 'latest'
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install orchestrator dependencies
+        working-directory: apps/autonomous-engineering-orchestrator
+        run: uv sync --dev
+
+      - name: Generate run ID
+        id: run-id
+        run: |
+          if [ -n "${{ inputs.run_id }}" ]; then
+            echo "id=${{ inputs.run_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "id=run-$(date +%s)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone target repository
+        run: |
+          gh repo clone "${{ inputs.target_repo }}" target-repo -- --branch "${{ inputs.base_branch }}"
+
+      - name: Configure git identity
+        working-directory: target-repo
+        run: |
+          git config user.name "BMAD Orchestrator"
+          git config user.email "bmad@noreply.local"
+
+      - name: Run orchestrator
+        working-directory: target-repo
+        env:
+          BMAD_BMAD_INSTALL_DIR: ${{ github.workspace }}/apps/autonomous-engineering-orchestrator/.claude
+          BMAD_BMAD_ROOT: ${{ github.workspace }}/apps/autonomous-engineering-orchestrator/_bmad
+        run: |
+          echo "::group::Run Configuration"
+          echo "Target repo:  ${{ inputs.target_repo }}"
+          echo "Base branch:  ${{ inputs.base_branch }}"
+          echo "Team ID:      ${{ inputs.team_id }}"
+          echo "Run ID:       ${{ steps.run-id.outputs.id }}"
+          echo "Prompt:       ${{ inputs.prompt }}"
+          echo "Extra flags:  ${{ inputs.extra_flags }}"
+          echo "::endgroup::"
+
+          echo "::group::Running bmad-orchestrator"
+          uv run --project "${{ github.workspace }}/apps/autonomous-engineering-orchestrator" \
+            bmad-orchestrator run \
+            --team-id "${{ inputs.team_id }}" \
+            --prompt "${{ inputs.prompt }}" \
+            --non-interactive \
+            ${{ inputs.extra_flags }}
+          echo "::endgroup::"
+
+      - name: Upload orchestrator state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmad-state-${{ steps.run-id.outputs.id }}
+          path: ~/.bmad/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload orchestrator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmad-logs-${{ steps.run-id.outputs.id }}
+          path: ~/.bmad/logs/
+          retention-days: 30
+          if-no-files-found: warn
