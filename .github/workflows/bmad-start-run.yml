@@ -70,7 +70,6 @@ jobs:
         run: uv python install 3.11
 
       - name: Install orchestrator dependencies
-        working-directory: apps/autonomous-engineering-orchestrator
         run: uv sync --dev
 
       - name: Generate run ID
@@ -96,8 +95,8 @@ jobs:
       - name: Run orchestrator
         working-directory: target-repo
         env:
-          BMAD_BMAD_INSTALL_DIR: ${{ github.workspace }}/apps/autonomous-engineering-orchestrator/.claude
-          BMAD_BMAD_ROOT: ${{ github.workspace }}/apps/autonomous-engineering-orchestrator/_bmad
+          BMAD_BMAD_INSTALL_DIR: ${{ github.workspace }}/.claude
+          BMAD_BMAD_ROOT: ${{ github.workspace }}/_bmad
         run: |
           echo "::group::Run Configuration"
           echo "Target repo:  ${{ inputs.target_repo }}"
@@ -109,7 +108,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Running bmad-orchestrator"
-          uv run --project "${{ github.workspace }}/apps/autonomous-engineering-orchestrator" \
+          uv run --project "${{ github.workspace }}" \
             bmad-orchestrator run \
             --team-id "${{ inputs.team_id }}" \
             --prompt "${{ inputs.prompt }}" \
