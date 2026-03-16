@@ -86,6 +86,9 @@ class OrchestratorState(TypedDict):
     # ── Failure diagnostic (architect analysis when review loops exhaust) ─────
     failure_diagnostic: str | None
 
+    # ── Slack threading ──────────────────────────────────────────────────────
+    slack_thread_ts: str | None
+
     # ── User guidance (injected on --retry / --resume --guidance "...") ───────
     retry_guidance: str | None
 

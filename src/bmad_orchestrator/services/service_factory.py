@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from bmad_orchestrator.config import Settings
-from bmad_orchestrator.services.protocols import GitHubServiceProtocol, JiraServiceProtocol
+from bmad_orchestrator.services.protocols import (
+    GitHubServiceProtocol,
+    JiraServiceProtocol,
+    SlackServiceProtocol,
+)
 
 
 def create_jira_service(settings: Settings) -> JiraServiceProtocol:
@@ -28,3 +32,20 @@ def create_github_service(settings: Settings) -> GitHubServiceProtocol:
     from bmad_orchestrator.services.github_service import GitHubService
 
     return GitHubService(settings)
+
+
+def create_slack_service(settings: Settings) -> SlackServiceProtocol:
+    """Return a Slack service implementation based on settings."""
+    if not settings.slack_notify:
+        from bmad_orchestrator.services.null_slack_service import NullSlackService
+
+        return NullSlackService()
+
+    if settings.dummy_jira:
+        from bmad_orchestrator.services.dummy_slack_service import DummySlackService
+
+        return DummySlackService(settings)
+
+    from bmad_orchestrator.services.slack_service import SlackService
+
+    return SlackService(settings)

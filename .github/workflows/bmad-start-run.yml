@@ -102,6 +102,11 @@ jobs:
       BMAD_GITHUB_TOKEN: ${{ secrets.BMAD_GH_PAT }}
       GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
 
+      # ── Slack (optional) ───────────────────────────────────────────────
+      BMAD_SLACK_NOTIFY: ${{ vars.BMAD_SLACK_NOTIFY || 'false' }}
+      BMAD_SLACK_BOT_TOKEN: ${{ secrets.BMAD_SLACK_BOT_TOKEN }}
+      BMAD_SLACK_CHANNEL: ${{ vars.BMAD_SLACK_CHANNEL }}
+
       # ── Orchestrator settings ──────────────────────────────────────────
       BMAD_DRAFT_PR: "true"
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000"

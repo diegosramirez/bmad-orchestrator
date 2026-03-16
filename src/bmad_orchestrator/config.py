@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # dedicated output directory instead.
     artifacts_dir: str = ""
 
+    # ── Slack (optional) ──────────────────────────────────────────────────────
+    slack_notify: bool = False
+    slack_bot_token: SecretStr | None = None
+    slack_channel: str | None = None
+
     # ── Skip nodes ──────────────────────────────────────────────────────────
     skip_nodes: list[str] = []
 
@@ -94,4 +99,13 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.dummy_github and not self.github_repo:
             self.github_repo = "local/dummy-repo"
+        if self.slack_notify:
+            missing = [
+                name
+                for name in ("slack_bot_token", "slack_channel")
+                if not getattr(self, name)
+            ]
+            if missing:
+                msg = f"Slack notifications require: {', '.join(missing)}"
+                raise ValueError(msg)
         return self

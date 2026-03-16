@@ -30,7 +30,12 @@ from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.git_service import GitService
-from bmad_orchestrator.services.service_factory import create_github_service, create_jira_service
+from bmad_orchestrator.services.protocols import SlackServiceProtocol
+from bmad_orchestrator.services.service_factory import (
+    create_github_service,
+    create_jira_service,
+    create_slack_service,
+)
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.project_context import (
     gather_project_context,
@@ -145,6 +150,51 @@ def _wrap_with_step_notifications(
     return _wrapped
 
 
+def _wrap_with_slack_notifications(
+    slack: SlackServiceProtocol,
+    settings: Settings,
+    node_name: str,
+    node_fn: Callable[[OrchestratorState], dict[str, Any]],
+) -> Callable[[OrchestratorState], dict[str, Any]]:
+    """Wrap a node to post Slack messages in a per-run thread.
+
+    The first node creates a root message (run header) and stores its ``ts``
+    in state as ``slack_thread_ts``.  Subsequent nodes post replies to that
+    thread.
+    """
+
+    def _wrapped(state: OrchestratorState) -> dict[str, Any]:
+        thread_ts = state.get("slack_thread_ts")
+        out = node_fn(state)
+
+        label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
+        team_id = state.get("team_id", "")
+        story_id = state.get("current_story_id") or state.get("input_prompt", "")
+
+        failure = out.get("failure_state") or out.get("failure_diagnostic")
+        pr_url = out.get("pr_url")
+
+        if failure:
+            text = f":x: *{label}* — pipeline failed\n>{str(failure)[:200]}"
+        elif pr_url:
+            text = f":tada: *PR created:* {pr_url}"
+        else:
+            text = f":white_check_mark: *{label}* completed"
+
+        if thread_ts is None:
+            # First step — create root message (run header), store ts
+            header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
+            ts = slack.post_message(f"{header}\n{text}")
+            if ts:
+                return {**out, "slack_thread_ts": ts}
+        else:
+            slack.post_thread_reply(thread_ts, text)
+
+        return out
+
+    return _wrapped
+
+
 def build_graph(
     settings: Settings,
     *,
@@ -168,6 +218,7 @@ def build_graph(
     )
     git = GitService(git_settings)
     github = create_github_service(git_settings)
+    slack = create_slack_service(settings)
 
     # ── BMAD workflow runner (loads real workflow files for epic/story creation) ─
     bmad_runner = BmadWorkflowRunner(claude, settings)
@@ -177,9 +228,10 @@ def build_graph(
     skip = set(settings.skip_nodes)
 
     def _node(name: str, factory_fn: Callable[..., Any]) -> None:
-        """Register a real node or a no-op skip node, wrapped with step-level Jira notifications."""
+        """Register a real node or a no-op skip node, wrapped with notifications."""
         raw = _make_skip_node(name) if name in skip else factory_fn
         wrapped = _wrap_with_step_notifications(jira, settings, name, raw)
+        wrapped = _wrap_with_slack_notifications(slack, settings, name, wrapped)
         builder.add_node(name, wrapped)
 
     _node("check_epic_state", make_check_epic_state_node(jira, claude, settings))
@@ -278,6 +330,7 @@ def make_initial_state(
         execution_log=[],
         failure_state=None,
         failure_diagnostic=None,
+        slack_thread_ts=None,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=None,

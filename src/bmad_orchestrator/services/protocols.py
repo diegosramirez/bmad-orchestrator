@@ -28,6 +28,18 @@ class JiraServiceProtocol(Protocol):
     def update_comment(self, issue_key: str, comment_id: str, body: str) -> None: ...
 
 
+class SlackServiceProtocol(Protocol):
+    """Contract for Slack notification services."""
+
+    def post_message(
+        self, text: str, blocks: list[dict[str, Any]] | None = None,
+    ) -> str | None: ...
+    def update_message(
+        self, ts: str, text: str, blocks: list[dict[str, Any]] | None = None,
+    ) -> None: ...
+    def post_thread_reply(self, thread_ts: str, text: str) -> None: ...
+
+
 class GitHubServiceProtocol(Protocol):
     """Contract that both GitHubService and DummyGitHubService satisfy."""
 

@@ -53,6 +53,7 @@ def base_state() -> OrchestratorState:
         execution_log=[],
         failure_state=None,
         failure_diagnostic=None,
+        slack_thread_ts=None,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=None,
@@ -98,6 +99,11 @@ def mock_github() -> MagicMock:
 
 
 @pytest.fixture
+def mock_slack() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
 def mock_agent_service() -> MagicMock:
     m = MagicMock()
     m.run_agent.return_value = AgentResult()
@@ -134,6 +140,7 @@ def make_state(**overrides: Any) -> OrchestratorState:
         execution_log=[],
         failure_state=None,
         failure_diagnostic=None,
+        slack_thread_ts=None,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=None,
