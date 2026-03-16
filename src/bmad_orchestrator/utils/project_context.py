@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shlex
 import subprocess
 from pathlib import Path
 
@@ -348,16 +347,19 @@ def read_manifest_scripts(cwd: Path) -> dict[str, str]:
 def run_project_command(cmd: str, cwd: Path, max_output: int = 2000) -> tuple[bool, str]:
     """Run a single shell command string and return (success, truncated_output).
 
-    Uses shlex.split so the command string is tokenised safely (no shell=True).
+    Uses shell=True so that npm/npx commands and PATH-based binaries resolve
+    correctly (these commands come from AI-detected manifest scripts, not
+    untrusted user input).
     Never raises — returns (False, error_message) on any exception.
     """
     try:
-        result = subprocess.run(  # noqa: S603
-            shlex.split(cmd),
+        result = subprocess.run(  # noqa: S603, S602
+            cmd,
             capture_output=True,
             text=True,
             cwd=str(cwd),
             timeout=_CMD_TIMEOUT_S,
+            shell=True,
         )
         output = (result.stdout + result.stderr)[:max_output]
         return result.returncode == 0, output
