@@ -43,7 +43,10 @@ _SKIP_DIRS = frozenset({
 })
 
 
-def _build_failure_section(state: OrchestratorState) -> str:
+def _build_failure_section(
+    state: OrchestratorState,
+    settings: Settings,
+) -> str:
     """Build a failure/diagnostic section prepended to the PR body when the pipeline failed."""
     failure_state = state.get("failure_state") or ""
     diagnostic = state.get("failure_diagnostic") or ""
@@ -74,25 +77,42 @@ def _build_failure_section(state: OrchestratorState) -> str:
         lines.append(diagnostic)
         lines.append("")
 
-    # Add resumption instructions
+    # Resumption instructions with /bmad retry + gh CLI fallback
     branch = state.get("branch_name") or ""
     story_id = state.get("current_story_id") or ""
+    target_repo = settings.github_repo or ""
+    team_id = state["team_id"]
+    prompt = state["input_prompt"].replace('"', '\\"')
+
     lines.append("### How to Continue")
-    lines.append("Re-run the workflow with these settings:")
-    lines.append(f"- **Branch:** `{branch}`")
+    lines.append("")
+    lines.append("**Option 1:** Comment on this PR:")
+    lines.append("`/bmad retry Your guidance here`")
+    lines.append("")
+    lines.append("**Option 2:** Manual dispatch:")
+    lines.append("```")
+
+    extra = f"--story-key {story_id} --retry" if story_id else "--retry"
     lines.append(
-        "- **Skip:** check_epic_state, create_or_correct_epic, "
-        "create_story_tasks, party_mode_refinement"
+        f"gh workflow run bmad-start-run.yml \\\n"
+        f'  -f target_repo="{target_repo}" \\\n'
+        f'  -f branch="{branch}" \\\n'
+        f'  -f prompt="{prompt[:100]}" \\\n'
+        f'  -f team_id="{team_id}" \\\n'
+        f"  -f skip_check_epic_state=true \\\n"
+        f"  -f skip_create_or_correct_epic=true \\\n"
+        f"  -f skip_create_story_tasks=true \\\n"
+        f"  -f skip_party_mode_refinement=true \\\n"
+        f'  -f extra_flags="{extra}"'
     )
-    if story_id:
-        lines.append(f"- **Extra flags:** `--story-key {story_id}`")
+    lines.append("```")
     lines.append("")
     lines.append("---\n")
 
     return "\n".join(lines)
 
 
-def _build_pr_body(state: OrchestratorState) -> str:
+def _build_pr_body(state: OrchestratorState, settings: Settings) -> str:
     story_id = state["current_story_id"] or "UNKNOWN"
     story_content = state["story_content"] or state["input_prompt"]
     story_summary = story_content.splitlines()[0] if story_content else state["input_prompt"]
@@ -156,7 +176,7 @@ def _build_pr_body(state: OrchestratorState) -> str:
     # Prepend failure section if pipeline failed
     failure_prefix = ""
     if state.get("failure_state"):
-        failure_prefix = _build_failure_section(state)
+        failure_prefix = _build_failure_section(state, settings)
 
     body = failure_prefix + _PR_BODY_TEMPLATE.format(
         story_id=story_id,
@@ -167,6 +187,15 @@ def _build_pr_body(state: OrchestratorState) -> str:
         qa_summary=qa_summary,
         review_summary=review_summary,
     )
+    # Hidden metadata for the /bmad retry workflow to parse
+    target_repo = settings.github_repo or ""
+    prompt_safe = state["input_prompt"].replace("-->", "")[:200]
+    body += (
+        f"\n<!-- bmad:target_repo={target_repo} -->"
+        f"\n<!-- bmad:prompt={prompt_safe} -->"
+        f"\n<!-- bmad:team_id={state['team_id']} -->"
+    )
+
     # GitHub hard limit is 65 536 chars; truncate with a note rather than fail.
     _GITHUB_BODY_LIMIT = 65_000
     if len(body) > _GITHUB_BODY_LIMIT:
@@ -236,7 +265,7 @@ def make_create_pull_request_node(
 
         pr_url = github.create_pr(
             title=title,
-            body=_build_pr_body(state),
+            body=_build_pr_body(state, settings),
             head_branch=branch_name,
             base_branch=base,
             draft=is_draft,

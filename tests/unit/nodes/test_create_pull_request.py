@@ -95,10 +95,10 @@ def test_forces_draft_pr_on_failure(settings, mock_github):
     assert result["pr_url"] == "https://github.com/org/repo/pull/55"
     _, kwargs = mock_github.create_pr.call_args
     assert kwargs["draft"] is True
-    # PR body should contain failure section
     body = kwargs["body"]
     assert "Pipeline Failed" in body
-    assert "How to Continue" in body
+    assert "/bmad retry" in body
+    assert "gh workflow run" in body
 
 
 def test_failure_pr_body_includes_issues_and_diagnostic(settings, mock_github):
@@ -132,3 +132,21 @@ def test_failure_pr_body_includes_issues_and_diagnostic(settings, mock_github):
     assert "Missing error handling" in body
     assert "bmad/team-alpha/TEST-10-add-auth" in body
     assert "--story-key TEST-10" in body
+
+
+def test_pr_body_contains_hidden_metadata(settings, mock_github):
+    """PR body includes hidden HTML comments with machine-readable metadata."""
+    mock_github.pr_exists.return_value = None
+    mock_github.create_pr.return_value = "https://github.com/org/repo/pull/70"
+
+    node = make_create_pull_request_node(mock_github, settings)
+    node(make_state(
+        branch_name="bmad/team-alpha/TEST-10-add-auth",
+        current_story_id="TEST-10",
+        commit_sha="abc123",
+    ))
+
+    body = mock_github.create_pr.call_args[1]["body"]
+    assert "<!-- bmad:target_repo=org/repo -->" in body
+    assert "<!-- bmad:prompt=Add user authentication -->" in body
+    assert "<!-- bmad:team_id=team-alpha -->" in body

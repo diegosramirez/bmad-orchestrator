@@ -635,25 +635,24 @@ def run(
         pr_url = final.values.get("pr_url")
         failure = final.values.get("failure_state")
 
-        if pr_url:
+        if failure:
+            # Graph now routes fail_with_state → commit_and_push → create_pull_request
+            # automatically, so a draft PR with failure context should already exist.
+            console.print(f"\n[bold yellow]Pipeline failed.[/bold yellow] {failure[:400]}")
+            if pr_url:
+                console.print(
+                    Panel(
+                        f"[bold yellow]Draft PR (with failure context):[/bold yellow] {pr_url}",
+                        title="[bold yellow]Failed — draft PR created[/bold yellow]",
+                    )
+                )
+        elif pr_url:
             console.print(
                 Panel(
                     f"[bold green]PR created:[/bold green] {pr_url}",
                     title="[bold green]Done![/bold green]",
                 )
             )
-        elif failure:
-            # Graph now routes fail_with_state → commit_and_push → create_pull_request
-            # automatically, so a draft PR with failure context should already exist.
-            console.print(f"\n[bold yellow]Pipeline failed.[/bold yellow] {failure[:400]}")
-            draft_pr = final.values.get("pr_url")
-            if draft_pr:
-                console.print(
-                    Panel(
-                        f"[bold yellow]Draft PR (with failure context):[/bold yellow] {draft_pr}",
-                        title="[bold yellow]Failed — draft PR created[/bold yellow]",
-                    )
-                )
         elif dry_run:
             console.print("\n[bold cyan]Dry run complete — no side effects applied.[/bold cyan]")
 

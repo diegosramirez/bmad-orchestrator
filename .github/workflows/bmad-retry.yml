@@ -1,0 +1,125 @@
+name: "BMAD Orchestrator — PR Retry"
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  parse-and-dispatch:
+    name: Parse /bmad command and dispatch
+    # Only fire on PR comments that start with /bmad
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/bmad')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+
+    steps:
+      - name: React to comment
+        run: |
+          gh api \
+            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=rocket
+
+      - name: Parse command
+        id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Extract subcommand (retry / resume)
+          if echo "$COMMENT_BODY" | grep -q "^/bmad retry"; then
+            echo "action=retry" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMENT_BODY" | grep -q "^/bmad resume"; then
+            echo "action=resume" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Extract guidance: --guidance "..." or bare text after 'retry'
+          GUIDANCE=$(echo "$COMMENT_BODY" | sed -n 's|.*--guidance "\([^"]*\)".*|\1|p')
+          if [ -z "$GUIDANCE" ]; then
+            GUIDANCE=$(echo "$COMMENT_BODY" | sed -n 's|^/bmad retry ||p' | sed 's/^[ ]*//')
+          fi
+          echo "guidance=$GUIDANCE" >> "$GITHUB_OUTPUT"
+
+      - name: Reject unknown command
+        if: steps.cmd.outputs.action == 'unknown'
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Unknown command. Supported: \`/bmad retry [guidance]\`, \`/bmad resume\`"
+          exit 1
+
+      - name: Extract PR metadata
+        id: pr
+        run: |
+          PR_NUMBER="${{ github.event.issue.number }}"
+          PR_JSON=$(gh pr view "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --json headRefName,baseRefName,body,title)
+
+          HEAD=$(echo "$PR_JSON" | jq -r '.headRefName')
+          BASE=$(echo "$PR_JSON" | jq -r '.baseRefName')
+          TITLE=$(echo "$PR_JSON" | jq -r '.title')
+          BODY=$(echo "$PR_JSON" | jq -r '.body')
+
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # Parse team_id and story_key from title: feat(<team_id>): ... [STORY-KEY]
+          TEAM_ID=$(echo "$TITLE" | sed -n 's/^feat(\([^)]*\)).*/\1/p')
+          STORY_KEY=$(echo "$TITLE" | sed -n 's/.*\[\([A-Z][A-Z0-9]*-[0-9]*\)\]$/\1/p')
+          echo "team_id=${TEAM_ID:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "story_key=$STORY_KEY" >> "$GITHUB_OUTPUT"
+
+          # Parse hidden metadata from PR body
+          TARGET_REPO=$(echo "$BODY" | sed -n 's/.*<!-- bmad:target_repo=\([^ ]*\) -->.*/\1/p')
+          PROMPT=$(echo "$BODY" | sed -n 's/.*<!-- bmad:prompt=\(.*\) -->.*/\1/p')
+          echo "target_repo=${TARGET_REPO:-${{ github.repository }}}" >> "$GITHUB_OUTPUT"
+          echo "prompt=${PROMPT:-$STORY_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch bmad-start-run
+        run: |
+          EXTRA_FLAGS="--retry"
+          if [ -n "${{ steps.pr.outputs.story_key }}" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --story-key ${{ steps.pr.outputs.story_key }}"
+          fi
+          if [ -n "${{ steps.cmd.outputs.guidance }}" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --guidance \"${{ steps.cmd.outputs.guidance }}\""
+          fi
+
+          gh workflow run bmad-start-run.yml \
+            --repo "${{ github.repository }}" \
+            -f target_repo="${{ steps.pr.outputs.target_repo }}" \
+            -f base_branch="${{ steps.pr.outputs.base }}" \
+            -f prompt="${{ steps.pr.outputs.prompt }}" \
+            -f team_id="${{ steps.pr.outputs.team_id }}" \
+            -f branch="${{ steps.pr.outputs.head }}" \
+            -f skip_check_epic_state=true \
+            -f skip_create_or_correct_epic=true \
+            -f skip_create_story_tasks=true \
+            -f skip_party_mode_refinement=true \
+            -f extra_flags="$EXTRA_FLAGS"
+
+      - name: Post confirmation
+        run: |
+          GUIDANCE_NOTE=""
+          if [ -n "${{ steps.cmd.outputs.guidance }}" ]; then
+            GUIDANCE_NOTE=$'\n'"**Guidance:** ${{ steps.cmd.outputs.guidance }}"
+          fi
+
+          gh pr comment "${{ steps.pr.outputs.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "🚀 Retry dispatched.${GUIDANCE_NOTE}
+
+          **Branch:** \`${{ steps.pr.outputs.head }}\`
+          [View workflow runs](https://github.com/${{ github.repository }}/actions/workflows/bmad-start-run.yml)"
