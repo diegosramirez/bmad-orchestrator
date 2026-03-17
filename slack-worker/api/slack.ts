@@ -182,18 +182,21 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
     }
   }
 
-  const res = await fetch(
-    `https://api.github.com/repos/${ghRepo}/actions/workflows/bmad-start-run.yml/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ghToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "bmad-slack-worker",
-      },
-      body: JSON.stringify({ ref: "main", inputs }),
-    }
-  );
+  const url = `https://api.github.com/repos/${ghRepo}/actions/workflows/bmad-start-run.yml/dispatches`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${ghToken}`,
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "bmad-slack-worker",
+    },
+    body: JSON.stringify({ ref: "main", inputs }),
+  });
+
+  if (res.status !== 204) {
+    const body = await res.text();
+    console.error(`GitHub dispatch failed: ${res.status} ${body} | URL: ${url} | Inputs: ${JSON.stringify(inputs)}`);
+  }
 
   return res.status === 204;
 }
@@ -420,9 +423,10 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
 
 async function handleViewSubmission(payload: any, res: any): Promise<void> {
   const callbackId = payload.view?.callback_id;
-  const values = payload.view?.values || {};
+  const values = payload.view?.state?.values || {};
 
   if (callbackId === "bmad_run_modal") {
+    // Slack values structure: values[block_id][action_id].value
     const teamId = values.team_id?.value?.value || process.env.DEFAULT_TEAM_ID || "";
     const prompt = values.prompt?.value?.value || "";
     const targetRepo = values.target_repo?.value?.value || "";
@@ -440,29 +444,32 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       targetRepo,
     };
 
-    // Acknowledge immediately (close modal)
-    res.status(200).json({ response_action: "clear" });
-
-    // Dispatch in background
+    // Dispatch BEFORE responding — Vercel kills the function after res is sent
+    let ok = false;
     try {
-      const ok = await dispatchWorkflow(cmd);
-      // Post confirmation to the user via chat.postMessage
-      const userId = payload.user?.id;
-      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
-      const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
-      const statusText = ok
-        ? `*Run dispatched!*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"\n<${actionsUrl}|View workflow runs>`
-        : "Failed to dispatch workflow. Check GitHub token permissions.";
-
-      if (userId) {
-        await slackApi("chat.postMessage", {
-          channel: userId,
-          text: statusText,
-        });
-      }
+      ok = await dispatchWorkflow(cmd);
     } catch {
-      // Best-effort — modal is already closed
+      // fall through with ok=false
     }
+
+    // Send DM confirmation to user
+    const userId = payload.user?.id;
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
+    const statusText = ok
+      ? `*Run dispatched!*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"\n<${actionsUrl}|View workflow runs>`
+      : "Failed to dispatch workflow. Check GitHub token permissions.";
+
+    if (userId) {
+      try {
+        await slackApi("chat.postMessage", { channel: userId, text: statusText });
+      } catch {
+        // best-effort
+      }
+    }
+
+    // Close modal
+    res.status(200).json({ response_action: "clear" });
     return;
   }
 
@@ -487,28 +494,31 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       targetRepo: meta.target_repo,
     };
 
-    // Acknowledge immediately (close modal)
-    res.status(200).json({ response_action: "clear" });
-
-    // Dispatch in background
+    // Dispatch BEFORE responding — Vercel kills the function after res is sent
+    let ok = false;
     try {
-      const ok = await dispatchWorkflow(cmd);
-      const userId = payload.user?.id;
-      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
-      const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
-      const statusText = ok
-        ? `*Retry dispatched!*\nBranch: \`${meta.branch}\`${guidance ? `\nGuidance: "${guidance}"` : ""}\n<${actionsUrl}|View workflow runs>`
-        : "Failed to dispatch retry. Check GitHub token permissions.";
-
-      if (userId) {
-        await slackApi("chat.postMessage", {
-          channel: userId,
-          text: statusText,
-        });
-      }
+      ok = await dispatchWorkflow(cmd);
     } catch {
-      // Best-effort
+      // fall through with ok=false
     }
+
+    const userId = payload.user?.id;
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
+    const statusText = ok
+      ? `*Retry dispatched!*\nBranch: \`${meta.branch}\`${guidance ? `\nGuidance: "${guidance}"` : ""}\n<${actionsUrl}|View workflow runs>`
+      : "Failed to dispatch retry. Check GitHub token permissions.";
+
+    if (userId) {
+      try {
+        await slackApi("chat.postMessage", { channel: userId, text: statusText });
+      } catch {
+        // best-effort
+      }
+    }
+
+    // Close modal
+    res.status(200).json({ response_action: "clear" });
     return;
   }
 
