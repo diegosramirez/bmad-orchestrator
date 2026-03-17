@@ -437,9 +437,12 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
   }
 
   if (!modalView) {
+    console.error("handleBlockActions: unknown action_id", action.action_id);
     res.status(200).send("");
     return;
   }
+
+  console.log("handleBlockActions: opening modal for", action.action_id);
 
   const result = await slackApi("views.open", {
     trigger_id: payload.trigger_id,
@@ -447,6 +450,7 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
   });
 
   if (!result.ok) {
+    console.error("views.open failed:", JSON.stringify(result));
     const responseUrl = payload.response_url;
     if (responseUrl) {
       await fetch(responseUrl, {
