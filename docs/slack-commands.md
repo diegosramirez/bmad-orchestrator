@@ -162,7 +162,11 @@ Type `/bmad` (with no arguments) to open an interactive form:
 
 ### Retry Button
 
-When a pipeline run fails, the Slack failure message includes a **Retry** button. Clicking it opens a modal where you can optionally add guidance (e.g., "fix the auth middleware") before re-dispatching.
+When a pipeline run fails, the Slack failure message includes a **Retry** button. Clicking it opens a modal where you can optionally add guidance (e.g., "fix the auth middleware") before re-dispatching. The retry button only appears when a branch exists (i.e., after code has been committed).
+
+### Refine Button
+
+When a run succeeds and creates a PR, the success message includes a **Refine** button. If you test the PR locally and aren't happy with the results, click Refine to provide guidance (e.g., "add loading states and error boundaries") and re-run the dev/QA/review pipeline on the existing branch. The PR is updated in place.
 
 ## Command Reference
 

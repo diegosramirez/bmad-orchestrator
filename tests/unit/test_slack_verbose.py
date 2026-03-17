@@ -138,3 +138,80 @@ class TestWrapWithSlackNotificationsCrash:
         msg = slack.post_message.call_args[0][0]
         assert "crashed" in msg
         assert "SAM1" in msg
+
+
+class TestWrapWithSlackNotificationsRefine:
+    """Tests for the Refine button on PR success messages."""
+
+    def _make_settings(self, **overrides: object) -> Settings:
+        base = {
+            "anthropic_api_key": "sk-test",
+            "dummy_jira": True,
+            "dummy_github": True,
+            "slack_notify": True,
+            "slack_bot_token": "xoxb-test",
+            "slack_channel": "#test",
+        }
+        base.update(overrides)
+        return Settings(**base)  # type: ignore[arg-type]
+
+    def test_pr_success_includes_refine_button(self) -> None:
+        """When pr_url is set and branch exists, blocks include a Refine button."""
+        import json
+
+        slack = MagicMock()
+        slack.post_thread_reply = MagicMock()
+        settings = self._make_settings()
+
+        def success_node(state: dict) -> dict:
+            return {
+                "pr_url": "https://github.com/org/repo/pull/42",
+                "branch_name": "bmad/sam1/SAM1-99-feature",
+            }
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "create_pull_request", success_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts123",
+            "team_id": "SAM1",
+            "input_prompt": "test",
+            "current_story_id": "SAM1-99",
+            "branch_name": "bmad/sam1/SAM1-99-feature",
+        }
+        wrapped(state)
+
+        slack.post_thread_reply.assert_called_once()
+        call_args = slack.post_thread_reply.call_args
+        blocks = call_args.kwargs.get("blocks")
+        assert blocks is not None, "Expected blocks with Refine button"
+        action_elements = blocks[1]["elements"]
+        assert action_elements[0]["action_id"] == "bmad_refine"
+        meta = json.loads(action_elements[0]["value"])
+        assert meta["branch"] == "bmad/sam1/SAM1-99-feature"
+        assert meta["team_id"] == "SAM1"
+
+    def test_pr_success_no_refine_without_branch(self) -> None:
+        """When pr_url is set but no branch, no blocks are sent."""
+        slack = MagicMock()
+        slack.post_thread_reply = MagicMock()
+        settings = self._make_settings()
+
+        def success_node(state: dict) -> dict:
+            return {"pr_url": "https://github.com/org/repo/pull/42"}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "create_pull_request", success_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts123",
+            "team_id": "SAM1",
+            "input_prompt": "test",
+        }
+        wrapped(state)
+
+        slack.post_thread_reply.assert_called_once()
+        call_args = slack.post_thread_reply.call_args
+        # blocks should be None (no branch → no refine button)
+        blocks = call_args.kwargs.get("blocks")
+        assert blocks is None

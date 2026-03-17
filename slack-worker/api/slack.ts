@@ -314,6 +314,38 @@ function buildRetryModal(meta: RetryMeta): Record<string, unknown> {
   };
 }
 
+function buildRefineModal(meta: RetryMeta): Record<string, unknown> {
+  return {
+    type: "modal",
+    callback_id: "bmad_refine_modal",
+    private_metadata: JSON.stringify(meta),
+    title: { type: "plain_text", text: "BMAD — Refine PR" },
+    submit: { type: "plain_text", text: "Refine" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: `*Branch:* \`${meta.branch}\`` },
+          { type: "mrkdwn", text: `*Team:* ${meta.team_id}` },
+          ...(meta.story_key ? [{ type: "mrkdwn", text: `*Story:* ${meta.story_key}` }] : []),
+        ],
+      },
+      {
+        type: "input",
+        block_id: "guidance",
+        label: { type: "plain_text", text: "Refinement guidance" },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          multiline: true,
+          placeholder: { type: "plain_text", text: "What should the agent change or improve?" },
+        },
+      },
+    ],
+  };
+}
+
 // ── Payload handlers ─────────────────────────────────────────────────────────
 
 async function handleSlashCommand(params: URLSearchParams, res: any): Promise<void> {
@@ -387,33 +419,40 @@ async function handleSlashCommand(params: URLSearchParams, res: any): Promise<vo
 
 async function handleBlockActions(payload: any, res: any): Promise<void> {
   const action = payload.actions?.[0];
-  if (!action || action.action_id !== "bmad_retry") {
+  if (!action) {
     res.status(200).send("");
     return;
   }
 
-  const triggerId = payload.trigger_id;
-  let meta: RetryMeta;
-  try {
-    meta = JSON.parse(action.value);
-  } catch {
+  // Both retry and refine follow the same pattern: parse meta → open modal
+  let modalView: Record<string, unknown> | null = null;
+  if (action.action_id === "bmad_retry") {
+    let meta: RetryMeta;
+    try { meta = JSON.parse(action.value); } catch { res.status(200).send(""); return; }
+    modalView = buildRetryModal(meta);
+  } else if (action.action_id === "bmad_refine") {
+    let meta: RetryMeta;
+    try { meta = JSON.parse(action.value); } catch { res.status(200).send(""); return; }
+    modalView = buildRefineModal(meta);
+  }
+
+  if (!modalView) {
     res.status(200).send("");
     return;
   }
 
   const result = await slackApi("views.open", {
-    trigger_id: triggerId,
-    view: buildRetryModal(meta),
+    trigger_id: payload.trigger_id,
+    view: modalView,
   });
 
   if (!result.ok) {
-    // Post ephemeral error via response_url if available
     const responseUrl = payload.response_url;
     if (responseUrl) {
       await fetch(responseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response_type: "ephemeral", text: `Failed to open retry modal: ${result.error}` }),
+        body: JSON.stringify({ response_type: "ephemeral", text: `Failed to open modal: ${result.error}` }),
       });
     }
   }
@@ -484,6 +523,22 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
 
     const guidance = values.guidance?.value?.value || "";
 
+    // Guard: retry requires a branch — if missing, the failure happened before
+    // code was committed so there's nothing to retry from.
+    if (!meta.branch) {
+      const userId = payload.user?.id;
+      if (userId) {
+        try {
+          await slackApi("chat.postMessage", {
+            channel: userId,
+            text: "Cannot retry: no branch exists. The failure happened before code was committed — please start a new run instead.",
+          });
+        } catch { /* best-effort */ }
+      }
+      res.status(200).json({ response_action: "clear" });
+      return;
+    }
+
     const cmd: ParsedCommand = {
       action: "retry",
       teamId: meta.team_id,
@@ -518,6 +573,67 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     }
 
     // Close modal
+    res.status(200).json({ response_action: "clear" });
+    return;
+  }
+
+  if (callbackId === "bmad_refine_modal") {
+    let meta: RetryMeta;
+    try {
+      meta = JSON.parse(payload.view?.private_metadata || "{}");
+    } catch {
+      res.status(200).json({ response_action: "clear" });
+      return;
+    }
+
+    const guidance = values.guidance?.value?.value || "";
+
+    if (!meta.branch) {
+      const userId = payload.user?.id;
+      if (userId) {
+        try {
+          await slackApi("chat.postMessage", {
+            channel: userId,
+            text: "Cannot refine: no branch found in metadata.",
+          });
+        } catch { /* best-effort */ }
+      }
+      res.status(200).json({ response_action: "clear" });
+      return;
+    }
+
+    const cmd: ParsedCommand = {
+      action: "retry",
+      teamId: meta.team_id,
+      prompt: guidance,
+      verbose: false,
+      skipNodes: [],
+      branch: meta.branch,
+      targetRepo: meta.target_repo,
+    };
+
+    let ok = false;
+    try {
+      ok = await dispatchWorkflow(cmd);
+    } catch {
+      // fall through with ok=false
+    }
+
+    const userId = payload.user?.id;
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
+    const statusText = ok
+      ? `*Refine dispatched!*\nBranch: \`${meta.branch}\`\nGuidance: "${guidance}"\n<${actionsUrl}|View workflow runs>`
+      : "Failed to dispatch refine. Check GitHub token permissions.";
+
+    if (userId) {
+      try {
+        await slackApi("chat.postMessage", { channel: userId, text: statusText });
+      } catch {
+        // best-effort
+      }
+    }
+
     res.status(200).json({ response_action: "clear" });
     return;
   }

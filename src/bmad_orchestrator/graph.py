@@ -221,6 +221,29 @@ def _wrap_with_slack_notifications(
                 ]
         elif pr_url:
             text = f":tada: *PR created:* {pr_url}"
+            branch = out.get("branch_name") or state.get("branch_name") or ""
+            if branch:
+                refine_meta = json.dumps({
+                    "branch": branch,
+                    "team_id": team_id,
+                    "target_repo": settings.github_repo or "",
+                    "story_key": state.get("current_story_id") or "",
+                })
+                blocks = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": text},
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [{
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Refine"},
+                            "action_id": "bmad_refine",
+                            "value": refine_meta,
+                        }],
+                    },
+                ]
         else:
             text = f":white_check_mark: *{label}* completed"
 
