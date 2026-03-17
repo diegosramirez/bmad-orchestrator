@@ -171,11 +171,22 @@ def _wrap_with_slack_notifications(
         # Keep the shared holder in sync for the verbose callback
         if thread_ts and thread_ts_holder[0] is None:
             thread_ts_holder[0] = thread_ts
-        out = node_fn(state)
 
         label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
         team_id = state.get("team_id", "")
         story_id = state.get("current_story_id") or state.get("input_prompt", "")
+
+        try:
+            out = node_fn(state)
+        except Exception as exc:
+            # Node crashed — post failure to Slack, then re-raise
+            error_text = f":x: *{label}* — crashed\n>{str(exc)[:200]}"
+            if thread_ts is None:
+                header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
+                slack.post_message(f"{header}\n{error_text}")
+            else:
+                slack.post_thread_reply(thread_ts, error_text)
+            raise
 
         failure = out.get("failure_state") or out.get("failure_diagnostic")
         pr_url = out.get("pr_url")
