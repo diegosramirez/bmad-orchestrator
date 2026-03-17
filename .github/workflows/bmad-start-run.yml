@@ -90,6 +90,11 @@ on:
         required: false
         default: ""
         type: string
+      guidance:
+        description: "Guidance text for retry/refine (passed as --guidance)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   orchestrator-run:
@@ -194,6 +199,7 @@ jobs:
         env:
           BMAD_BMAD_INSTALL_DIR: ${{ github.workspace }}/.claude
           BMAD_BMAD_ROOT: ${{ github.workspace }}/_bmad
+          BMAD_GUIDANCE: ${{ inputs.guidance }}
         run: |
           echo "::group::Run Configuration"
           echo "Target repo:  ${{ inputs.target_repo }}"
@@ -203,6 +209,7 @@ jobs:
           echo "Prompt:       ${{ inputs.prompt }}"
           echo "Skip nodes:   ${{ steps.skip.outputs.flag }}"
           echo "Extra flags:  ${{ inputs.extra_flags }}"
+          echo "Guidance:     ${{ inputs.guidance }}"
           echo "::endgroup::"
 
           echo "::group::Running bmad-orchestrator"
@@ -212,7 +219,8 @@ jobs:
             --prompt "${{ inputs.prompt }}" \
             --non-interactive \
             ${{ steps.skip.outputs.flag }} \
-            ${{ inputs.extra_flags }}
+            ${{ inputs.extra_flags }} \
+            ${BMAD_GUIDANCE:+--guidance "$BMAD_GUIDANCE"}
           echo "::endgroup::"
 
       - name: Upload orchestrator state

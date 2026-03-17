@@ -166,9 +166,8 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   if (cmd.branch) inputs.branch = cmd.branch;
 
   if (cmd.action === "retry") {
-    const parts = ["--retry"];
-    if (cmd.prompt) parts.push(`--guidance "${cmd.prompt}"`);
-    inputs.extra_flags = parts.join(" ");
+    inputs.extra_flags = "--retry";
+    if (cmd.prompt) inputs.guidance = cmd.prompt;
     inputs.prompt = inputs.prompt || cmd.teamId;
   }
 

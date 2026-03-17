@@ -93,9 +93,6 @@ jobs:
           if [ -n "${{ steps.pr.outputs.story_key }}" ]; then
             EXTRA_FLAGS="$EXTRA_FLAGS --story-key ${{ steps.pr.outputs.story_key }}"
           fi
-          if [ -n "${{ steps.cmd.outputs.guidance }}" ]; then
-            EXTRA_FLAGS="$EXTRA_FLAGS --guidance \"${{ steps.cmd.outputs.guidance }}\""
-          fi
 
           gh workflow run bmad-start-run.yml \
             --repo "${{ github.repository }}" \
@@ -108,7 +105,8 @@ jobs:
             -f skip_create_or_correct_epic=true \
             -f skip_create_story_tasks=true \
             -f skip_party_mode_refinement=true \
-            -f extra_flags="$EXTRA_FLAGS"
+            -f extra_flags="$EXTRA_FLAGS" \
+            -f guidance="${{ steps.cmd.outputs.guidance }}"
 
       - name: Post confirmation
         run: |
