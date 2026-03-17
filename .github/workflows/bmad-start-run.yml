@@ -73,6 +73,12 @@ on:
         description: "Verbose: stream agent events to Slack thread"
         type: boolean
         default: false
+      # ── Slack thread (for Slack-initiated runs) ────────────────────
+      slack_thread_ts:
+        description: "Slack thread timestamp (passed by Slack worker)"
+        required: false
+        default: ""
+        type: string
       # ── Other flags ──────────────────────────────────────────────────
       branch:
         description: "Existing branch to continue from (e.g. bmad/sam1/SAM1-54-improve-dashboard)"
@@ -112,6 +118,7 @@ jobs:
       BMAD_SLACK_BOT_TOKEN: ${{ secrets.BMAD_SLACK_BOT_TOKEN }}
       BMAD_SLACK_CHANNEL: ${{ vars.BMAD_SLACK_CHANNEL }}
       BMAD_SLACK_VERBOSE: ${{ inputs.slack_verbose }}
+      BMAD_SLACK_THREAD_TS: ${{ inputs.slack_thread_ts }}
 
       # ── Orchestrator settings ──────────────────────────────────────────
       BMAD_DRAFT_PR: "true"
