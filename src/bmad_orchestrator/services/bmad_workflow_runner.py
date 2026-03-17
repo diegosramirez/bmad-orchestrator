@@ -161,6 +161,7 @@ class BmadWorkflowRunner:
             user_message=user_message,
             schema=schema,
             agent_id="pm",
+            max_tokens=32768,
         )
 
     def run_correct_course(
@@ -249,4 +250,5 @@ class BmadWorkflowRunner:
             user_message=user_message,
             schema=schema,
             agent_id="scrum_master",
+            max_tokens=32768,
         )

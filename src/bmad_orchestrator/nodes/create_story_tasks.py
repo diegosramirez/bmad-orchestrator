@@ -180,7 +180,7 @@ def make_create_story_tasks_node(
                 user_message=user_msg,
                 schema=StoryDraft,
                 agent_id="scrum_master",
-                max_tokens=16384,
+                max_tokens=32768,
                 on_event=on_event,
             )
 
@@ -254,7 +254,7 @@ def make_create_story_tasks_node(
                 ),
                 schema=StoryDraft,
                 agent_id="scrum_master",
-                max_tokens=16384,
+                max_tokens=32768,
                 on_event=on_event,
             )
 
