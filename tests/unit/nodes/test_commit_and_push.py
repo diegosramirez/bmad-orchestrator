@@ -11,6 +11,7 @@ def test_commits_and_returns_branch_and_sha(settings, mock_git, tmp_path, monkey
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_auth.py").write_text("x = 1")
 
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.commit.return_value = "abc123def456"
 
@@ -40,6 +41,7 @@ def test_skips_staging_nonexistent_paths(settings, mock_git, tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)
     (tmp_path / "real.py").write_text("x = 1")
 
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.commit.return_value = "abc123def456"
 
@@ -66,6 +68,7 @@ def test_resume_after_push_failure_no_staged_changes(settings, mock_git, tmp_pat
     monkeypatch.chdir(tmp_path)
     (tmp_path / "app.ts").write_text("x = 1")
 
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.has_staged_changes.return_value = False
     mock_git.get_head_sha.return_value = "be66a71eda58"
@@ -84,6 +87,7 @@ def test_no_changes_skips_commit_and_push(settings, mock_git, tmp_path, monkeypa
     """When no files were staged and HEAD equals base, skip commit and push."""
     monkeypatch.chdir(tmp_path)
 
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.has_staged_changes.return_value = False
     mock_git.get_head_sha.return_value = "same_sha_as_base"
@@ -102,6 +106,7 @@ def test_empty_commit_on_failure(settings, mock_git, tmp_path, monkeypatch):
     """When failure_state is set and no files changed, create an empty commit for the draft PR."""
     monkeypatch.chdir(tmp_path)
 
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.has_staged_changes.return_value = False
     mock_git.get_head_sha.return_value = "same_sha"
@@ -121,8 +126,32 @@ def test_empty_commit_on_failure(settings, mock_git, tmp_path, monkeypatch):
     mock_git.push.assert_called_once()
 
 
+def test_refine_commits_to_existing_bmad_branch(settings, mock_git, tmp_path, monkeypatch):
+    """When already on a bmad/ branch (refine), commit to it without creating a new branch."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.ts").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "bmad/sam1/SAM1-99-feature"
+    mock_git.commit.return_value = "refine123"
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="SAM1-99",
+        current_epic_id="SAM1-1",
+        touched_files=["app.ts"],
+    ))
+
+    assert result["branch_name"] == "bmad/sam1/SAM1-99-feature"
+    assert result["base_branch"] == "main"
+    mock_git.make_branch_name.assert_not_called()
+    mock_git.create_and_checkout_branch.assert_not_called()
+    mock_git.commit.assert_called_once()
+    mock_git.push.assert_called_once_with("bmad/sam1/SAM1-99-feature")
+
+
 def test_dry_run_still_returns_sha(settings, mock_git):
     dry_settings = settings.model_copy(update={"dry_run": True})
+    mock_git.get_current_branch.return_value = "main"
     mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
     mock_git.commit.return_value = "dry-run-sha"
 

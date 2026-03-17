@@ -55,10 +55,18 @@ def make_commit_and_push_node(
                 "execution_log": [log_entry],
             }
 
-        # Capture current branch as the PR base before switching
-        base_branch = git.get_current_branch()
+        # Detect if we're already on a bmad branch (refine/retry on existing branch)
+        current_branch = git.get_current_branch()
+        on_existing_bmad_branch = current_branch.startswith("bmad/")
 
-        branch_name = git.make_branch_name(team_id, story_id, state["input_prompt"][:60])
+        if on_existing_bmad_branch:
+            # Refine: stay on the current branch, use main as base
+            branch_name = current_branch
+            base_branch = settings.github_base_branch or "main"
+        else:
+            # Fresh run: capture base and create new branch
+            base_branch = current_branch
+            branch_name = git.make_branch_name(team_id, story_id, state["input_prompt"][:60])
 
         # Summarise the story content for the commit message
         summary_lines = "\n".join(
@@ -74,7 +82,8 @@ def make_commit_and_push_node(
             epic_id=epic_id,
         )
 
-        git.create_and_checkout_branch(branch_name)
+        if not on_existing_bmad_branch:
+            git.create_and_checkout_branch(branch_name)
         seen: set[str] = set()
         for path in (state.get("touched_files") or []):
             if path in seen:

@@ -202,6 +202,7 @@ def _wrap_with_slack_notifications(
                     "team_id": team_id,
                     "target_repo": settings.github_repo or "",
                     "story_key": state.get("current_story_id") or "",
+                    "thread_ts": thread_ts or "",
                 })
                 blocks = [
                     {
@@ -228,6 +229,7 @@ def _wrap_with_slack_notifications(
                     "team_id": team_id,
                     "target_repo": settings.github_repo or "",
                     "story_key": state.get("current_story_id") or "",
+                    "thread_ts": thread_ts or "",
                 })
                 blocks = [
                     {
@@ -401,6 +403,7 @@ def make_initial_state(
     story_content: str | None = None,
     acceptance_criteria: list[str] | None = None,
     guidance: str | None = None,
+    slack_thread_ts: str | None = None,
 ) -> OrchestratorState:
     """Return a fully-initialised empty state for a new run."""
     cwd = Path.cwd()
@@ -432,7 +435,7 @@ def make_initial_state(
         execution_log=[],
         failure_state=None,
         failure_diagnostic=None,
-        slack_thread_ts=None,
+        slack_thread_ts=slack_thread_ts,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=guidance,

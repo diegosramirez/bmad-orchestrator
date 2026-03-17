@@ -10,6 +10,7 @@ interface ParsedCommand {
   skipNodes: string[];
   branch: string;
   targetRepo: string;
+  slackThreadTs?: string;
 }
 
 interface RetryMeta {
@@ -17,6 +18,7 @@ interface RetryMeta {
   team_id: string;
   target_repo: string;
   story_key: string;
+  thread_ts?: string;
 }
 
 // ── Slack signature verification ─────────────────────────────────────────────
@@ -164,6 +166,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   };
 
   if (cmd.branch) inputs.branch = cmd.branch;
+  if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
 
   if (cmd.action === "retry") {
     if (cmd.prompt) inputs.guidance = cmd.prompt;
@@ -549,6 +552,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       skipNodes: [],
       branch: meta.branch,
       targetRepo: meta.target_repo,
+      slackThreadTs: meta.thread_ts,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent
@@ -612,6 +616,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       skipNodes: [],
       branch: meta.branch,
       targetRepo: meta.target_repo,
+      slackThreadTs: meta.thread_ts,
     };
 
     let ok = false;

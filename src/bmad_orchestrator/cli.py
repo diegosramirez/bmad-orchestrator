@@ -692,6 +692,7 @@ def run(
             story_content=_story_content,
             acceptance_criteria=_acceptance_criteria,
             guidance=guidance,
+            slack_thread_ts=settings.slack_thread_ts,
         )
 
     # ── Print run header ──────────────────────────────────────────────────
