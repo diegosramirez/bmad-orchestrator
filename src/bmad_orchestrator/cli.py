@@ -691,6 +691,7 @@ def run(
             team_id, prompt, epic_key=resolved_epic_key, story_key=story_key,
             story_content=_story_content,
             acceptance_criteria=_acceptance_criteria,
+            guidance=guidance,
         )
 
     # ── Print run header ──────────────────────────────────────────────────

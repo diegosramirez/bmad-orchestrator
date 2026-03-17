@@ -89,9 +89,9 @@ jobs:
 
       - name: Dispatch bmad-start-run
         run: |
-          EXTRA_FLAGS="--retry"
+          EXTRA_FLAGS=""
           if [ -n "${{ steps.pr.outputs.story_key }}" ]; then
-            EXTRA_FLAGS="$EXTRA_FLAGS --story-key ${{ steps.pr.outputs.story_key }}"
+            EXTRA_FLAGS="--story-key ${{ steps.pr.outputs.story_key }}"
           fi
 
           gh workflow run bmad-start-run.yml \

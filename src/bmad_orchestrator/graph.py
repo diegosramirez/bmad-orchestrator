@@ -400,6 +400,7 @@ def make_initial_state(
     story_key: str | None = None,
     story_content: str | None = None,
     acceptance_criteria: list[str] | None = None,
+    guidance: str | None = None,
 ) -> OrchestratorState:
     """Return a fully-initialised empty state for a new run."""
     cwd = Path.cwd()
@@ -434,7 +435,7 @@ def make_initial_state(
         slack_thread_ts=None,
         tests_passing=None,
         test_failure_output=None,
-        retry_guidance=None,
+        retry_guidance=guidance,
         build_commands=[],
         test_commands=[],
         lint_commands=[],

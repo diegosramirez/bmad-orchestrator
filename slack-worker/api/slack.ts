@@ -166,7 +166,6 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   if (cmd.branch) inputs.branch = cmd.branch;
 
   if (cmd.action === "retry") {
-    inputs.extra_flags = "--retry";
     if (cmd.prompt) inputs.guidance = cmd.prompt;
     inputs.prompt = inputs.prompt || cmd.teamId;
   }
