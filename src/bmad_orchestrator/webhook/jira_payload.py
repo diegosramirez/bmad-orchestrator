@@ -10,6 +10,7 @@ class JiraWebhookContext:
     """Extracted context from a Jira issue webhook payload."""
 
     team_id: str
+    target_repo: str | None
     story_key: str
     epic_key: str | None
     prompt: str
@@ -38,6 +39,17 @@ def parse_jira_webhook(body: dict[str, Any]) -> JiraWebhookContext | None:
         team_id = project.get("key")
         if not team_id or not isinstance(team_id, str):
             return None
+
+        # Optional: target repository, stored in a Jira custom field.
+        # We currently use customfield_10112.value, which in your payload
+        # carries values like "ds24-growth" (can be mapped to a GitHub repo).
+        target_repo: str | None = None
+        custom_target = fields.get("customfield_10112")
+        if isinstance(custom_target, dict):
+            value = custom_target.get("value")
+            if isinstance(value, str) and value.strip():
+                target_repo = value.strip()
+
         parent = fields.get("parent")
         epic_key: str | None = None
         if parent and isinstance(parent, dict):
@@ -48,6 +60,7 @@ def parse_jira_webhook(body: dict[str, Any]) -> JiraWebhookContext | None:
         prompt = summary if isinstance(summary, str) and summary.strip() else story_key
         return JiraWebhookContext(
             team_id=team_id,
+            target_repo=target_repo,
             story_key=story_key,
             epic_key=epic_key,
             prompt=prompt.strip() if isinstance(prompt, str) else story_key,
