@@ -194,29 +194,31 @@ def _wrap_with_slack_notifications(
 
         if failure:
             text = f":x: *{label}* — pipeline failed\n>{str(failure)[:200]}"
-            # Build retry button with run metadata
-            retry_meta = json.dumps({
-                "branch": state.get("branch_name") or "",
-                "team_id": team_id,
-                "target_repo": settings.github_repo or "",
-                "story_key": state.get("current_story_id") or "",
-            })
-            blocks = [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": text},
-                },
-                {
-                    "type": "actions",
-                    "elements": [{
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Retry"},
-                        "style": "primary",
-                        "action_id": "bmad_retry",
-                        "value": retry_meta,
-                    }],
-                },
-            ]
+            # Retry button only makes sense when a branch exists (code was committed)
+            branch = out.get("branch_name") or state.get("branch_name") or ""
+            if branch:
+                retry_meta = json.dumps({
+                    "branch": branch,
+                    "team_id": team_id,
+                    "target_repo": settings.github_repo or "",
+                    "story_key": state.get("current_story_id") or "",
+                })
+                blocks = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": text},
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [{
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Retry"},
+                            "style": "primary",
+                            "action_id": "bmad_retry",
+                            "value": retry_meta,
+                        }],
+                    },
+                ]
         elif pr_url:
             text = f":tada: *PR created:* {pr_url}"
         else:
