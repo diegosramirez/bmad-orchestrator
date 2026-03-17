@@ -12,6 +12,13 @@ interface ParsedCommand {
   targetRepo: string;
 }
 
+interface RetryMeta {
+  branch: string;
+  team_id: string;
+  target_repo: string;
+  story_key: string;
+}
+
 // ── Slack signature verification ─────────────────────────────────────────────
 
 function verifySlackSignature(
@@ -27,10 +34,27 @@ function verifySlackSignature(
   return timingSafeEqual(Buffer.from(computed), Buffer.from(signature));
 }
 
+// ── Slack API helper ─────────────────────────────────────────────────────────
+
+async function slackApi(method: string, body: Record<string, unknown>): Promise<any> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) throw new Error("SLACK_BOT_TOKEN not configured");
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
 // ── Command parser ───────────────────────────────────────────────────────────
 
 const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
 
+\`/bmad\` — Open the run wizard (interactive form)
 \`/bmad run <team> "<prompt>"\` — Start a new orchestrator run
 \`/bmad run <team> "<prompt>" --verbose\` — Start with verbose Slack updates
 \`/bmad run <team> "<prompt>" --skip dev_story,qa_automation\` — Skip specific nodes
@@ -47,7 +71,11 @@ const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
 function parseCommand(text: string): ParsedCommand | { error: string } {
   const trimmed = text.trim();
 
-  if (!trimmed || trimmed === "help") {
+  if (!trimmed) {
+    return { action: "help", teamId: "", prompt: "", verbose: false, skipNodes: [], branch: "", targetRepo: "" };
+  }
+
+  if (trimmed === "help") {
     return { action: "help", teamId: "", prompt: "", verbose: false, skipNodes: [], branch: "", targetRepo: "" };
   }
 
@@ -103,6 +131,19 @@ const SKIP_NODE_NAMES = [
   "qa_automation", "code_review", "commit_and_push", "create_pull_request",
 ] as const;
 
+const SKIP_NODE_LABELS: Record<string, string> = {
+  check_epic_state: "Check epic state",
+  create_or_correct_epic: "Create/correct epic",
+  create_story_tasks: "Create stories & tasks",
+  party_mode_refinement: "Multi-agent refinement",
+  detect_commands: "Detect build/test commands",
+  dev_story: "Generate code",
+  qa_automation: "Generate QA tests",
+  code_review: "Code review",
+  commit_and_push: "Commit & push",
+  create_pull_request: "Create PR",
+};
+
 const RETRY_SKIP_NODES = [
   "check_epic_state", "create_or_correct_epic",
   "create_story_tasks", "party_mode_refinement",
@@ -157,41 +198,145 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   return res.status === 204;
 }
 
-// ── Main handler ─────────────────────────────────────────────────────────────
+// ── Modal definitions ────────────────────────────────────────────────────────
 
-function readRawBody(req: any): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", reject);
-  });
+function buildRunModal(): Record<string, unknown> {
+  const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
+  const defaultRepo = process.env.DEFAULT_TARGET_REPO || "";
+
+  return {
+    type: "modal",
+    callback_id: "bmad_run_modal",
+    title: { type: "plain_text", text: "BMAD — New Run" },
+    submit: { type: "plain_text", text: "Run" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "team_id",
+        label: { type: "plain_text", text: "Team ID" },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          initial_value: defaultTeam,
+        },
+      },
+      {
+        type: "input",
+        block_id: "prompt",
+        label: { type: "plain_text", text: "Prompt" },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          placeholder: { type: "plain_text", text: 'Feature description or Jira key (e.g. SAM1-54)' },
+        },
+      },
+      {
+        type: "input",
+        block_id: "target_repo",
+        optional: true,
+        label: { type: "plain_text", text: "Target Repository" },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          initial_value: defaultRepo,
+          placeholder: { type: "plain_text", text: "owner/repo" },
+        },
+      },
+      {
+        type: "input",
+        block_id: "options",
+        optional: true,
+        label: { type: "plain_text", text: "Options" },
+        element: {
+          type: "checkboxes",
+          action_id: "value",
+          options: [
+            {
+              text: { type: "plain_text", text: "Verbose mode" },
+              description: { type: "plain_text", text: "Stream agent events to Slack thread" },
+              value: "verbose",
+            },
+          ],
+        },
+      },
+      {
+        type: "input",
+        block_id: "skip_nodes",
+        optional: true,
+        label: { type: "plain_text", text: "Skip Nodes" },
+        element: {
+          type: "checkboxes",
+          action_id: "value",
+          options: SKIP_NODE_NAMES.map((name) => ({
+            text: { type: "plain_text", text: SKIP_NODE_LABELS[name] || name },
+            value: name,
+          })),
+        },
+      },
+    ],
+  };
 }
 
-export default async function handler(req: any, res: any): Promise<void> {
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+function buildRetryModal(meta: RetryMeta): Record<string, unknown> {
+  return {
+    type: "modal",
+    callback_id: "bmad_retry_modal",
+    private_metadata: JSON.stringify(meta),
+    title: { type: "plain_text", text: "BMAD — Retry Run" },
+    submit: { type: "plain_text", text: "Retry" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: `*Branch:* \`${meta.branch}\`` },
+          { type: "mrkdwn", text: `*Team:* ${meta.team_id}` },
+          ...(meta.story_key ? [{ type: "mrkdwn", text: `*Story:* ${meta.story_key}` }] : []),
+        ],
+      },
+      {
+        type: "input",
+        block_id: "guidance",
+        optional: true,
+        label: { type: "plain_text", text: "Guidance" },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          multiline: true,
+          placeholder: { type: "plain_text", text: "Optional: tell the agent what to fix or focus on" },
+        },
+      },
+    ],
+  };
+}
 
-  const secret = process.env.SLACK_SIGNING_SECRET;
-  if (!secret) {
-    res.status(500).json({ error: "SLACK_SIGNING_SECRET not configured" });
-    return;
-  }
+// ── Payload handlers ─────────────────────────────────────────────────────────
 
-  // Read raw body for signature verification
-  const rawBody = await readRawBody(req);
-  const timestamp = req.headers["x-slack-request-timestamp"] as string;
-  const signature = req.headers["x-slack-signature"] as string;
-
-  if (!timestamp || !signature || !verifySlackSignature(rawBody, timestamp, signature, secret)) {
-    res.status(401).json({ error: "Invalid signature" });
-    return;
-  }
-
-  const params = new URLSearchParams(rawBody);
+async function handleSlashCommand(params: URLSearchParams, res: any): Promise<void> {
   const text = params.get("text") || "";
+  const triggerId = params.get("trigger_id") || "";
+
+  // Empty text → open wizard modal
+  if (!text.trim()) {
+    if (!triggerId) {
+      res.status(200).json({ response_type: "ephemeral", text: "Missing trigger_id — cannot open modal." });
+      return;
+    }
+    const result = await slackApi("views.open", {
+      trigger_id: triggerId,
+      view: buildRunModal(),
+    });
+    if (!result.ok) {
+      res.status(200).json({ response_type: "ephemeral", text: `Failed to open modal: ${result.error}` });
+      return;
+    }
+    // Acknowledge — modal is open, nothing to show in chat
+    res.status(200).send("");
+    return;
+  }
+
+  // Text provided → parse and dispatch (existing behavior)
   const parsed = parseCommand(text);
 
   if ("error" in parsed) {
@@ -235,4 +380,204 @@ export default async function handler(req: any, res: any): Promise<void> {
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(200).json({ response_type: "ephemeral", text: `Error dispatching workflow: ${msg}` });
   }
+}
+
+async function handleBlockActions(payload: any, res: any): Promise<void> {
+  const action = payload.actions?.[0];
+  if (!action || action.action_id !== "bmad_retry") {
+    res.status(200).send("");
+    return;
+  }
+
+  const triggerId = payload.trigger_id;
+  let meta: RetryMeta;
+  try {
+    meta = JSON.parse(action.value);
+  } catch {
+    res.status(200).send("");
+    return;
+  }
+
+  const result = await slackApi("views.open", {
+    trigger_id: triggerId,
+    view: buildRetryModal(meta),
+  });
+
+  if (!result.ok) {
+    // Post ephemeral error via response_url if available
+    const responseUrl = payload.response_url;
+    if (responseUrl) {
+      await fetch(responseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response_type: "ephemeral", text: `Failed to open retry modal: ${result.error}` }),
+      });
+    }
+  }
+
+  res.status(200).send("");
+}
+
+async function handleViewSubmission(payload: any, res: any): Promise<void> {
+  const callbackId = payload.view?.callback_id;
+  const values = payload.view?.values || {};
+
+  if (callbackId === "bmad_run_modal") {
+    const teamId = values.team_id?.value?.value || process.env.DEFAULT_TEAM_ID || "";
+    const prompt = values.prompt?.value?.value || "";
+    const targetRepo = values.target_repo?.value?.value || "";
+    const selectedOptions = values.options?.value?.selected_options || [];
+    const verbose = selectedOptions.some((o: any) => o.value === "verbose");
+    const skipNodes = (values.skip_nodes?.value?.selected_options || []).map((o: any) => o.value);
+
+    const cmd: ParsedCommand = {
+      action: "run",
+      teamId,
+      prompt,
+      verbose,
+      skipNodes,
+      branch: "",
+      targetRepo,
+    };
+
+    // Acknowledge immediately (close modal)
+    res.status(200).json({ response_action: "clear" });
+
+    // Dispatch in background
+    try {
+      const ok = await dispatchWorkflow(cmd);
+      // Post confirmation to the user via chat.postMessage
+      const userId = payload.user?.id;
+      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+      const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
+      const statusText = ok
+        ? `*Run dispatched!*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"\n<${actionsUrl}|View workflow runs>`
+        : "Failed to dispatch workflow. Check GitHub token permissions.";
+
+      if (userId) {
+        await slackApi("chat.postMessage", {
+          channel: userId,
+          text: statusText,
+        });
+      }
+    } catch {
+      // Best-effort — modal is already closed
+    }
+    return;
+  }
+
+  if (callbackId === "bmad_retry_modal") {
+    let meta: RetryMeta;
+    try {
+      meta = JSON.parse(payload.view?.private_metadata || "{}");
+    } catch {
+      res.status(200).json({ response_action: "clear" });
+      return;
+    }
+
+    const guidance = values.guidance?.value?.value || "";
+
+    const cmd: ParsedCommand = {
+      action: "retry",
+      teamId: meta.team_id,
+      prompt: guidance,
+      verbose: false,
+      skipNodes: [],
+      branch: meta.branch,
+      targetRepo: meta.target_repo,
+    };
+
+    // Acknowledge immediately (close modal)
+    res.status(200).json({ response_action: "clear" });
+
+    // Dispatch in background
+    try {
+      const ok = await dispatchWorkflow(cmd);
+      const userId = payload.user?.id;
+      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+      const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
+      const statusText = ok
+        ? `*Retry dispatched!*\nBranch: \`${meta.branch}\`${guidance ? `\nGuidance: "${guidance}"` : ""}\n<${actionsUrl}|View workflow runs>`
+        : "Failed to dispatch retry. Check GitHub token permissions.";
+
+      if (userId) {
+        await slackApi("chat.postMessage", {
+          channel: userId,
+          text: statusText,
+        });
+      }
+    } catch {
+      // Best-effort
+    }
+    return;
+  }
+
+  // Unknown callback
+  res.status(200).send("");
+}
+
+// ── Main handler ─────────────────────────────────────────────────────────────
+
+function readRawBody(req: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    req.on("error", reject);
+  });
+}
+
+export default async function handler(req: any, res: any): Promise<void> {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  const secret = process.env.SLACK_SIGNING_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "SLACK_SIGNING_SECRET not configured" });
+    return;
+  }
+
+  const rawBody = await readRawBody(req);
+  const timestamp = req.headers["x-slack-request-timestamp"] as string;
+  const signature = req.headers["x-slack-signature"] as string;
+
+  if (!timestamp || !signature || !verifySlackSignature(rawBody, timestamp, signature, secret)) {
+    res.status(401).json({ error: "Invalid signature" });
+    return;
+  }
+
+  const params = new URLSearchParams(rawBody);
+
+  // ── Route by payload type ────────────────────────────────────────────────
+  // Interactive payloads (button clicks, modal submissions) come as a JSON
+  // string in a "payload" form field.
+  const payloadStr = params.get("payload");
+  if (payloadStr) {
+    let payload: any;
+    try {
+      payload = JSON.parse(payloadStr);
+    } catch {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+
+    const type = payload.type;
+    if (type === "block_actions") {
+      await handleBlockActions(payload, res);
+      return;
+    }
+    if (type === "view_submission") {
+      await handleViewSubmission(payload, res);
+      return;
+    }
+
+    // Unknown interactive payload type
+    res.status(200).send("");
+    return;
+  }
+
+  // ── Slash command (no payload field) ─────────────────────────────────────
+  await handleSlashCommand(params, res);
 }

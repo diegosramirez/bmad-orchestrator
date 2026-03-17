@@ -37,7 +37,9 @@ class SlackServiceProtocol(Protocol):
     def update_message(
         self, ts: str, text: str, blocks: list[dict[str, Any]] | None = None,
     ) -> None: ...
-    def post_thread_reply(self, thread_ts: str, text: str) -> None: ...
+    def post_thread_reply(
+        self, thread_ts: str, text: str, blocks: list[dict[str, Any]] | None = None,
+    ) -> None: ...
 
 
 class GitHubServiceProtocol(Protocol):

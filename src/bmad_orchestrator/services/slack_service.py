@@ -57,13 +57,17 @@ class SlackService:
         self._api_call("chat.update", payload)
 
     @skip_if_dry_run(fake_return=None)
-    def post_thread_reply(self, thread_ts: str, text: str) -> None:
+    def post_thread_reply(
+        self, thread_ts: str, text: str, blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Post a reply in a thread."""
         payload: dict[str, Any] = {
             "channel": self._channel,
             "thread_ts": thread_ts,
             "text": text,
         }
+        if blocks:
+            payload["blocks"] = blocks
         self._api_call("chat.postMessage", payload)
 
     def _api_call(self, method: str, payload: dict[str, Any]) -> dict[str, Any] | None:

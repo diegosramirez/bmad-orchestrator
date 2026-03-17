@@ -40,6 +40,7 @@ To test with real Slack signatures locally, create a `.env` file in `slack-worke
 
 ```env
 SLACK_SIGNING_SECRET=your-signing-secret
+SLACK_BOT_TOKEN=xoxb-your-bot-token
 GITHUB_TOKEN=ghp_your-pat
 GITHUB_REPO=diegosramirez/bmad-orchestrator
 DEFAULT_TARGET_REPO=diegosramirez/my-test-app
@@ -66,6 +67,7 @@ Go to your Vercel project dashboard → **Settings** → **Environment Variables
 | Variable | Value | Sensitive? |
 |----------|-------|------------|
 | `SLACK_SIGNING_SECRET` | Slack app → Basic Information → Signing Secret | Yes |
+| `SLACK_BOT_TOKEN` | Slack app → OAuth → Bot User OAuth Token (`xoxb-...`) | Yes |
 | `GITHUB_TOKEN` | GitHub PAT with `actions:write` + `repo` scope | Yes |
 | `GITHUB_REPO` | `diegosramirez/bmad-orchestrator` | No |
 | `DEFAULT_TARGET_REPO` | `diegosramirez/my-test-app` | No |
@@ -77,8 +79,9 @@ After adding variables, redeploy:
 npx vercel --prod
 ```
 
-### 3. Configure Slack slash command
+### 3. Configure Slack app
 
+**Slash command** (if not already set up):
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → your app
 2. Click **Slash Commands** → **Create New Command**
 3. Fill in:
@@ -86,7 +89,15 @@ npx vercel --prod
    - **Request URL:** `https://slack-worker.vercel.app/api/slack`
    - **Short Description:** `Run BMAD Orchestrator`
    - **Usage Hint:** `run SAM1 "prompt" | retry | status | help`
-4. Save → **Reinstall app** to your workspace (Slack prompts you)
+4. Save
+
+**Interactivity** (required for wizard modal + retry buttons):
+1. Go to **Interactivity & Shortcuts** in the sidebar
+2. Toggle **Interactivity** → **On**
+3. Set **Request URL** to: `https://slack-worker.vercel.app/api/slack`
+4. Save
+
+**Reinstall the app** to your workspace after making these changes.
 
 ### 4. Verify
 
@@ -105,13 +116,15 @@ You should see the command reference.
 1. Created a Slack app at [api.slack.com/apps](https://api.slack.com/apps) with bot scopes: `chat:write`
 2. Installed the app to the workspace, invited the bot to the target channel
 3. Added `/bmad` slash command pointing to the Vercel function URL
-4. Grabbed the **Signing Secret** from Basic Information (used for request verification)
+4. Enabled **Interactivity** with the same Request URL (for modals + buttons)
+5. Grabbed the **Signing Secret** from Basic Information (used for request verification)
+6. Grabbed the **Bot User OAuth Token** (`xoxb-...`) from OAuth & Permissions (needed to open modals)
 
 ### Vercel
 
 1. Ran `npx vercel login` to authenticate (OAuth 2.0 Device Flow opens browser)
 2. Ran `npx vercel --prod` from `slack-worker/` to create the project and deploy
-3. Set 5 environment variables in the Vercel dashboard (see table above)
+3. Set 6 environment variables in the Vercel dashboard (see table above)
 4. Redeployed after setting env vars
 
 ### GitHub
@@ -136,10 +149,26 @@ Key decisions:
 - **Raw body reading** — we read the request body manually (not via Vercel's auto-parser) to verify the Slack HMAC signature
 - **`node:crypto`** — Node.js built-in for HMAC-SHA256 signature verification
 
+## Interactive Features
+
+### Wizard Modal
+
+Type `/bmad` (with no arguments) to open an interactive form:
+- **Team ID** — pre-filled with default
+- **Prompt** — feature description or Jira key
+- **Target Repository** — pre-filled with default, override if needed
+- **Verbose mode** — checkbox to enable Slack thread streaming
+- **Skip nodes** — checkboxes for each pipeline node
+
+### Retry Button
+
+When a pipeline run fails, the Slack failure message includes a **Retry** button. Clicking it opens a modal where you can optionally add guidance (e.g., "fix the auth middleware") before re-dispatching.
+
 ## Command Reference
 
 | Command | Description |
 |---------|-------------|
+| `/bmad` | Open the interactive run wizard |
 | `/bmad run <team> "<prompt>"` | Start a new orchestrator run |
 | `/bmad run <team> "<prompt>" --verbose` | Start with verbose Slack thread updates |
 | `/bmad run <team> "<prompt>" --skip dev_story,qa_automation` | Skip specific pipeline nodes |

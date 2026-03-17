@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -178,9 +179,33 @@ def _wrap_with_slack_notifications(
 
         failure = out.get("failure_state") or out.get("failure_diagnostic")
         pr_url = out.get("pr_url")
+        blocks: list[dict[str, Any]] | None = None
 
         if failure:
             text = f":x: *{label}* — pipeline failed\n>{str(failure)[:200]}"
+            # Build retry button with run metadata
+            retry_meta = json.dumps({
+                "branch": state.get("branch_name") or "",
+                "team_id": team_id,
+                "target_repo": settings.github_repo or "",
+                "story_key": state.get("current_story_id") or "",
+            })
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text},
+                },
+                {
+                    "type": "actions",
+                    "elements": [{
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Retry"},
+                        "style": "primary",
+                        "action_id": "bmad_retry",
+                        "value": retry_meta,
+                    }],
+                },
+            ]
         elif pr_url:
             text = f":tada: *PR created:* {pr_url}"
         else:
@@ -189,12 +214,12 @@ def _wrap_with_slack_notifications(
         if thread_ts is None:
             # First step — create root message (run header), store ts
             header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
-            ts = slack.post_message(f"{header}\n{text}")
+            ts = slack.post_message(f"{header}\n{text}", blocks=blocks)
             if ts:
                 thread_ts_holder[0] = ts
                 return {**out, "slack_thread_ts": ts}
         else:
-            slack.post_thread_reply(thread_ts, text)
+            slack.post_thread_reply(thread_ts, text, blocks=blocks)
 
         return out
 

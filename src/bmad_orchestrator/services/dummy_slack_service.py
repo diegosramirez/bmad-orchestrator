@@ -41,7 +41,11 @@ class DummySlackService:
         with self._file.open("a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def post_thread_reply(self, thread_ts: str, text: str) -> None:
-        entry = {"thread_ts": thread_ts, "text": text, "reply": True}
+    def post_thread_reply(
+        self, thread_ts: str, text: str, blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {"thread_ts": thread_ts, "text": text, "reply": True}
+        if blocks:
+            entry["blocks"] = blocks
         with self._file.open("a") as f:
             f.write(json.dumps(entry) + "\n")
