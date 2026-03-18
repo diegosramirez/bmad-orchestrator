@@ -194,3 +194,9 @@ class JiraService:
         comment = self._client.comment(issue_key, comment_id)
         comment.update(body=body)
         logger.info("comment_updated", issue_key=issue_key, comment_id=comment_id)
+
+    @skip_if_dry_run(fake_return=None)
+    def set_story_branch_field(self, story_key: str, branch: str) -> None:
+        """Store the BMAD git branch in customfield_10145 (BMAD Branch) on the story."""
+        self._client.issue(story_key).update(fields={"customfield_10145": branch})
+        logger.info("story_branch_field_updated", story_key=story_key, branch=branch)

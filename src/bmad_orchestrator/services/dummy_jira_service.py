@@ -208,3 +208,7 @@ class DummyJiraService:
         if log_path.exists():
             log_path.write_text(body, encoding="utf-8")
             logger.info("dummy_comment_updated", issue_key=issue_key)
+
+    def set_story_branch_field(self, story_key: str, branch: str) -> None:
+        """No-op in dummy; real implementation updates customfield_10145."""
+        logger.info("dummy_set_story_branch_field", story_key=story_key, branch=branch)

@@ -20,6 +20,7 @@ from bmad_orchestrator.nodes.code_review import (
 )
 from bmad_orchestrator.nodes.commit_and_push import make_commit_and_push_node
 from bmad_orchestrator.nodes.create_or_correct_epic import make_create_or_correct_epic_node
+from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
 from bmad_orchestrator.nodes.create_pull_request import make_create_pull_request_node
 from bmad_orchestrator.nodes.create_story_tasks import make_create_story_tasks_node
 from bmad_orchestrator.nodes.detect_commands import make_detect_commands_node
@@ -56,6 +57,7 @@ NODE_LABELS: dict[str, str] = {
     "dev_story_fix_loop": "Dev story fix loop",
     "fail_with_state": "Fail with state",
     "commit_and_push": "Commit and push",
+    "update_jira_branch": "Update Jira branch field",
     "create_pull_request": "Create pull request",
 }
 
@@ -354,6 +356,7 @@ def build_graph(
     _node("dev_story_fix_loop", make_fix_loop_node(claude_agent, settings, on_event=on_event))
     _node("fail_with_state", make_fail_with_state_node(settings))
     _node("commit_and_push", make_commit_and_push_node(git, settings))
+    _node("update_jira_branch", make_update_jira_branch_node(jira, settings))
     _node("create_pull_request", make_create_pull_request_node(github, settings))
 
     # ── Linear edges ──────────────────────────────────────────────────────────
@@ -381,7 +384,8 @@ def build_graph(
     builder.add_edge("dev_story_fix_loop", "code_review")
 
     # ── Terminal edges ────────────────────────────────────────────────────────
-    builder.add_edge("commit_and_push", "create_pull_request")
+    builder.add_edge("commit_and_push", "update_jira_branch")
+    builder.add_edge("update_jira_branch", "create_pull_request")
     builder.add_edge("create_pull_request", END)
 
     # ── Checkpointer ─────────────────────────────────────────────────────────
