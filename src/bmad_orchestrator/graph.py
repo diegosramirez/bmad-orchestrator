@@ -169,7 +169,7 @@ def _wrap_with_slack_notifications(
     """
 
     def _wrapped(state: OrchestratorState) -> dict[str, Any]:
-        thread_ts = state.get("slack_thread_ts")
+        thread_ts = state.get("slack_thread_ts") or None
         # Keep the shared holder in sync for the verbose callback
         if thread_ts and thread_ts_holder[0] is None:
             thread_ts_holder[0] = thread_ts
@@ -439,7 +439,7 @@ def make_initial_state(
         execution_log=[],
         failure_state=None,
         failure_diagnostic=None,
-        slack_thread_ts=slack_thread_ts,
+        slack_thread_ts=slack_thread_ts or None,
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=guidance,

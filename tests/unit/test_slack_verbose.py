@@ -215,3 +215,69 @@ class TestWrapWithSlackNotificationsRefine:
         # blocks should be None (no branch → no refine button)
         blocks = call_args.kwargs.get("blocks")
         assert blocks is None
+
+
+class TestWrapWithSlackNotificationsThreading:
+    """Tests for Slack thread creation and continuation."""
+
+    def _make_settings(self, **overrides: object) -> Settings:
+        base = {
+            "anthropic_api_key": "sk-test",
+            "dummy_jira": True,
+            "dummy_github": True,
+            "slack_notify": True,
+            "slack_bot_token": "xoxb-test",
+            "slack_channel": "#test",
+        }
+        base.update(overrides)
+        return Settings(**base)  # type: ignore[arg-type]
+
+    def test_empty_string_thread_ts_treated_as_none(self) -> None:
+        """Empty string slack_thread_ts should create a root message, not a thread reply."""
+        slack = MagicMock()
+        slack.post_message.return_value = "new-ts-123"
+        settings = self._make_settings()
+
+        def ok_node(state: dict) -> dict:
+            return {}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "check_epic_state", ok_node, [None],
+        )
+        # Simulate state with empty string thread_ts (from workflow default "")
+        state = {"slack_thread_ts": "", "team_id": "SAM1", "input_prompt": "test"}
+        result = wrapped(state)
+
+        # Should post a root message, NOT a thread reply
+        slack.post_message.assert_called_once()
+        slack.post_thread_reply.assert_not_called()
+        assert result["slack_thread_ts"] == "new-ts-123"
+
+    def test_first_node_creates_root_and_second_threads(self) -> None:
+        """First node posts root message; second node posts thread reply."""
+        slack = MagicMock()
+        slack.post_message.return_value = "root-ts"
+        settings = self._make_settings()
+
+        def ok_node(state: dict) -> dict:
+            return {}
+
+        holder: list[str | None] = [None]
+        wrapped1 = _wrap_with_slack_notifications(
+            slack, settings, "check_epic_state", ok_node, holder,
+        )
+        wrapped2 = _wrap_with_slack_notifications(
+            slack, settings, "create_or_correct_epic", ok_node, holder,
+        )
+
+        # First node — no thread yet
+        state1 = {"team_id": "SAM1", "input_prompt": "test"}
+        result1 = wrapped1(state1)
+        assert result1["slack_thread_ts"] == "root-ts"
+        slack.post_message.assert_called_once()
+
+        # Second node — thread_ts propagated via state
+        state2 = {**state1, "slack_thread_ts": "root-ts"}
+        wrapped2(state2)
+        slack.post_thread_reply.assert_called_once()
+        assert slack.post_thread_reply.call_args[0][0] == "root-ts"
