@@ -206,9 +206,121 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
 
 // ── Modal definitions ────────────────────────────────────────────────────────
 
-function buildRunModal(): Record<string, unknown> {
-  const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
-  const defaultRepo = process.env.DEFAULT_TARGET_REPO || "";
+// Planning nodes run in both modes; execution nodes only apply to inline mode.
+const PLANNING_NODES = [
+  "check_epic_state", "create_or_correct_epic", "create_story_tasks",
+  "party_mode_refinement", "detect_commands",
+] as const;
+
+const EXECUTION_MODE_OPTIONS = [
+  {
+    text: { type: "plain_text" as const, text: "Inline (full pipeline)" },
+    description: { type: "plain_text" as const, text: "Plan, code, test, review, and create PR" },
+    value: "inline",
+  },
+  {
+    text: { type: "plain_text" as const, text: "GitHub Agent (plan + create Issue)" },
+    description: { type: "plain_text" as const, text: "Plan and create a GitHub Issue for an external agent" },
+    value: "github-agent",
+  },
+];
+
+interface RunModalState {
+  teamId?: string;
+  prompt?: string;
+  targetRepo?: string;
+}
+
+function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record<string, unknown> {
+  const defaultTeam = prefill?.teamId || process.env.DEFAULT_TEAM_ID || "SAM1";
+  const defaultPrompt = prefill?.prompt || "";
+  const defaultRepo = prefill?.targetRepo || process.env.DEFAULT_TARGET_REPO || "";
+
+  const selectedMode = EXECUTION_MODE_OPTIONS.find((o) => o.value === mode) || EXECUTION_MODE_OPTIONS[0];
+
+  const skipNodeNames = mode === "github-agent"
+    ? PLANNING_NODES
+    : SKIP_NODE_NAMES;
+
+  const blocks: Record<string, unknown>[] = [
+    {
+      type: "input",
+      block_id: "team_id",
+      label: { type: "plain_text", text: "Team ID" },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        initial_value: defaultTeam,
+      },
+    },
+    {
+      type: "input",
+      block_id: "prompt",
+      label: { type: "plain_text", text: "Prompt" },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        ...(defaultPrompt ? { initial_value: defaultPrompt } : {}),
+        placeholder: { type: "plain_text", text: "Feature description or Jira key (e.g. SAM1-54)" },
+      },
+    },
+    {
+      type: "input",
+      block_id: "target_repo",
+      optional: true,
+      label: { type: "plain_text", text: "Target Repository" },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        initial_value: defaultRepo,
+        placeholder: { type: "plain_text", text: "owner/repo" },
+      },
+    },
+    {
+      type: "input",
+      block_id: "options",
+      optional: true,
+      label: { type: "plain_text", text: "Options" },
+      element: {
+        type: "checkboxes",
+        action_id: "value",
+        options: [
+          {
+            text: { type: "plain_text", text: "Verbose mode" },
+            description: { type: "plain_text", text: "Stream agent events to Slack thread" },
+            value: "verbose",
+          },
+        ],
+      },
+    },
+    {
+      type: "input",
+      block_id: "execution_mode",
+      dispatch_action: true,
+      optional: true,
+      label: { type: "plain_text", text: "Execution Mode" },
+      element: {
+        type: "static_select",
+        action_id: "execution_mode_select",
+        initial_option: selectedMode,
+        options: EXECUTION_MODE_OPTIONS,
+      },
+    },
+    {
+      type: "input",
+      block_id: "skip_nodes",
+      optional: true,
+      label: { type: "plain_text", text: "Skip Nodes" },
+      element: {
+        type: "checkboxes",
+        action_id: "value",
+        options: skipNodeNames.map((name) => ({
+          text: { type: "plain_text", text: SKIP_NODE_LABELS[name] || name },
+          value: name,
+        })),
+      },
+    },
+  ];
 
   return {
     type: "modal",
@@ -216,95 +328,7 @@ function buildRunModal(): Record<string, unknown> {
     title: { type: "plain_text", text: "BMAD — New Run" },
     submit: { type: "plain_text", text: "Run" },
     close: { type: "plain_text", text: "Cancel" },
-    blocks: [
-      {
-        type: "input",
-        block_id: "team_id",
-        label: { type: "plain_text", text: "Team ID" },
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          initial_value: defaultTeam,
-        },
-      },
-      {
-        type: "input",
-        block_id: "prompt",
-        label: { type: "plain_text", text: "Prompt" },
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          placeholder: { type: "plain_text", text: 'Feature description or Jira key (e.g. SAM1-54)' },
-        },
-      },
-      {
-        type: "input",
-        block_id: "target_repo",
-        optional: true,
-        label: { type: "plain_text", text: "Target Repository" },
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          initial_value: defaultRepo,
-          placeholder: { type: "plain_text", text: "owner/repo" },
-        },
-      },
-      {
-        type: "input",
-        block_id: "options",
-        optional: true,
-        label: { type: "plain_text", text: "Options" },
-        element: {
-          type: "checkboxes",
-          action_id: "value",
-          options: [
-            {
-              text: { type: "plain_text", text: "Verbose mode" },
-              description: { type: "plain_text", text: "Stream agent events to Slack thread" },
-              value: "verbose",
-            },
-          ],
-        },
-      },
-      {
-        type: "input",
-        block_id: "execution_mode",
-        optional: true,
-        label: { type: "plain_text", text: "Execution Mode" },
-        element: {
-          type: "static_select",
-          action_id: "value",
-          initial_option: {
-            text: { type: "plain_text", text: "Inline (full pipeline)" },
-            value: "inline",
-          },
-          options: [
-            {
-              text: { type: "plain_text", text: "Inline (full pipeline)" },
-              value: "inline",
-            },
-            {
-              text: { type: "plain_text", text: "GitHub Agent (plan + create Issue)" },
-              value: "github-agent",
-            },
-          ],
-        },
-      },
-      {
-        type: "input",
-        block_id: "skip_nodes",
-        optional: true,
-        label: { type: "plain_text", text: "Skip Nodes" },
-        element: {
-          type: "checkboxes",
-          action_id: "value",
-          options: SKIP_NODE_NAMES.map((name) => ({
-            text: { type: "plain_text", text: SKIP_NODE_LABELS[name] || name },
-            value: name,
-          })),
-        },
-      },
-    ],
+    blocks,
   };
 }
 
@@ -451,6 +475,29 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
     return;
   }
 
+  // Execution mode changed → rebuild modal with correct skip nodes
+  if (action.action_id === "execution_mode_select") {
+    const selectedMode = action.selected_option?.value || "inline";
+    const viewId = payload.view?.id;
+    const viewHash = payload.view?.hash;
+    if (viewId) {
+      // Preserve user's current input values across the rebuild
+      const vals = payload.view?.state?.values || {};
+      const prefill: RunModalState = {
+        teamId: vals.team_id?.value?.value || undefined,
+        prompt: vals.prompt?.value?.value || undefined,
+        targetRepo: vals.target_repo?.value?.value || undefined,
+      };
+      await slackApi("views.update", {
+        view_id: viewId,
+        hash: viewHash,
+        view: buildRunModal(selectedMode, prefill),
+      });
+    }
+    res.status(200).send("");
+    return;
+  }
+
   // Both retry and refine follow the same pattern: parse meta → open modal
   let modalView: Record<string, unknown> | null = null;
   if (action.action_id === "bmad_retry") {
@@ -503,7 +550,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const selectedOptions = values.options?.value?.selected_options || [];
     const verbose = selectedOptions.some((o: any) => o.value === "verbose");
     const skipNodes = (values.skip_nodes?.value?.selected_options || []).map((o: any) => o.value);
-    const executionMode = values.execution_mode?.value?.selected_option?.value || "inline";
+    const executionMode = values.execution_mode?.execution_mode_select?.selected_option?.value || "inline";
 
     const cmd: ParsedCommand = {
       action: "run",

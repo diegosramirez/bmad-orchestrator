@@ -103,6 +103,20 @@ class GitHubService:
         logger.info("pr_created", url=url)
         return url
 
+    def _ensure_labels_exist(self, repo: str, labels: list[str]) -> list[str]:
+        """Create labels that don't exist on the repo. Return labels that are usable."""
+        usable: list[str] = []
+        for label in labels:
+            try:
+                _run_gh(
+                    ["label", "create", label, "--repo", repo, "--force"],
+                    self.settings,
+                )
+                usable.append(label)
+            except subprocess.CalledProcessError:
+                logger.warning("label_create_failed", label=label)
+        return usable
+
     @skip_if_dry_run(fake_return=("https://github.com/dry-run/issues/0", 0))
     def create_issue(
         self,
@@ -122,8 +136,10 @@ class GitHubService:
             "--body",
             body,
         ]
-        for label in labels or []:
-            args.extend(["--label", label])
+        if labels:
+            usable = self._ensure_labels_exist(repo, labels)
+            for label in usable:
+                args.extend(["--label", label])
 
         result = _run_gh(args, self.settings)
         url = result.stdout.strip()
