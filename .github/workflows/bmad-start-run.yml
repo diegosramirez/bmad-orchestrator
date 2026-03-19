@@ -104,6 +104,11 @@ on:
         description: "Auto-execute: add bmad-execute label to trigger immediate code generation"
         type: boolean
         default: false
+      code_agent:
+        description: "Code agent: inline (BMAD pipeline) or copilot (GitHub Copilot)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   orchestrator-run:
@@ -137,6 +142,7 @@ jobs:
       # ── Orchestrator settings ──────────────────────────────────────────
       BMAD_EXECUTION_MODE: ${{ inputs.execution_mode }}
       BMAD_AUTO_EXECUTE_ISSUE: ${{ inputs.auto_execute_issue }}
+      BMAD_CODE_AGENT: ${{ inputs.code_agent }}
       BMAD_DRAFT_PR: "true"
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000"
 

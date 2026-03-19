@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # bmad-issue-executor workflow.  When False (default), only the
     # "bmad-orchestrated" label is added and a human must add "bmad-execute".
     auto_execute_issue: bool = False
+    # Which agent generates code from GitHub Issues: "inline" (BMAD pipeline)
+    # or "copilot" (GitHub Copilot Coding Agent).  Empty string = use repo default.
+    code_agent: str = ""
 
     # ── Dummy/Local mode ──────────────────────────────────────────────────────
     dummy_jira: bool = False

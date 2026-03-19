@@ -41,15 +41,20 @@ jobs:
           TEAM_ID=$(echo "$BODY" | sed -n 's/.*<!-- bmad:team_id=\([^ ]*\) -->.*/\1/p')
           STORY_KEY=$(echo "$BODY" | sed -n 's/.*<!-- bmad:story_key=\([^ ]*\) -->.*/\1/p')
           BASE_BRANCH=$(echo "$BODY" | sed -n 's/.*<!-- bmad:base_branch=\([^ ]*\) -->.*/\1/p')
+          CODE_AGENT=$(echo "$BODY" | sed -n 's/.*<!-- bmad:code_agent=\([^ ]*\) -->.*/\1/p')
 
           echo "target_repo=${TARGET_REPO}" >> "$GITHUB_OUTPUT"
           echo "team_id=${TEAM_ID:-unknown}" >> "$GITHUB_OUTPUT"
           echo "story_key=${STORY_KEY}" >> "$GITHUB_OUTPUT"
           echo "base_branch=${BASE_BRANCH:-main}" >> "$GITHUB_OUTPUT"
 
+          # Priority: issue metadata > repo variable > default (inline)
+          AGENT="${CODE_AGENT:-${{ vars.BMAD_CODE_AGENT }}}"
+          echo "code_agent=${AGENT:-inline}" >> "$GITHUB_OUTPUT"
+
       # ── Path A: BMAD inline pipeline (default) ──────────────────────────────
       - name: Dispatch BMAD inline pipeline
-        if: vars.BMAD_CODE_AGENT != 'copilot'
+        if: steps.meta.outputs.code_agent != 'copilot'
         run: |
           EXTRA_FLAGS=""
           if [ -n "${{ steps.meta.outputs.story_key }}" ]; then
@@ -71,7 +76,7 @@ jobs:
             -f extra_flags="$EXTRA_FLAGS"
 
       - name: Post inline dispatch confirmation
-        if: vars.BMAD_CODE_AGENT != 'copilot'
+        if: steps.meta.outputs.code_agent != 'copilot'
         run: |
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
@@ -86,14 +91,14 @@ jobs:
 
       # ── Path B: GitHub Copilot Coding Agent ─────────────────────────────────
       - name: Assign to GitHub Copilot
-        if: vars.BMAD_CODE_AGENT == 'copilot'
+        if: steps.meta.outputs.code_agent == 'copilot'
         run: |
           gh issue edit "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
             --add-assignee "copilot"
 
       - name: Post Copilot assignment confirmation
-        if: vars.BMAD_CODE_AGENT == 'copilot'
+        if: steps.meta.outputs.code_agent == 'copilot'
         run: |
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \

@@ -74,6 +74,8 @@ class OrchestratorState(TypedDict):
     github_issue_number: int | None
     # When True, create_github_issue adds "bmad-execute" label for auto-execution.
     auto_execute_issue: bool
+    # Which agent generates code: "inline", "copilot", or "" (repo default).
+    code_agent: str
 
     # ── Review loop ───────────────────────────────────────────────────────────
     review_loop_count: int

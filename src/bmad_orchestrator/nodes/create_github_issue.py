@@ -121,12 +121,17 @@ def make_create_github_issue_node(
         constraints = "\n\n".join(constraints_parts) if constraints_parts else "- None specified"
 
         # Hidden metadata for issue-to-code bridge (parsed by bmad-issue-executor.yml)
+        code_agent = state.get("code_agent") or settings.code_agent
         metadata_lines = [
             f"<!-- bmad:target_repo={settings.github_repo or ''} -->",
             f"<!-- bmad:team_id={team_id} -->",
             f"<!-- bmad:story_key={story_id} -->",
             f"<!-- bmad:base_branch={settings.github_base_branch} -->",
         ]
+        if code_agent:
+            metadata_lines.append(
+                f"<!-- bmad:code_agent={code_agent} -->"
+            )
         metadata = "\n".join(metadata_lines)
 
         body = _ISSUE_BODY_TEMPLATE.format(

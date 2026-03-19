@@ -234,6 +234,36 @@ def test_auto_execute_adds_bmad_execute_label_from_settings(mock_github, mock_ji
     assert "bmad-execute" in kwargs["labels"]
 
 
+def test_code_agent_metadata_embedded_when_set(settings, mock_github, mock_jira):
+    """When code_agent is set in state, it should appear in hidden metadata."""
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, settings)
+    node(make_state(code_agent="copilot"))
+
+    _, kwargs = mock_github.create_issue.call_args
+    body = kwargs["body"]
+    assert "<!-- bmad:code_agent=copilot -->" in body
+
+
+def test_code_agent_metadata_absent_when_empty(settings, mock_github, mock_jira):
+    """When code_agent is empty (default), no code_agent metadata should be in body."""
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, settings)
+    node(make_state())
+
+    _, kwargs = mock_github.create_issue.call_args
+    body = kwargs["body"]
+    assert "bmad:code_agent" not in body
+
+
 def test_no_auto_execute_label_by_default(settings, mock_github, mock_jira):
     """By default, bmad-execute label should NOT be present."""
     mock_github.create_issue.return_value = (

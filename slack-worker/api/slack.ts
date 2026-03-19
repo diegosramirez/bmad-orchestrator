@@ -13,6 +13,7 @@ interface ParsedCommand {
   slackThreadTs?: string;
   executionMode?: string;
   autoExecuteIssue?: boolean;
+  codeAgent?: string;
 }
 
 interface RetryMeta {
@@ -171,6 +172,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
   if (cmd.executionMode) inputs.execution_mode = cmd.executionMode;
   if (cmd.autoExecuteIssue) inputs.auto_execute_issue = "true";
+  if (cmd.codeAgent) inputs.code_agent = cmd.codeAgent;
 
   if (cmd.action === "retry") {
     if (cmd.prompt) inputs.guidance = cmd.prompt;
@@ -213,6 +215,19 @@ const PLANNING_NODES = [
   "check_epic_state", "create_or_correct_epic", "create_story_tasks",
   "party_mode_refinement", "detect_commands",
 ] as const;
+
+const CODE_AGENT_OPTIONS = [
+  {
+    text: { type: "plain_text" as const, text: "BMAD Agents (inline pipeline)" },
+    description: { type: "plain_text" as const, text: "Claude Agent SDK: dev, QA, code review, PR" },
+    value: "inline",
+  },
+  {
+    text: { type: "plain_text" as const, text: "GitHub Copilot" },
+    description: { type: "plain_text" as const, text: "Assign issue to Copilot Coding Agent" },
+    value: "copilot",
+  },
+];
 
 const EXECUTION_MODE_OPTIONS = [
   {
@@ -310,25 +325,39 @@ function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record
     },
   ];
 
-  // Auto-execute checkbox: only shown when GitHub Agent mode is selected
+  // GitHub Agent options: only shown when GitHub Agent mode is selected
   if (mode === "github-agent") {
-    blocks.push({
-      type: "input",
-      block_id: "auto_execute",
-      optional: true,
-      label: { type: "plain_text", text: "Auto-Execute" },
-      element: {
-        type: "checkboxes",
-        action_id: "value",
-        options: [
-          {
-            text: { type: "plain_text", text: "Auto-execute issue" },
-            description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
-            value: "auto_execute",
-          },
-        ],
+    blocks.push(
+      {
+        type: "input",
+        block_id: "code_agent",
+        optional: true,
+        label: { type: "plain_text", text: "Code Agent" },
+        element: {
+          type: "static_select",
+          action_id: "value",
+          initial_option: CODE_AGENT_OPTIONS[0],
+          options: CODE_AGENT_OPTIONS,
+        },
       },
-    });
+      {
+        type: "input",
+        block_id: "auto_execute",
+        optional: true,
+        label: { type: "plain_text", text: "Auto-Execute" },
+        element: {
+          type: "checkboxes",
+          action_id: "value",
+          options: [
+            {
+              text: { type: "plain_text", text: "Auto-execute issue" },
+              description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
+              value: "auto_execute",
+            },
+          ],
+        },
+      },
+    );
   }
 
   blocks.push({
@@ -577,6 +606,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const executionMode = values.execution_mode?.execution_mode_select?.selected_option?.value || "inline";
     const autoExecuteOptions = values.auto_execute?.value?.selected_options || [];
     const autoExecuteIssue = autoExecuteOptions.some((o: any) => o.value === "auto_execute");
+    const codeAgent = values.code_agent?.value?.selected_option?.value || undefined;
 
     const cmd: ParsedCommand = {
       action: "run",
@@ -588,6 +618,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       targetRepo,
       executionMode,
       autoExecuteIssue,
+      codeAgent,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent
