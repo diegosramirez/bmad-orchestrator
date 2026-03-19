@@ -177,6 +177,43 @@ def make_create_github_issue_node(
                 f"GitHub Issue created for coding agent: {url}",
             )
 
+        # Auto-execute: dispatch the inline pipeline directly
+        auto_exec = state.get("auto_execute_issue") or settings.auto_execute_issue
+        if auto_exec and not settings.dry_run:
+            effective_agent = code_agent or "inline"
+            if effective_agent == "copilot":
+                # Assign to Copilot — use gh issue edit
+                github.add_issue_comment(
+                    issue_number,
+                    "Assigned to GitHub Copilot Coding Agent.",
+                )
+                logger.info("copilot_assigned", issue_number=issue_number)
+            else:
+                # Dispatch bmad-start-run.yml in inline mode
+                dispatch_inputs: dict[str, str] = {
+                    "target_repo": settings.github_repo or "",
+                    "base_branch": settings.github_base_branch,
+                    "team_id": team_id,
+                    "prompt": story_id,
+                    "execution_mode": "inline",
+                    "skip_check_epic_state": "true",
+                    "skip_create_or_correct_epic": "true",
+                    "skip_create_story_tasks": "true",
+                    "skip_party_mode_refinement": "true",
+                    "skip_detect_commands": "true",
+                }
+                if story_id != "BMAD":
+                    dispatch_inputs["extra_flags"] = f"--story-key {story_id}"
+                github.dispatch_workflow(
+                    "bmad-start-run.yml",
+                    dispatch_inputs,
+                )
+                github.add_issue_comment(
+                    issue_number,
+                    "BMAD inline pipeline dispatched. "
+                    "All planning nodes skipped.",
+                )
+
         return {
             "github_issue_url": url,
             "github_issue_number": issue_number,

@@ -184,6 +184,24 @@ class GitHubService:
         )
 
     @skip_if_dry_run(fake_return=None)
+    def dispatch_workflow(
+        self,
+        workflow: str,
+        inputs: dict[str, str],
+        repo: str | None = None,
+    ) -> None:
+        """Dispatch a GitHub Actions workflow via ``gh workflow run``."""
+        target = repo or os.environ.get("GITHUB_REPOSITORY", "")
+        if not target:
+            logger.warning("dispatch_workflow_skipped", reason="no repo")
+            return
+        args = ["workflow", "run", workflow, "--repo", target]
+        for key, val in inputs.items():
+            args.extend(["-f", f"{key}={val}"])
+        _run_gh(args, self.settings)
+        logger.info("workflow_dispatched", workflow=workflow, repo=target)
+
+    @skip_if_dry_run(fake_return=None)
     def close_issue(self, issue_number: int) -> None:
         """Close a GitHub issue."""
         repo = self.settings.github_repo or ""

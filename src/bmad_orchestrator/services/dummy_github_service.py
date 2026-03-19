@@ -144,6 +144,19 @@ class DummyGitHubService:
             ts = datetime.now(UTC).isoformat()
             f.write(f"\n\n---\n**Comment** ({ts}):\n{body}\n")
 
+    def dispatch_workflow(
+        self,
+        workflow: str,
+        inputs: dict[str, str],
+        repo: str | None = None,
+    ) -> None:
+        logger.info(
+            "dummy_workflow_dispatched",
+            workflow=workflow,
+            repo=repo,
+            inputs=list(inputs.keys()),
+        )
+
     def close_issue(self, issue_number: int) -> None:
         path = self._issues_base / f"DUMMY-ISSUE-{issue_number}.md"
         if not path.exists():

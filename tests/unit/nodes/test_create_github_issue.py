@@ -264,6 +264,71 @@ def test_code_agent_metadata_absent_when_empty(settings, mock_github, mock_jira)
     assert "bmad:code_agent" not in body
 
 
+def test_auto_execute_dispatches_workflow_inline(mock_github, mock_jira):
+    """When auto-execute is enabled with inline agent, dispatch_workflow is called."""
+    from bmad_orchestrator.config import Settings
+
+    non_dry_settings = Settings(
+        anthropic_api_key="test-key",  # type: ignore[arg-type]
+        jira_base_url="https://test.atlassian.net",
+        jira_username="test@test.com",
+        jira_api_token="test-token",  # type: ignore[arg-type]
+        jira_project_key="TEST",
+        github_repo="org/repo",
+        dry_run=False,
+    )
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, non_dry_settings)
+    node(make_state(
+        auto_execute_issue=True,
+        code_agent="inline",
+        current_story_id="TEST-10",
+    ))
+
+    mock_github.dispatch_workflow.assert_called_once()
+    args = mock_github.dispatch_workflow.call_args
+    assert args[0][0] == "bmad-start-run.yml"
+    inputs = args[0][1]
+    assert inputs["execution_mode"] == "inline"
+    assert inputs["skip_check_epic_state"] == "true"
+    assert "--story-key TEST-10" in inputs["extra_flags"]
+    mock_github.add_issue_comment.assert_called()
+
+
+def test_auto_execute_copilot_does_not_dispatch_workflow(mock_github, mock_jira):
+    """When auto-execute is enabled with copilot agent, no workflow dispatch."""
+    from bmad_orchestrator.config import Settings
+
+    non_dry_settings = Settings(
+        anthropic_api_key="test-key",  # type: ignore[arg-type]
+        jira_base_url="https://test.atlassian.net",
+        jira_username="test@test.com",
+        jira_api_token="test-token",  # type: ignore[arg-type]
+        jira_project_key="TEST",
+        github_repo="org/repo",
+        dry_run=False,
+    )
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, non_dry_settings)
+    node(make_state(
+        auto_execute_issue=True,
+        code_agent="copilot",
+        current_story_id="TEST-10",
+    ))
+
+    mock_github.dispatch_workflow.assert_not_called()
+    # Should post a comment about Copilot assignment
+    mock_github.add_issue_comment.assert_called_once()
+
+
 def test_no_auto_execute_label_by_default(settings, mock_github, mock_jira):
     """By default, bmad-execute label should NOT be present."""
     mock_github.create_issue.return_value = (
