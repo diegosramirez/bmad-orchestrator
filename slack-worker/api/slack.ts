@@ -248,7 +248,7 @@ interface RunModalState {
   targetRepo?: string;
 }
 
-function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record<string, unknown> {
+function buildRunModal(mode: string = "inline", prefill?: RunModalState, autoExecute: boolean = false): Record<string, unknown> {
   const defaultTeam = prefill?.teamId || process.env.DEFAULT_TEAM_ID || "SAM1";
   const defaultPrompt = prefill?.prompt || "";
   const defaultRepo = prefill?.targetRepo || process.env.DEFAULT_TARGET_REPO || "";
@@ -327,8 +327,35 @@ function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record
 
   // GitHub Agent options: only shown when GitHub Agent mode is selected
   if (mode === "github-agent") {
-    blocks.push(
-      {
+    blocks.push({
+      type: "input",
+      block_id: "auto_execute",
+      dispatch_action: true,
+      optional: true,
+      label: { type: "plain_text", text: "Auto-Execute" },
+      element: {
+        type: "checkboxes",
+        action_id: "auto_execute_toggle",
+        options: [
+          {
+            text: { type: "plain_text", text: "Auto-execute issue" },
+            description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
+            value: "auto_execute",
+          },
+        ],
+        ...(autoExecute ? {
+          initial_options: [{
+            text: { type: "plain_text", text: "Auto-execute issue" },
+            description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
+            value: "auto_execute",
+          }],
+        } : {}),
+      },
+    });
+
+    // Code agent dropdown: only shown when auto-execute is checked
+    if (autoExecute) {
+      blocks.push({
         type: "input",
         block_id: "code_agent",
         optional: true,
@@ -339,25 +366,8 @@ function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record
           initial_option: CODE_AGENT_OPTIONS[0],
           options: CODE_AGENT_OPTIONS,
         },
-      },
-      {
-        type: "input",
-        block_id: "auto_execute",
-        optional: true,
-        label: { type: "plain_text", text: "Auto-Execute" },
-        element: {
-          type: "checkboxes",
-          action_id: "value",
-          options: [
-            {
-              text: { type: "plain_text", text: "Auto-execute issue" },
-              description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
-              value: "auto_execute",
-            },
-          ],
-        },
-      },
-    );
+      });
+    }
   }
 
   blocks.push({
@@ -528,23 +538,37 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
     return;
   }
 
-  // Execution mode changed → rebuild modal with correct skip nodes
-  if (action.action_id === "execution_mode_select") {
-    const selectedMode = action.selected_option?.value || "inline";
+  // Execution mode or auto-execute changed → rebuild modal
+  if (action.action_id === "execution_mode_select" || action.action_id === "auto_execute_toggle") {
     const viewId = payload.view?.id;
     const viewHash = payload.view?.hash;
     if (viewId) {
-      // Preserve user's current input values across the rebuild
       const vals = payload.view?.state?.values || {};
       const prefill: RunModalState = {
         teamId: vals.team_id?.value?.value || undefined,
         prompt: vals.prompt?.value?.value || undefined,
         targetRepo: vals.target_repo?.value?.value || undefined,
       };
+
+      // Determine current mode and auto-execute state
+      let selectedMode: string;
+      let isAutoExecute: boolean;
+
+      if (action.action_id === "execution_mode_select") {
+        selectedMode = action.selected_option?.value || "inline";
+        // Reset auto-execute when switching modes
+        isAutoExecute = false;
+      } else {
+        // auto_execute_toggle — read current mode from state
+        selectedMode = vals.execution_mode?.execution_mode_select?.selected_option?.value || "inline";
+        const selected = action.selected_options || [];
+        isAutoExecute = selected.some((o: any) => o.value === "auto_execute");
+      }
+
       await slackApi("views.update", {
         view_id: viewId,
         hash: viewHash,
-        view: buildRunModal(selectedMode, prefill),
+        view: buildRunModal(selectedMode, prefill, isAutoExecute),
       });
     }
     res.status(200).send("");
@@ -604,7 +628,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const verbose = selectedOptions.some((o: any) => o.value === "verbose");
     const skipNodes = (values.skip_nodes?.value?.selected_options || []).map((o: any) => o.value);
     const executionMode = values.execution_mode?.execution_mode_select?.selected_option?.value || "inline";
-    const autoExecuteOptions = values.auto_execute?.value?.selected_options || [];
+    const autoExecuteOptions = values.auto_execute?.auto_execute_toggle?.selected_options || [];
     const autoExecuteIssue = autoExecuteOptions.some((o: any) => o.value === "auto_execute");
     const codeAgent = values.code_agent?.value?.selected_option?.value || undefined;
 
