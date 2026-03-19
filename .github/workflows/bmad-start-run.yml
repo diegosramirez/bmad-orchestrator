@@ -95,6 +95,11 @@ on:
         required: false
         default: ""
         type: string
+      execution_mode:
+        description: "Execution mode: inline (full pipeline) or github-agent (plan + create Issue)"
+        required: false
+        default: "inline"
+        type: string
 
 jobs:
   orchestrator-run:
@@ -126,6 +131,7 @@ jobs:
       BMAD_SLACK_THREAD_TS: ${{ inputs.slack_thread_ts }}
 
       # ── Orchestrator settings ──────────────────────────────────────────
+      BMAD_EXECUTION_MODE: ${{ inputs.execution_mode }}
       BMAD_DRAFT_PR: "true"
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000"
 

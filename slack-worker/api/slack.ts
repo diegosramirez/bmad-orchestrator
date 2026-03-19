@@ -11,6 +11,7 @@ interface ParsedCommand {
   branch: string;
   targetRepo: string;
   slackThreadTs?: string;
+  executionMode?: string;
 }
 
 interface RetryMeta {
@@ -167,6 +168,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
 
   if (cmd.branch) inputs.branch = cmd.branch;
   if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
+  if (cmd.executionMode) inputs.execution_mode = cmd.executionMode;
 
   if (cmd.action === "retry") {
     if (cmd.prompt) inputs.guidance = cmd.prompt;
@@ -260,6 +262,30 @@ function buildRunModal(): Record<string, unknown> {
               text: { type: "plain_text", text: "Verbose mode" },
               description: { type: "plain_text", text: "Stream agent events to Slack thread" },
               value: "verbose",
+            },
+          ],
+        },
+      },
+      {
+        type: "input",
+        block_id: "execution_mode",
+        optional: true,
+        label: { type: "plain_text", text: "Execution Mode" },
+        element: {
+          type: "static_select",
+          action_id: "value",
+          initial_option: {
+            text: { type: "plain_text", text: "Inline (full pipeline)" },
+            value: "inline",
+          },
+          options: [
+            {
+              text: { type: "plain_text", text: "Inline (full pipeline)" },
+              value: "inline",
+            },
+            {
+              text: { type: "plain_text", text: "GitHub Agent (plan + create Issue)" },
+              value: "github-agent",
             },
           ],
         },
@@ -477,6 +503,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const selectedOptions = values.options?.value?.selected_options || [];
     const verbose = selectedOptions.some((o: any) => o.value === "verbose");
     const skipNodes = (values.skip_nodes?.value?.selected_options || []).map((o: any) => o.value);
+    const executionMode = values.execution_mode?.value?.selected_option?.value || "inline";
 
     const cmd: ParsedCommand = {
       action: "run",
@@ -486,6 +513,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       skipNodes,
       branch: "",
       targetRepo,
+      executionMode,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent
