@@ -46,6 +46,8 @@ _ISSUE_BODY_TEMPLATE = """\
 
 ---
 *Created by BMAD Autonomous Engineering Orchestrator* 🤖
+
+{metadata}
 """
 
 
@@ -118,6 +120,15 @@ def make_create_github_issue_node(
             constraints_parts.append(f"**Dev Guidelines:**\n{dev_guidelines[:800]}")
         constraints = "\n\n".join(constraints_parts) if constraints_parts else "- None specified"
 
+        # Hidden metadata for issue-to-code bridge (parsed by bmad-issue-executor.yml)
+        metadata_lines = [
+            f"<!-- bmad:target_repo={settings.github_repo or ''} -->",
+            f"<!-- bmad:team_id={team_id} -->",
+            f"<!-- bmad:story_key={story_id} -->",
+            f"<!-- bmad:base_branch={settings.github_base_branch} -->",
+        ]
+        metadata = "\n".join(metadata_lines)
+
         body = _ISSUE_BODY_TEMPLATE.format(
             jira_link=jira_link,
             story_content=story_content,
@@ -131,6 +142,7 @@ def make_create_github_issue_node(
                 state.get("lint_commands") or [],
             ),
             constraints=constraints,
+            metadata=metadata,
         )
 
         # GitHub hard limit is 65 536 chars
@@ -140,6 +152,10 @@ def make_create_github_issue_node(
 
         title = f"[{team_id}] {input_prompt[:80]} [{story_id}]"
         labels = ["bmad-orchestrated", team_id]
+
+        # Auto-execute: add bmad-execute label to trigger immediate code generation
+        if state.get("auto_execute_issue") or settings.auto_execute_issue:
+            labels.append("bmad-execute")
 
         url, issue_number = github.create_issue(
             title=title,

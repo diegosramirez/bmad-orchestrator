@@ -1,0 +1,100 @@
+name: "BMAD Orchestrator — Issue Executor"
+
+# Triggers when a label is added to an issue.
+# The "bmad-execute" label kicks off code generation for BMAD-created issues.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  actions: write
+
+jobs:
+  dispatch-from-issue:
+    name: Parse issue and dispatch code generation
+    if: github.event.label.name == 'bmad-execute'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+
+    steps:
+      - name: Verify issue has bmad-orchestrated label
+        run: |
+          LABELS=$(gh issue view "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" --json labels --jq '.labels[].name')
+          if ! echo "$LABELS" | grep -q "bmad-orchestrated"; then
+            echo "Issue does not have bmad-orchestrated label — skipping."
+            exit 0
+          fi
+
+      - name: Extract issue metadata
+        id: meta
+        run: |
+          BODY=$(gh issue view "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" --json body --jq '.body')
+
+          # Parse hidden HTML comment metadata embedded by create_github_issue node
+          TARGET_REPO=$(echo "$BODY" | sed -n 's/.*<!-- bmad:target_repo=\([^ ]*\) -->.*/\1/p')
+          TEAM_ID=$(echo "$BODY" | sed -n 's/.*<!-- bmad:team_id=\([^ ]*\) -->.*/\1/p')
+          STORY_KEY=$(echo "$BODY" | sed -n 's/.*<!-- bmad:story_key=\([^ ]*\) -->.*/\1/p')
+          BASE_BRANCH=$(echo "$BODY" | sed -n 's/.*<!-- bmad:base_branch=\([^ ]*\) -->.*/\1/p')
+
+          echo "target_repo=${TARGET_REPO}" >> "$GITHUB_OUTPUT"
+          echo "team_id=${TEAM_ID:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "story_key=${STORY_KEY}" >> "$GITHUB_OUTPUT"
+          echo "base_branch=${BASE_BRANCH:-main}" >> "$GITHUB_OUTPUT"
+
+      # ── Path A: BMAD inline pipeline (default) ──────────────────────────────
+      - name: Dispatch BMAD inline pipeline
+        if: vars.BMAD_CODE_AGENT != 'copilot'
+        run: |
+          EXTRA_FLAGS=""
+          if [ -n "${{ steps.meta.outputs.story_key }}" ]; then
+            EXTRA_FLAGS="--story-key ${{ steps.meta.outputs.story_key }}"
+          fi
+
+          gh workflow run bmad-start-run.yml \
+            --repo "${{ github.repository }}" \
+            -f target_repo="${{ steps.meta.outputs.target_repo }}" \
+            -f base_branch="${{ steps.meta.outputs.base_branch }}" \
+            -f team_id="${{ steps.meta.outputs.team_id }}" \
+            -f prompt="${{ steps.meta.outputs.story_key }}" \
+            -f execution_mode="inline" \
+            -f skip_check_epic_state=true \
+            -f skip_create_or_correct_epic=true \
+            -f skip_create_story_tasks=true \
+            -f skip_party_mode_refinement=true \
+            -f skip_detect_commands=true \
+            -f extra_flags="$EXTRA_FLAGS"
+
+      - name: Post inline dispatch confirmation
+        if: vars.BMAD_CODE_AGENT != 'copilot'
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "$(cat <<'EOF'
+          :rocket: **BMAD inline pipeline dispatched.**
+
+          All planning nodes skipped — running code generation, QA, review, and PR creation.
+
+          [View workflow runs](https://github.com/${{ github.repository }}/actions/workflows/bmad-start-run.yml)
+          EOF
+          )"
+
+      # ── Path B: GitHub Copilot Coding Agent ─────────────────────────────────
+      - name: Assign to GitHub Copilot
+        if: vars.BMAD_CODE_AGENT == 'copilot'
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --add-assignee "copilot"
+
+      - name: Post Copilot assignment confirmation
+        if: vars.BMAD_CODE_AGENT == 'copilot'
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body ":robot: Assigned to GitHub Copilot Coding Agent."

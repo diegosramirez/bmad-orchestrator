@@ -72,6 +72,8 @@ class OrchestratorState(TypedDict):
     # ── GitHub Issue (github-agent execution mode) ─────────────────────────
     github_issue_url: str | None
     github_issue_number: int | None
+    # When True, create_github_issue adds "bmad-execute" label for auto-execution.
+    auto_execute_issue: bool
 
     # ── Review loop ───────────────────────────────────────────────────────────
     review_loop_count: int

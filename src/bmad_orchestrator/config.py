@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
     # "github-agent" creates a GitHub Issue and terminates (external agent takes over).
     execution_mode: str = "inline"
+    # When True in github-agent mode, the create_github_issue node adds a
+    # "bmad-execute" label that triggers immediate code generation via the
+    # bmad-issue-executor workflow.  When False (default), only the
+    # "bmad-orchestrated" label is added and a human must add "bmad-execute".
+    auto_execute_issue: bool = False
 
     # ── Dummy/Local mode ──────────────────────────────────────────────────────
     dummy_jira: bool = False

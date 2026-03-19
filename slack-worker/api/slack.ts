@@ -12,6 +12,7 @@ interface ParsedCommand {
   targetRepo: string;
   slackThreadTs?: string;
   executionMode?: string;
+  autoExecuteIssue?: boolean;
 }
 
 interface RetryMeta {
@@ -169,6 +170,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   if (cmd.branch) inputs.branch = cmd.branch;
   if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
   if (cmd.executionMode) inputs.execution_mode = cmd.executionMode;
+  if (cmd.autoExecuteIssue) inputs.auto_execute_issue = "true";
 
   if (cmd.action === "retry") {
     if (cmd.prompt) inputs.guidance = cmd.prompt;
@@ -306,21 +308,43 @@ function buildRunModal(mode: string = "inline", prefill?: RunModalState): Record
         options: EXECUTION_MODE_OPTIONS,
       },
     },
-    {
+  ];
+
+  // Auto-execute checkbox: only shown when GitHub Agent mode is selected
+  if (mode === "github-agent") {
+    blocks.push({
       type: "input",
-      block_id: "skip_nodes",
+      block_id: "auto_execute",
       optional: true,
-      label: { type: "plain_text", text: "Skip Nodes" },
+      label: { type: "plain_text", text: "Auto-Execute" },
       element: {
         type: "checkboxes",
         action_id: "value",
-        options: skipNodeNames.map((name) => ({
-          text: { type: "plain_text", text: SKIP_NODE_LABELS[name] || name },
-          value: name,
-        })),
+        options: [
+          {
+            text: { type: "plain_text", text: "Auto-execute issue" },
+            description: { type: "plain_text", text: "Skip review — trigger code generation immediately after issue creation" },
+            value: "auto_execute",
+          },
+        ],
       },
+    });
+  }
+
+  blocks.push({
+    type: "input",
+    block_id: "skip_nodes",
+    optional: true,
+    label: { type: "plain_text", text: "Skip Nodes" },
+    element: {
+      type: "checkboxes",
+      action_id: "value",
+      options: skipNodeNames.map((name) => ({
+        text: { type: "plain_text", text: SKIP_NODE_LABELS[name] || name },
+        value: name,
+      })),
     },
-  ];
+  });
 
   return {
     type: "modal",
@@ -551,6 +575,8 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const verbose = selectedOptions.some((o: any) => o.value === "verbose");
     const skipNodes = (values.skip_nodes?.value?.selected_options || []).map((o: any) => o.value);
     const executionMode = values.execution_mode?.execution_mode_select?.selected_option?.value || "inline";
+    const autoExecuteOptions = values.auto_execute?.value?.selected_options || [];
+    const autoExecuteIssue = autoExecuteOptions.some((o: any) => o.value === "auto_execute");
 
     const cmd: ParsedCommand = {
       action: "run",
@@ -561,6 +587,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       branch: "",
       targetRepo,
       executionMode,
+      autoExecuteIssue,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent

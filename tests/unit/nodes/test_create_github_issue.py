@@ -174,3 +174,75 @@ def test_handles_missing_optional_fields(settings, mock_github, mock_jira):
     _, kwargs = mock_github.create_issue.call_args
     body = kwargs["body"]
     assert "N/A" in body or "Not available" in body
+
+
+def test_issue_body_contains_hidden_metadata(settings, mock_github, mock_jira):
+    """Issue body should contain hidden HTML comment metadata for the issue-to-code bridge."""
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, settings)
+    node(make_state(current_story_id="TEST-10"))
+
+    _, kwargs = mock_github.create_issue.call_args
+    body = kwargs["body"]
+    assert "<!-- bmad:target_repo=org/repo -->" in body
+    assert "<!-- bmad:team_id=team-alpha -->" in body
+    assert "<!-- bmad:story_key=TEST-10 -->" in body
+    assert "<!-- bmad:base_branch=main -->" in body
+
+
+def test_auto_execute_adds_bmad_execute_label_from_state(settings, mock_github, mock_jira):
+    """When auto_execute_issue is True in state, the bmad-execute label should be added."""
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, settings)
+    node(make_state(auto_execute_issue=True))
+
+    _, kwargs = mock_github.create_issue.call_args
+    assert "bmad-execute" in kwargs["labels"]
+
+
+def test_auto_execute_adds_bmad_execute_label_from_settings(mock_github, mock_jira):
+    """When auto_execute_issue is True in settings, the bmad-execute label should be added."""
+    from bmad_orchestrator.config import Settings
+
+    auto_settings = Settings(
+        anthropic_api_key="test-key",  # type: ignore[arg-type]
+        jira_base_url="https://test.atlassian.net",
+        jira_username="test@test.com",
+        jira_api_token="test-token",  # type: ignore[arg-type]
+        jira_project_key="TEST",
+        github_repo="org/repo",
+        dry_run=True,
+        auto_execute_issue=True,
+    )
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, auto_settings)
+    node(make_state())
+
+    _, kwargs = mock_github.create_issue.call_args
+    assert "bmad-execute" in kwargs["labels"]
+
+
+def test_no_auto_execute_label_by_default(settings, mock_github, mock_jira):
+    """By default, bmad-execute label should NOT be present."""
+    mock_github.create_issue.return_value = (
+        "https://github.com/org/repo/issues/1",
+        1,
+    )
+
+    node = make_create_github_issue_node(mock_github, mock_jira, settings)
+    node(make_state())
+
+    _, kwargs = mock_github.create_issue.call_args
+    assert "bmad-execute" not in kwargs["labels"]

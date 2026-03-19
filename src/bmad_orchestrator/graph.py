@@ -456,6 +456,7 @@ def make_initial_state(
         pr_url=None,
         github_issue_url=None,
         github_issue_number=None,
+        auto_execute_issue=False,
         review_loop_count=0,
         code_review_issues=[],
         touched_files=[],
