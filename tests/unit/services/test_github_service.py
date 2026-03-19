@@ -90,3 +90,94 @@ def test_run_gh_logs_stderr_on_failure(settings):
         svc = GitHubService(settings.model_copy(update={"dry_run": False}))
         with pytest.raises(subprocess.CalledProcessError):
             svc.create_pr(title="t", body="b", head_branch="feat/x")
+
+
+# ── Issue CRUD tests ──────────────────────────────────────────────────────────
+
+
+def test_dry_run_create_issue_returns_fake(settings):
+    dry_settings = settings.model_copy(update={"dry_run": True})
+    svc = GitHubService(dry_settings)
+    url, number = svc.create_issue(title="test", body="body")
+    assert url == "https://github.com/dry-run/issues/0"
+    assert number == 0
+
+
+def test_create_issue_calls_gh_cli(settings):
+    mock_result = subprocess.CompletedProcess(
+        args=[], returncode=0,
+        stdout="https://github.com/org/repo/issues/42\n",
+        stderr="",
+    )
+    with patch("bmad_orchestrator.services.github_service._run_gh", return_value=mock_result):
+        svc = GitHubService(settings.model_copy(update={"dry_run": False}))
+        url, number = svc.create_issue(title="t", body="b", labels=["bug", "agent"])
+    assert url == "https://github.com/org/repo/issues/42"
+    assert number == 42
+
+
+def test_create_issue_without_labels(settings):
+    mock_result = subprocess.CompletedProcess(
+        args=[], returncode=0,
+        stdout="https://github.com/org/repo/issues/7\n",
+        stderr="",
+    )
+    with patch(
+        "bmad_orchestrator.services.github_service._run_gh", return_value=mock_result,
+    ) as mock_gh:
+        svc = GitHubService(settings.model_copy(update={"dry_run": False}))
+        svc.create_issue(title="t", body="b")
+    # No --label args should be passed
+    call_args = mock_gh.call_args[0][0]
+    assert "--label" not in call_args
+
+
+def test_get_issue(settings):
+    json_output = '{"number":5,"title":"test","state":"OPEN","body":"body","url":"u","labels":[]}'
+    mock_result = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=json_output, stderr="",
+    )
+    with patch("bmad_orchestrator.services.github_service._run_gh", return_value=mock_result):
+        svc = GitHubService(settings)
+        data = svc.get_issue(5)
+    assert data["number"] == 5
+    assert data["state"] == "OPEN"
+
+
+def test_dry_run_add_issue_comment(settings):
+    dry_settings = settings.model_copy(update={"dry_run": True})
+    svc = GitHubService(dry_settings)
+    # Should not raise
+    svc.add_issue_comment(1, "hello")
+
+
+def test_add_issue_comment_calls_gh(settings):
+    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch(
+        "bmad_orchestrator.services.github_service._run_gh", return_value=mock_result,
+    ) as mock_gh:
+        svc = GitHubService(settings.model_copy(update={"dry_run": False}))
+        svc.add_issue_comment(10, "comment body")
+    call_args = mock_gh.call_args[0][0]
+    assert "issue" in call_args
+    assert "comment" in call_args
+    assert "10" in call_args
+
+
+def test_dry_run_close_issue(settings):
+    dry_settings = settings.model_copy(update={"dry_run": True})
+    svc = GitHubService(dry_settings)
+    svc.close_issue(1)
+
+
+def test_close_issue_calls_gh(settings):
+    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch(
+        "bmad_orchestrator.services.github_service._run_gh", return_value=mock_result,
+    ) as mock_gh:
+        svc = GitHubService(settings.model_copy(update={"dry_run": False}))
+        svc.close_issue(3)
+    call_args = mock_gh.call_args[0][0]
+    assert "issue" in call_args
+    assert "close" in call_args
+    assert "3" in call_args

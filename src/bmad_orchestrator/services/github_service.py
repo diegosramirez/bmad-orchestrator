@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+from typing import Any
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
@@ -100,3 +102,82 @@ class GitHubService:
         url = result.stdout.strip()
         logger.info("pr_created", url=url)
         return url
+
+    @skip_if_dry_run(fake_return=("https://github.com/dry-run/issues/0", 0))
+    def create_issue(
+        self,
+        title: str,
+        body: str,
+        labels: list[str] | None = None,
+    ) -> tuple[str, int]:
+        """Create a GitHub issue and return (url, number)."""
+        repo = self.settings.github_repo or ""
+        args = [
+            "issue",
+            "create",
+            "--repo",
+            repo,
+            "--title",
+            title,
+            "--body",
+            body,
+        ]
+        for label in labels or []:
+            args.extend(["--label", label])
+
+        result = _run_gh(args, self.settings)
+        url = result.stdout.strip()
+        # gh issue create prints the URL; extract the issue number from it
+        issue_number = int(url.rstrip("/").rsplit("/", 1)[-1])
+        logger.info("issue_created", url=url, issue_number=issue_number)
+        return url, issue_number
+
+    def get_issue(self, issue_number: int) -> dict[str, Any]:
+        """Return issue metadata as a dict."""
+        repo = self.settings.github_repo or ""
+        result = _run_gh(
+            [
+                "issue",
+                "view",
+                str(issue_number),
+                "--repo",
+                repo,
+                "--json",
+                "number,title,state,body,url,labels",
+            ],
+            self.settings,
+        )
+        data: dict[str, Any] = json.loads(result.stdout)
+        return data
+
+    @skip_if_dry_run(fake_return=None)
+    def add_issue_comment(self, issue_number: int, body: str) -> None:
+        """Add a comment to a GitHub issue."""
+        repo = self.settings.github_repo or ""
+        _run_gh(
+            [
+                "issue",
+                "comment",
+                str(issue_number),
+                "--repo",
+                repo,
+                "--body",
+                body,
+            ],
+            self.settings,
+        )
+
+    @skip_if_dry_run(fake_return=None)
+    def close_issue(self, issue_number: int) -> None:
+        """Close a GitHub issue."""
+        repo = self.settings.github_repo or ""
+        _run_gh(
+            [
+                "issue",
+                "close",
+                str(issue_number),
+                "--repo",
+                repo,
+            ],
+            self.settings,
+        )

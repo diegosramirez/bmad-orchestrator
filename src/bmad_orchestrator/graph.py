@@ -19,8 +19,8 @@ from bmad_orchestrator.nodes.code_review import (
     make_review_router,
 )
 from bmad_orchestrator.nodes.commit_and_push import make_commit_and_push_node
+from bmad_orchestrator.nodes.create_github_issue import make_create_github_issue_node
 from bmad_orchestrator.nodes.create_or_correct_epic import make_create_or_correct_epic_node
-from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
 from bmad_orchestrator.nodes.create_pull_request import make_create_pull_request_node
 from bmad_orchestrator.nodes.create_story_tasks import make_create_story_tasks_node
 from bmad_orchestrator.nodes.detect_commands import make_detect_commands_node
@@ -28,6 +28,7 @@ from bmad_orchestrator.nodes.dev_story import make_dev_story_node
 from bmad_orchestrator.nodes.dev_story_fix_loop import make_fix_loop_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
+from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.services.claude_service import ClaudeService
@@ -51,6 +52,7 @@ NODE_LABELS: dict[str, str] = {
     "create_story_tasks": "Create story tasks",
     "party_mode_refinement": "Party mode refinement",
     "detect_commands": "Detect commands",
+    "create_github_issue": "Create GitHub Issue",
     "dev_story": "Dev story",
     "qa_automation": "QA automation",
     "code_review": "Code review",
@@ -350,6 +352,10 @@ def build_graph(
     )
     _node("party_mode_refinement", make_party_mode_node(claude, jira, settings, on_event=on_event))
     _node("detect_commands", make_detect_commands_node(claude, settings, on_event=on_event))
+    _node(
+        "create_github_issue",
+        make_create_github_issue_node(github, jira, settings),
+    )
     _node("dev_story", make_dev_story_node(claude_agent, settings, on_event=on_event))
     _node("qa_automation", make_qa_automation_node(claude_agent, settings, on_event=on_event))
     _node("code_review", make_code_review_node(claude_agent, settings, on_event=on_event))
@@ -365,7 +371,23 @@ def build_graph(
     builder.add_edge("create_or_correct_epic", "create_story_tasks")
     builder.add_edge("create_story_tasks", "party_mode_refinement")
     builder.add_edge("party_mode_refinement", "detect_commands")
-    builder.add_edge("detect_commands", "dev_story")
+
+    # ── Execution mode routing: inline (default) or github-agent ─────────────
+    def _execution_mode_router(_state: OrchestratorState) -> str:
+        if settings.execution_mode == "github-agent":
+            return "create_github_issue"
+        return "dev_story"
+
+    builder.add_conditional_edges(
+        "detect_commands",
+        _execution_mode_router,
+        {
+            "dev_story": "dev_story",
+            "create_github_issue": "create_github_issue",
+        },
+    )
+    builder.add_edge("create_github_issue", END)
+
     builder.add_edge("dev_story", "qa_automation")
     builder.add_edge("qa_automation", "code_review")
 
@@ -432,6 +454,8 @@ def make_initial_state(
         branch_name=None,
         commit_sha=None,
         pr_url=None,
+        github_issue_url=None,
+        github_issue_number=None,
         review_loop_count=0,
         code_review_issues=[],
         touched_files=[],

@@ -69,6 +69,10 @@ class OrchestratorState(TypedDict):
     commit_sha: str | None
     pr_url: str | None
 
+    # ── GitHub Issue (github-agent execution mode) ─────────────────────────
+    github_issue_url: str | None
+    github_issue_number: int | None
+
     # ── Review loop ───────────────────────────────────────────────────────────
     review_loop_count: int
     code_review_issues: list[CodeReviewIssue]

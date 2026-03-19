@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     bmad_root: str = "_bmad"
     max_review_loops: int = 2
     draft_pr: bool = False
+    # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
+    # "github-agent" creates a GitHub Issue and terminates (external agent takes over).
+    execution_mode: str = "inline"
 
     # ── Dummy/Local mode ──────────────────────────────────────────────────────
     dummy_jira: bool = False

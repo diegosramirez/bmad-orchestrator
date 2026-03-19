@@ -55,3 +55,70 @@ class TestPRExists:
     def test_returns_none_for_different_branch(self, svc: DummyGitHubService) -> None:
         svc.create_pr("title", "body", "feature/login")
         assert svc.pr_exists("feature/signup") is None
+
+
+class TestCreateIssue:
+    def test_writes_markdown_and_returns_url(self, svc: DummyGitHubService) -> None:
+        url, number = svc.create_issue(
+            title="feat: implement login",
+            body="## Acceptance Criteria\n- Users can log in",
+            labels=["bmad-orchestrated"],
+        )
+        assert "org/test-repo/issues/1" in url
+        assert number == 1
+
+        issue_file = svc._issues_base / "DUMMY-ISSUE-1.md"
+        assert issue_file.exists()
+        content = issue_file.read_text()
+        assert "feat: implement login" in content
+        assert "Users can log in" in content
+
+    def test_auto_increments_issue_number(self, svc: DummyGitHubService) -> None:
+        url1, n1 = svc.create_issue("Issue 1", "body")
+        url2, n2 = svc.create_issue("Issue 2", "body")
+        assert n1 == 1
+        assert n2 == 2
+        assert "/issues/1" in url1
+        assert "/issues/2" in url2
+
+    def test_labels_stored_in_frontmatter(self, svc: DummyGitHubService) -> None:
+        svc.create_issue("t", "b", labels=["bmad", "agent"])
+        data = svc.get_issue(1)
+        assert data["labels"] == ["bmad", "agent"]
+
+
+class TestGetIssue:
+    def test_returns_issue_data(self, svc: DummyGitHubService) -> None:
+        svc.create_issue("My Issue", "The body content", labels=["bug"])
+        data = svc.get_issue(1)
+        assert data["title"] == "My Issue"
+        assert data["body"] == "The body content"
+        assert data["state"] == "open"
+
+    def test_raises_for_missing_issue(self, svc: DummyGitHubService) -> None:
+        with pytest.raises(FileNotFoundError):
+            svc.get_issue(999)
+
+
+class TestAddIssueComment:
+    def test_appends_comment_to_file(self, svc: DummyGitHubService) -> None:
+        svc.create_issue("t", "body")
+        svc.add_issue_comment(1, "A comment")
+        content = (svc._issues_base / "DUMMY-ISSUE-1.md").read_text()
+        assert "A comment" in content
+
+    def test_raises_for_missing_issue(self, svc: DummyGitHubService) -> None:
+        with pytest.raises(FileNotFoundError):
+            svc.add_issue_comment(999, "comment")
+
+
+class TestCloseIssue:
+    def test_updates_state_to_closed(self, svc: DummyGitHubService) -> None:
+        svc.create_issue("t", "body")
+        svc.close_issue(1)
+        data = svc.get_issue(1)
+        assert data["state"] == "closed"
+
+    def test_raises_for_missing_issue(self, svc: DummyGitHubService) -> None:
+        with pytest.raises(FileNotFoundError):
+            svc.close_issue(999)
