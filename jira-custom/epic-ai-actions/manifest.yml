@@ -1,0 +1,21 @@
+modules:
+  jira:issuePanel:
+    - key: epic-ai-actions-hello-world-issue-panel
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: epic-ai-actions
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/a89bf36f-39f5-4369-91fd-282f788edba0
