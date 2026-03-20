@@ -34,6 +34,13 @@ class ProjectCommands(BaseModel):
         default_factory=list,
         description="Shell commands to lint or check code style",
     )
+    e2e: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Shell commands to run E2E/browser tests (e.g. 'npx playwright test'). "
+            "Separate from unit test commands."
+        ),
+    )
     reasoning: str = Field(
         default="",
         description="Brief explanation of why these commands were chosen",
@@ -88,9 +95,13 @@ def make_detect_commands_node(
                 f"{scripts_block}\n\n"
                 "Based on the above, determine the correct shell commands for:\n"
                 "1. **build** — compile or bundle the project\n"
-                "2. **test** — run the test suite in non-interactive/CI mode "
-                "(no --watch, no interactive prompts)\n"
-                "3. **lint** — lint or check code style\n\n"
+                "2. **test** — run the unit/integration test suite in non-interactive/CI "
+                "mode (no --watch, no interactive prompts)\n"
+                "3. **lint** — lint or check code style\n"
+                "4. **e2e** — run end-to-end / browser tests (Playwright, Cypress). "
+                "Only include if the project has explicit E2E scripts or "
+                "Playwright/Cypress config. If no E2E setup exists, return an "
+                "empty list.\n\n"
                 "Rules:\n"
                 "- Only return commands the project actually supports based on the "
                 "manifest scripts and config files shown above.\n"
@@ -123,6 +134,7 @@ def make_detect_commands_node(
             build=result.build,
             test=result.test,
             lint=result.lint,
+            e2e=result.e2e,
             reasoning=result.reasoning[:200],
         )
 
@@ -131,7 +143,7 @@ def make_detect_commands_node(
             "node": NODE_NAME,
             "message": (
                 f"Detected commands — build: {result.build}, "
-                f"test: {result.test}, lint: {result.lint}"
+                f"test: {result.test}, lint: {result.lint}, e2e: {result.e2e}"
             ),
             "dry_run": False,
         }
@@ -140,6 +152,7 @@ def make_detect_commands_node(
             "build_commands": result.build,
             "test_commands": result.test,
             "lint_commands": result.lint,
+            "e2e_commands": result.e2e,
             "execution_log": [log_entry],
         }
 

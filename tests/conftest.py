@@ -64,7 +64,12 @@ def base_state() -> OrchestratorState:
         build_commands=[],
         test_commands=[],
         lint_commands=[],
+        e2e_commands=[],
         dev_guidelines=None,
+        e2e_results=[],
+        e2e_tests_passing=None,
+        e2e_failure_output=None,
+        e2e_loop_count=0,
     )
 
 
@@ -155,6 +160,11 @@ def make_state(**overrides: Any) -> OrchestratorState:
         build_commands=[],
         test_commands=[],
         lint_commands=[],
+        e2e_commands=[],
         dev_guidelines=None,
+        e2e_results=[],
+        e2e_tests_passing=None,
+        e2e_failure_output=None,
+        e2e_loop_count=0,
     )
     return {**base, **overrides}  # type: ignore[return-value]

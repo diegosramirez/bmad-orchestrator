@@ -60,7 +60,7 @@ def test_router_loop1_medium_commits(settings):
         review_loop_count=1,
         code_review_issues=[_MEDIUM],
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_loop1_critical_triggers_fix(settings):
@@ -80,7 +80,7 @@ def test_router_at_max_loops_no_blocking_commits(settings):
         review_loop_count=2,
         code_review_issues=[_HIGH],  # high is not blocking at loop 2 (critical only)
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_fail_at_max_loops(settings):
@@ -99,12 +99,12 @@ def test_router_commit_when_only_low_issues(settings):
         review_loop_count=0,
         code_review_issues=[_LOW],
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_commit_when_no_issues(settings):
     router = make_review_router(settings)
-    assert router(make_state()) == "commit_and_push"
+    assert router(make_state()) == "e2e_automation"
 
 
 def test_build_graph_does_not_raise(settings):

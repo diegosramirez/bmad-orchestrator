@@ -31,6 +31,7 @@ def test_detect_commands_calls_claude_and_sets_commands(settings, mock_claude):
     assert result["build_commands"] == ["npm run build"]
     assert result["test_commands"] == ["npx vitest run"]
     assert result["lint_commands"] == ["npm run lint"]
+    assert result["e2e_commands"] == []
     assert len(result["execution_log"]) == 1
 
 
@@ -77,6 +78,7 @@ def test_detect_commands_empty_on_empty_dir(settings, mock_claude, tmp_path, mon
     assert result["build_commands"] == []
     assert result["test_commands"] == []
     assert result["lint_commands"] == []
+    assert result["e2e_commands"] == []
 
 
 def test_project_commands_schema_defaults():
@@ -85,7 +87,23 @@ def test_project_commands_schema_defaults():
     assert cmd.build == []
     assert cmd.test == []
     assert cmd.lint == []
+    assert cmd.e2e == []
     assert cmd.reasoning == ""
+
+
+def test_detect_commands_returns_e2e_commands(settings, mock_claude):
+    """When Claude detects E2E commands, they should be returned separately."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    mock_claude.complete_structured.return_value = ProjectCommands(
+        build=["npm run build"],
+        test=["npx vitest run"],
+        lint=["npm run lint"],
+        e2e=["npx playwright test"],
+        reasoning="React app with Playwright",
+    )
+    node = make_detect_commands_node(mock_claude, non_dry)
+    result = node(make_state(project_context="React (TypeScript)"))
+    assert result["e2e_commands"] == ["npx playwright test"]
 
 
 def test_detect_commands_prompt_excludes_setup_commands(settings, mock_claude):

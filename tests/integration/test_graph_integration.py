@@ -174,12 +174,13 @@ def test_review_loop_terminates_at_max(dry_settings, mock_services):
 
         final = graph.invoke(initial, config=config)
 
-    # Should reach END via fail_with_state (not commit) when max loops exceeded with issues
+    # Should reach END via fail_with_state → commit → PR (draft) when max loops exceeded
     assert final["failure_state"] is not None
     assert (
         "max" in final["failure_state"].lower()
         or "loop" in final["failure_state"].lower()
         or "review" in final["failure_state"].lower()
     )
-    assert final["pr_url"] is None
+    # Pipeline creates a draft PR even on failure (with failure diagnostics)
+    assert final["pr_url"] is not None
     assert final["review_loop_count"] == dry_settings.max_review_loops

@@ -14,6 +14,7 @@ _DEFAULT_AGENT_MODELS: dict[str, str] = {
     "developer_party": "claude-opus-4-6",
     "scrum_master": "claude-opus-4-6",
     "build-expert": "claude-opus-4-6",
+    "e2e_tester": "claude-opus-4-6",
 }
 
 
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
     # Root directory for _bmad framework (workflows, tasks). Relative to CWD or absolute.
     bmad_root: str = "_bmad"
     max_review_loops: int = 2
+    max_e2e_loops: int = 1
     draft_pr: bool = False
     # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
     # "github-agent" creates a GitHub Issue and terminates (external agent takes over).

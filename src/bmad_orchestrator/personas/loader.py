@@ -20,6 +20,7 @@ AGENT_FILE_MAP: dict[str, list[str]] = {
     "designer":     ["ux-designer.agent.yaml", "ux-designer.yaml", "designer.yaml"],
     "developer":    ["dev.agent.yaml", "developer.agent.yaml", "dev.yaml"],
     "qa":           ["qa.agent.yaml", "qa.yaml"],
+    "e2e_tester":   ["qa.agent.yaml", "qa.yaml"],
     "scrum_master": ["sm.agent.yaml", "scrum-master.agent.yaml", "sm.yaml"],
     "pm":           ["pm.agent.yaml", "product-manager.agent.yaml", "pm.yaml"],
 }
@@ -32,6 +33,7 @@ AGENT_DISPLAY_NAMES: dict[str, str] = {
     "developer": "Amelia (Developer)",
     "developer_party": "Amelia (Developer — Party Mode)",
     "qa": "Quinn (QA)",
+    "e2e_tester": "Quinn (E2E Tester)",
     "scrum_master": "Bob (Scrum Master)",
     "pm": "Alex (PM)",
     "build-expert": "Build Expert",
@@ -61,6 +63,15 @@ FALLBACK_PERSONAS: dict[str, str] = {
         "You are Quinn, a pragmatic QA Engineer who thinks adversarially. "
         "You design test cases covering happy paths, edge cases, and failure modes. "
         "You write thorough automated tests with clear assertions and good coverage."
+    ),
+    "e2e_tester": (
+        "You are Quinn, a QA Engineer specializing in end-to-end browser testing "
+        "with Playwright. You write E2E tests that validate real user workflows "
+        "using semantic locators (getByRole, getByLabel, getByText). You focus on "
+        "testing user interactions (navigation, form submission, data display) and "
+        "asserting visible outcomes. Keep tests linear, deterministic, and "
+        "independent. Use the webServer option in playwright.config.ts to "
+        "auto-start the dev server."
     ),
     "scrum_master": (
         "You are Bob, a Technical Scrum Master who writes clear, actionable user stories. "

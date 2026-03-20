@@ -26,6 +26,8 @@ from bmad_orchestrator.nodes.create_story_tasks import make_create_story_tasks_n
 from bmad_orchestrator.nodes.detect_commands import make_detect_commands_node
 from bmad_orchestrator.nodes.dev_story import make_dev_story_node
 from bmad_orchestrator.nodes.dev_story_fix_loop import make_fix_loop_node
+from bmad_orchestrator.nodes.e2e_automation import make_e2e_automation_node, make_e2e_router
+from bmad_orchestrator.nodes.e2e_fix_loop import make_e2e_fix_loop_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
 from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
@@ -57,6 +59,8 @@ NODE_LABELS: dict[str, str] = {
     "qa_automation": "QA automation",
     "code_review": "Code review",
     "dev_story_fix_loop": "Dev story fix loop",
+    "e2e_automation": "E2E automation",
+    "e2e_fix_loop": "E2E fix loop",
     "fail_with_state": "Fail with state",
     "commit_and_push": "Commit and push",
     "update_jira_branch": "Update Jira branch field",
@@ -360,6 +364,8 @@ def build_graph(
     _node("qa_automation", make_qa_automation_node(claude_agent, settings, on_event=on_event))
     _node("code_review", make_code_review_node(claude_agent, settings, on_event=on_event))
     _node("dev_story_fix_loop", make_fix_loop_node(claude_agent, settings, on_event=on_event))
+    _node("e2e_automation", make_e2e_automation_node(claude_agent, settings, on_event=on_event))
+    _node("e2e_fix_loop", make_e2e_fix_loop_node(claude_agent, settings, on_event=on_event))
     _node("fail_with_state", make_fail_with_state_node(settings))
     _node("commit_and_push", make_commit_and_push_node(git, settings))
     _node("update_jira_branch", make_update_jira_branch_node(jira, settings))
@@ -391,19 +397,30 @@ def build_graph(
     builder.add_edge("dev_story", "qa_automation")
     builder.add_edge("qa_automation", "code_review")
 
-    # ── Conditional edge: code review → fix loop OR commit ────────────────────
+    # ── Conditional edge: code review → fix loop OR E2E ─────────────────────
     builder.add_conditional_edges(
         "code_review",
         make_review_router(settings),
         {
             "dev_story_fix_loop": "dev_story_fix_loop",
-            "commit_and_push": "commit_and_push",
+            "e2e_automation": "e2e_automation",
             "fail_with_state": "fail_with_state",
         },
     )
     builder.add_edge("fail_with_state", "commit_and_push")
     # Back-edge: fix loop → code review (developer self-verifies inside the node)
     builder.add_edge("dev_story_fix_loop", "code_review")
+
+    # ── E2E automation → fix loop or commit ───────────────────────────────────
+    builder.add_conditional_edges(
+        "e2e_automation",
+        make_e2e_router(settings),
+        {
+            "commit_and_push": "commit_and_push",
+            "e2e_fix_loop": "e2e_fix_loop",
+        },
+    )
+    builder.add_edge("e2e_fix_loop", "e2e_automation")
 
     # ── Terminal edges ────────────────────────────────────────────────────────
     builder.add_edge("commit_and_push", "update_jira_branch")
@@ -472,5 +489,10 @@ def make_initial_state(
         build_commands=[],
         test_commands=[],
         lint_commands=[],
+        e2e_commands=[],
         dev_guidelines=read_dev_guidelines(cwd) or None,
+        e2e_results=[],
+        e2e_tests_passing=None,
+        e2e_failure_output=None,
+        e2e_loop_count=0,
     )

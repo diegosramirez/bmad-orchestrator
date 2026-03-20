@@ -20,6 +20,12 @@ class QAResult(TypedDict):
     output: str
 
 
+class E2EResult(TypedDict):
+    test_file: str
+    passed: bool
+    output: str
+
+
 class ExecutionLogEntry(TypedDict):
     timestamp: str
     node: str
@@ -108,4 +114,11 @@ class OrchestratorState(TypedDict):
     build_commands: list[str]
     test_commands: list[str]
     lint_commands: list[str]
+    e2e_commands: list[str]
     dev_guidelines: str | None
+
+    # ── E2E testing ────────────────────────────────────────────────────────────
+    e2e_results: Annotated[list[E2EResult], operator.add]
+    e2e_tests_passing: bool | None  # None = not yet tested
+    e2e_failure_output: str | None
+    e2e_loop_count: int

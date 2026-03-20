@@ -40,7 +40,7 @@ def test_router_routes_to_commit_when_no_medium_issues(settings):
             "description": "Style", "fix_required": False,
         }],
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_routes_to_fail_at_max_loops_with_issues(settings):
@@ -60,13 +60,13 @@ def test_router_routes_to_commit_at_max_loops_no_issues(settings):
     router = make_review_router(settings)
     # At max loops but NO medium+ issues → still commit
     state = make_state(review_loop_count=2, code_review_issues=[])
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_routes_to_commit_on_empty_issues(settings):
     router = make_review_router(settings)
     state = make_state(review_loop_count=0, code_review_issues=[])
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_code_review_node_appends_issues(settings, mock_agent_service):
@@ -184,7 +184,7 @@ def test_router_tests_passing_none_treated_as_ok(settings):
         code_review_issues=[],
         tests_passing=None,
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 def test_router_tests_passing_true_with_no_issues_commits(settings):
@@ -195,7 +195,7 @@ def test_router_tests_passing_true_with_no_issues_commits(settings):
         code_review_issues=[],
         tests_passing=True,
     )
-    assert router(state) == "commit_and_push"
+    assert router(state) == "e2e_automation"
 
 
 # ── fail_with_state mentions test failures ───────────────────────────────────

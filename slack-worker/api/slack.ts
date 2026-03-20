@@ -145,6 +145,7 @@ const SKIP_NODE_LABELS: Record<string, string> = {
   dev_story: "Generate code",
   qa_automation: "Generate QA tests",
   code_review: "Code review",
+  e2e_automation: "E2E tests (Playwright)",
   commit_and_push: "Commit & push",
   create_pull_request: "Create PR",
 };

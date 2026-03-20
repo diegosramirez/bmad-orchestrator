@@ -250,7 +250,7 @@ def make_review_router(
             if loop_count < settings.max_review_loops:
                 return "dev_story_fix_loop"
             return "fail_with_state"
-        return "commit_and_push"
+        return "e2e_automation"
 
     return route
 
