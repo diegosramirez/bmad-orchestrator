@@ -16,6 +16,7 @@ from bmad_orchestrator.utils.project_context import run_project_command
 logger = get_logger(__name__)
 
 NODE_NAME = "e2e_automation"
+_DEFAULT_E2E_COMMANDS = ["npx playwright test"]
 
 
 def _run_e2e_checks(e2e_commands: list[str], cwd: Path) -> str | None:
@@ -36,21 +37,8 @@ def make_e2e_automation_node(
     system_prompt = build_system_prompt("e2e_tester", settings.bmad_install_dir)
 
     def e2e_automation(state: OrchestratorState) -> dict[str, Any]:
-        e2e_commands = state.get("e2e_commands") or []
+        e2e_commands = state.get("e2e_commands") or _DEFAULT_E2E_COMMANDS
         now = datetime.now(UTC).isoformat()
-
-        # Skip if no E2E commands configured (opt-in)
-        if not e2e_commands:
-            log_entry: ExecutionLogEntry = {
-                "timestamp": now,
-                "node": NODE_NAME,
-                "message": "Skipped — no E2E commands configured",
-                "dry_run": settings.dry_run,
-            }
-            return {
-                "e2e_tests_passing": True,
-                "execution_log": [log_entry],
-            }
 
         story_content = state["story_content"] or ""
         acceptance_criteria = state["acceptance_criteria"] or []
@@ -160,8 +148,6 @@ def make_e2e_router(
     """
 
     def route(state: OrchestratorState) -> str:
-        if not state.get("e2e_commands"):
-            return "commit_and_push"
         if state.get("e2e_tests_passing") is True:
             return "commit_and_push"
         if state["e2e_loop_count"] < settings.max_e2e_loops:

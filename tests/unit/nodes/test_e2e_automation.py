@@ -7,12 +7,13 @@ from bmad_orchestrator.services.claude_agent_service import AgentResult
 from tests.conftest import make_state
 
 
-def test_e2e_skip_when_no_commands(settings, mock_agent_service):
-    """When no e2e_commands, node returns pass-through immediately."""
+def test_e2e_defaults_to_playwright_when_no_commands(settings, mock_agent_service):
+    """When no e2e_commands detected, node defaults to 'npx playwright test'."""
     node = make_e2e_automation_node(mock_agent_service, settings)
     result = node(make_state(e2e_commands=[]))
-    assert result["e2e_tests_passing"] is True
-    mock_agent_service.run_agent.assert_not_called()
+    mock_agent_service.run_agent.assert_called_once()
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "npx playwright test" in prompt
 
 
 def test_e2e_dry_run_returns_result(settings, mock_agent_service):
@@ -113,10 +114,18 @@ def test_e2e_prompt_includes_e2e_commands(settings, mock_agent_service):
 # ── E2E Router Tests ─────────────────────────────────────────────────────────
 
 
-def test_e2e_router_no_commands_routes_to_commit(settings):
+def test_e2e_router_no_commands_passing_routes_to_commit(settings):
+    """Even without explicit e2e_commands, router checks e2e_tests_passing."""
     router = make_e2e_router(settings)
-    state = make_state(e2e_commands=[])
+    state = make_state(e2e_commands=[], e2e_tests_passing=True)
     assert router(state) == "commit_and_push"
+
+
+def test_e2e_router_no_commands_failing_routes_to_fix(settings):
+    """Without e2e_commands, failing tests still route to fix loop."""
+    router = make_e2e_router(settings)
+    state = make_state(e2e_commands=[], e2e_tests_passing=False, e2e_loop_count=0)
+    assert router(state) == "e2e_fix_loop"
 
 
 def test_e2e_router_passing_routes_to_commit(settings):

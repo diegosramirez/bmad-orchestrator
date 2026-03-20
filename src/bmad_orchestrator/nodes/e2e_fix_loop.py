@@ -6,7 +6,7 @@ from typing import Any
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.nodes.dev_story import _resolve_cwd
-from bmad_orchestrator.nodes.e2e_automation import _run_e2e_checks
+from bmad_orchestrator.nodes.e2e_automation import _DEFAULT_E2E_COMMANDS, _run_e2e_checks
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
@@ -29,7 +29,7 @@ def make_e2e_fix_loop_node(
         loop_count = state["e2e_loop_count"]
         story_content = state["story_content"] or ""
         acceptance_criteria = state["acceptance_criteria"] or []
-        e2e_commands = state.get("e2e_commands") or []
+        e2e_commands = state.get("e2e_commands") or _DEFAULT_E2E_COMMANDS
         e2e_failure = state.get("e2e_failure_output") or ""
         now = datetime.now(UTC).isoformat()
         cwd_path = str(_resolve_cwd(settings, state))
