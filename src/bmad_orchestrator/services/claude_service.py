@@ -289,7 +289,71 @@ class ClaudeService:
             if isinstance(tool_use_block.input, dict)
             else json.loads(tool_use_block.input)
         )
-        result = schema.model_validate(raw)
+        try:
+            result = schema.model_validate(raw)
+        except Exception as first_err:
+            logger.warning(
+                "structured_validation_failed_retrying",
+                agent=agent_name,
+                schema=schema.__name__,
+                error=str(first_err)[:200],
+            )
+            _emit(f"\u26a0\ufe0f *{agent_name}* validation failed, retrying…")
+            t0_retry = time.perf_counter()
+            retry_response = self._call_api(
+                agent_name, "complete_structured_retry", t0_retry,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=self.settings.temperature,
+                system=[{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                tools=[
+                    {
+                        "name": tool_name,
+                        "description": f"Return structured {tool_name} data",
+                        "input_schema": tool_schema,
+                    }
+                ],
+                tool_choice={"type": "tool", "name": tool_name},
+                messages=[
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": response.content},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your previous response failed validation: {first_err}. "
+                            f"Please return ALL required fields for {tool_name}: "
+                            f"{list(schema.model_fields.keys())}. Try again."
+                        ),
+                    },
+                ],
+            )
+            retry_elapsed = time.perf_counter() - t0_retry
+            retry_block = next(
+                (b for b in retry_response.content if b.type == "tool_use"), None,
+            )
+            if retry_block is None:
+                raise ValueError(
+                    "Claude did not return a tool_use block on retry"
+                ) from first_err
+            retry_raw: dict[str, Any] = (
+                retry_block.input
+                if isinstance(retry_block.input, dict)
+                else json.loads(retry_block.input)
+            )
+            result = schema.model_validate(retry_raw)
+            elapsed += retry_elapsed
+            self._usage.append({
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "model": model,
+                "input_tokens": retry_response.usage.input_tokens,
+                "output_tokens": retry_response.usage.output_tokens,
+                "duration_s": round(retry_elapsed, 2),
+            })
 
         logger.info("claude_response", agent=agent_name, method="complete_structured",
                     response=_summarize_model(result),
