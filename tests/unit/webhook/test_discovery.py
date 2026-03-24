@@ -13,7 +13,7 @@ def test_team_id_from_issue_key() -> None:
 
 
 def test_team_id_from_issue_key_fallback() -> None:
-    assert team_id_from_issue_key("no-dash", default_team_id="FALLBACK") == "FALLBACK"
+    assert team_id_from_issue_key("nodash", default_team_id="FALLBACK") == "FALLBACK"
 
 
 def test_build_discovery_workflow_inputs_epic_only_path() -> None:

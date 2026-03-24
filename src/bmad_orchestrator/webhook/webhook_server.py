@@ -11,6 +11,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.webhook.discovery import (
     DISCOVERY_SECRET_HEADER,
     build_discovery_workflow_inputs,
@@ -21,7 +22,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = get_logger(__name__)
+
 app = FastAPI(title="BMAD Jira Webhook", version="0.1.0")
+
+_GITHUB_ERROR_BODY_MAX = 4000
 
 # Folder to save each POST (in the project, or configurable by env)
 _WEBHOOK_DIR = Path(__file__).resolve().parent.parent.parent
@@ -58,14 +63,35 @@ def _normalize_target_repo(raw: str | None) -> str:
     return value
 
 
+def _truncate_github_body(text: str | None) -> str:
+    if not text:
+        return ""
+    if len(text) <= _GITHUB_ERROR_BODY_MAX:
+        return text
+    return text[:_GITHUB_ERROR_BODY_MAX] + "…(truncated)"
+
+
 async def _dispatch_bmad_workflow(inputs: dict[str, str]) -> tuple[bool, int | None, str | None]:
     """Dispatch the bmad-start-run.yml GitHub Actions workflow with arbitrary inputs."""
     if not GITHUB_REPO or not GITHUB_TOKEN:
+        logger.warning(
+            "github_workflow_dispatch_skipped",
+            reason="missing_credentials",
+            has_repo=bool(GITHUB_REPO),
+            has_token=bool(GITHUB_TOKEN),
+        )
         return False, None, "Missing GITHUB_REPO or GITHUB_TOKEN"
 
     url = (
         f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/"
         "bmad-start-run.yml/dispatches"
+    )
+    logger.info(
+        "github_workflow_dispatch_request",
+        repo=GITHUB_REPO,
+        ref=DEFAULT_REF,
+        workflow="bmad-start-run.yml",
+        input_keys=sorted(inputs.keys()),
     )
 
     try:
@@ -81,6 +107,7 @@ async def _dispatch_bmad_workflow(inputs: dict[str, str]) -> tuple[bool, int | N
                 timeout=30.0,
             )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("github_workflow_dispatch_http_error", error=str(exc))
         return False, None, f"Request error: {exc}"
 
     if resp.status_code != 204:
@@ -88,8 +115,14 @@ async def _dispatch_bmad_workflow(inputs: dict[str, str]) -> tuple[bool, int | N
             body_text = resp.text
         except Exception:  # noqa: BLE001
             body_text = "<unavailable>"
+        logger.warning(
+            "github_workflow_dispatch_failed",
+            status_code=resp.status_code,
+            response_body=_truncate_github_body(body_text),
+        )
         return False, resp.status_code, body_text
 
+    logger.info("github_workflow_dispatch_ok", status_code=resp.status_code)
     return True, resp.status_code, None
 
 
@@ -176,6 +209,23 @@ async def discovery_run(request: Request):
         team_id=team_id,
     )
     ok, dispatch_status, dispatch_error = await _dispatch_bmad_workflow(inputs)
+
+    if ok:
+        logger.info(
+            "discovery_run_dispatched",
+            issue_key=issue_key,
+            target_repo=target_repo,
+            team_id=team_id,
+        )
+    else:
+        logger.warning(
+            "discovery_run_dispatch_failed",
+            issue_key=issue_key,
+            target_repo=target_repo,
+            team_id=team_id,
+            dispatch_status=dispatch_status,
+            dispatch_error=_truncate_github_body(dispatch_error),
+        )
 
     github_actions_url = (
         f"https://github.com/{GITHUB_REPO}/actions/workflows/bmad-start-run.yml"

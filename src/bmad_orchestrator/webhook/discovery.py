@@ -42,7 +42,6 @@ def build_discovery_workflow_inputs(
         "skip_commit_and_push": "false",
         "skip_create_pull_request": "false",
         "skip_create_github_issue": "true",
-        "skip_update_jira_branch": "false",
         "slack_verbose": "false",
         "slack_thread_ts": "",
         "branch": "",
