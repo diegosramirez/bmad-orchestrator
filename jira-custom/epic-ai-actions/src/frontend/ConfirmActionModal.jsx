@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Button,
   Modal,
@@ -7,6 +7,8 @@ import {
   ModalHeader,
   ModalTitle,
   ModalTransition,
+  Spinner,
+  Stack,
   Text,
 } from '@forge/react';
 
@@ -21,26 +23,41 @@ export const ConfirmActionModal = ({
   bodyText,
   onConfirm,
 }) => {
+  const [working, setWorking] = useState(false);
+
   const handleContinue = async () => {
-    await onConfirm();
-    onClose();
+    setWorking(true);
+    try {
+      await onConfirm();
+      onClose();
+    } finally {
+      setWorking(false);
+    }
   };
 
   return (
     <ModalTransition>
       {isOpen && (
-        <Modal onClose={onClose} width="small">
+        <Modal onClose={working ? () => {} : onClose} width="small">
           <ModalHeader>
             <ModalTitle>{title}</ModalTitle>
           </ModalHeader>
           <ModalBody>
-            <Text>{bodyText}</Text>
+            <Stack space="space.100">
+              <Text>{bodyText}</Text>
+              {working && (
+                <Stack space="space.050" alignInline="start">
+                  <Spinner size="medium" />
+                  <Text>Starting run…</Text>
+                </Stack>
+              )}
+            </Stack>
           </ModalBody>
           <ModalFooter>
-            <Button appearance="subtle" onClick={onClose}>
+            <Button appearance="subtle" onClick={onClose} isDisabled={working}>
               Cancel
             </Button>
-            <Button appearance="primary" onClick={handleContinue}>
+            <Button appearance="primary" onClick={handleContinue} isDisabled={working}>
               Continue
             </Button>
           </ModalFooter>

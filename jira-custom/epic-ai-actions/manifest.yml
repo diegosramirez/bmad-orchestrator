@@ -1,3 +1,10 @@
+permissions:
+  external:
+    fetch:
+      backend:
+        # Replace with the public HTTPS origin of your BMAD FastAPI webhook (no path). Redeploy after editing.
+        - 'https://discernably-bastionary-amelia.ngrok-free.dev/'
+
 modules:
   jira:issuePanel:
     - key: epic-ai-actions-hello-world-issue-panel

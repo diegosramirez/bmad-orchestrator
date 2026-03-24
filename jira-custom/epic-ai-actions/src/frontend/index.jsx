@@ -1,13 +1,16 @@
 import React, { Fragment, useState } from 'react';
 import ForgeReconciler, {
-  Button,
-  Text,
-  Inline,
   Box,
+  Button,
   Heading,
   Icon,
+  Inline,
+  SectionMessage,
   Stack,
+  Text,
+  useProductContext,
 } from '@forge/react';
+import { invoke } from '@forge/bridge';
 import { ConfirmActionModal } from './ConfirmActionModal';
 
 const ACTION_LABELS = {
@@ -17,12 +20,48 @@ const ACTION_LABELS = {
 };
 
 const App = () => {
+  const context = useProductContext();
+  const issueKey =
+    context?.extension?.issue?.key ?? context?.extension?.issueKey ?? null;
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [banner, setBanner] = useState(null);
 
   const handleClick = async (action) => {
-    console.log(`Clicked: ${action}`);
-    // Aquí irá tu invoke('mi-funcion-backend')
+    setBanner(null);
+    if (action === 'discovery') {
+      if (!issueKey) {
+        setBanner({
+          appearance: 'error',
+          title: 'No issue context',
+          body: 'Open an issue (epic) to run Discovery.',
+        });
+        return;
+      }
+      const result = await invoke('runDiscovery', { issueKey });
+      if (result?.ok) {
+        setBanner({
+          appearance: 'success',
+          title: 'Discovery started',
+          body:
+            result.message ||
+            'GitHub Actions workflow was dispatched. Check the issue comment for progress.',
+        });
+      } else {
+        setBanner({
+          appearance: 'error',
+          title: 'Discovery failed',
+          body: result?.message || 'Unknown error',
+        });
+      }
+      return;
+    }
+    setBanner({
+      appearance: 'information',
+      title: 'Not available yet',
+      body: `${ACTION_LABELS[action]} is not wired in this version.`,
+    });
   };
 
   const openConfirm = (action) => {
@@ -50,6 +89,18 @@ const App = () => {
         >
           <Heading as="h2">🚀 AI Actions Panel</Heading>
         </Box>
+
+        {issueKey && (
+          <Text>
+            <Text as="strong">Issue:</Text> {issueKey}
+          </Text>
+        )}
+
+        {banner && (
+          <SectionMessage appearance={banner.appearance} title={banner.title}>
+            <Text>{banner.body}</Text>
+          </SectionMessage>
+        )}
 
         <Text>Select an agent to process this epic:</Text>
 

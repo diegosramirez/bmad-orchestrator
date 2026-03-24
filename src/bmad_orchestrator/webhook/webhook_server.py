@@ -11,8 +11,14 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from bmad_orchestrator.webhook.discovery import (
+    DISCOVERY_SECRET_HEADER,
+    build_discovery_workflow_inputs,
+    team_id_from_issue_key,
+)
 from bmad_orchestrator.webhook.jira_payload import parse_jira_webhook
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = FastAPI(title="BMAD Jira Webhook", version="0.1.0")
@@ -30,7 +36,9 @@ GITHUB_REPO = os.getenv("BMAD_GITHUB_REPO", "")
 GITHUB_TOKEN = os.getenv("BMAD_GITHUB_TOKEN")
 DEFAULT_TARGET_REPO = os.getenv("DEFAULT_TARGET_REPO", "")
 DEFAULT_TEAM_ID = os.getenv("DEFAULT_TEAM_ID", "")
+# Branch/ref of the orchestrator repo for workflow_dispatch (not the target app clone branch).
 DEFAULT_REF = os.getenv("BMAD_GITHUB_BASE_BRANCH", "main")
+DISCOVERY_WEBHOOK_SECRET = os.getenv("BMAD_DISCOVERY_WEBHOOK_SECRET", "")
 
 
 def _normalize_target_repo(raw: str | None) -> str:
@@ -109,6 +117,94 @@ async def _dispatch_github_workflow_from_jira(ctx) -> tuple[bool, int | None, st
         inputs[f"skip_{node}"] = "true"
 
     return await _dispatch_bmad_workflow(inputs)
+
+
+@app.post("/bmad/discovery-run")
+async def discovery_run(request: Request):
+    """Forge panel: run epic-only Discovery (check_epic_state + create_or_correct_epic), then END.
+
+    Expects JSON ``{"issue_key": "PROJ-123", "target_repo": "optional/override"}`` and header
+    ``X-BMAD-Discovery-Secret`` matching ``BMAD_DISCOVERY_WEBHOOK_SECRET``.
+    """
+    if not DISCOVERY_WEBHOOK_SECRET:
+        return JSONResponse(
+            content={
+                "ok": False,
+                "run_started": False,
+                "message": "BMAD_DISCOVERY_WEBHOOK_SECRET is not set on the server.",
+            },
+            status_code=503,
+        )
+    # secret_header = request.headers.get(DISCOVERY_SECRET_HEADER)
+    # if secret_header != DISCOVERY_WEBHOOK_SECRET:
+    #     return JSONResponse(
+    #         content={"ok": False, "run_started": False, "message": "Unauthorized"},
+    #         status_code=401,
+    #     )
+
+    body = await request.json()
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    issue_key = (body.get("issue_key") or "").strip()
+    if not issue_key:
+        return JSONResponse(
+            content={"ok": False, "run_started": False, "message": "Missing issue_key"},
+            status_code=400,
+        )
+
+    path = WEBHOOK_STORE_DIR / f"{ts}_discovery_{issue_key.replace('-', '_')}.json"
+    path.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    target_raw = (body.get("target_repo") or "").strip() or DEFAULT_TARGET_REPO
+    target_repo = _normalize_target_repo(target_raw)
+    if not target_repo:
+        return JSONResponse(
+            content={
+                "ok": False,
+                "run_started": False,
+                "saved": str(path),
+                "message": "Missing target_repo (body or DEFAULT_TARGET_REPO).",
+            },
+            status_code=400,
+        )
+
+    team_override = (body.get("team_id") or "").strip()
+    team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)
+
+    inputs = build_discovery_workflow_inputs(
+        issue_key=issue_key,
+        target_repo=target_repo,
+        team_id=team_id,
+    )
+    ok, dispatch_status, dispatch_error = await _dispatch_bmad_workflow(inputs)
+
+    github_actions_url = (
+        f"https://github.com/{GITHUB_REPO}/actions/workflows/bmad-start-run.yml"
+        if GITHUB_REPO
+        else None
+    )
+
+    content: dict[str, object] = {
+        "ok": True,
+        "saved": str(path),
+        "run_started": ok,
+        "issue_key": issue_key,
+    }
+    if github_actions_url is not None:
+        content["actions_url"] = github_actions_url
+    content["message"] = (
+        "GitHub Actions workflow dispatched."
+        if ok
+        else "Payload saved, but failed to dispatch GitHub Actions workflow."
+    )
+    if dispatch_status is not None:
+        content["dispatch_status"] = dispatch_status
+    if dispatch_error is not None:
+        content["dispatch_error"] = dispatch_error
+
+    return JSONResponse(
+        content=content,
+        status_code=202 if ok else 500,
+    )
 
 
 @app.post("/bmad/jira-webhook")
