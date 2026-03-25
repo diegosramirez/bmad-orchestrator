@@ -36,6 +36,10 @@ on:
         description: "Skip: Create or update the epic"
         type: boolean
         default: false
+      skip_epic_architect:
+        description: "Skip: Epic architect (Design Architect block on Epic description)"
+        type: boolean
+        default: false
       skip_create_story_tasks:
         description: "Skip: Generate stories and tasks"
         type: boolean
@@ -70,10 +74,6 @@ on:
         default: false
       skip_create_pull_request:
         description: "Skip: Create GitHub PR"
-        type: boolean
-        default: false
-      skip_epic_architect:
-        description: "Skip: Epic architect (Design Architect block on Epic description)"
         type: boolean
         default: false
       # ── Slack verbose ────────────────────────────────────────────────
