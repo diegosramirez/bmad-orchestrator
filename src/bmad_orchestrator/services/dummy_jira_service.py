@@ -114,12 +114,21 @@ class DummyJiraService:
         return issue
 
     def update_epic(self, epic_key: str, fields: dict[str, Any]) -> dict[str, Any]:
+        desc = fields.get("description", "")
+        desc_len = len(desc) if isinstance(desc, str) else len(str(desc))
+        logger.info(
+            "jira_epic_update",
+            epic_key=epic_key,
+            field_keys=list(fields.keys()),
+            description_chars=desc_len,
+        )
         issue = self._read_issue("epics", epic_key)
         if issue is None:
             msg = f"Epic {epic_key} not found in dummy store"
             raise ValueError(msg)
         issue.update(fields)
         self._write_issue("epics", issue)
+        logger.info("jira_epic_updated", epic_key=epic_key)
         return issue
 
     def create_story(
@@ -186,7 +195,7 @@ class DummyJiraService:
         logger.warning("dummy_transition_not_found", key=issue_key)
 
     def add_comment(self, issue_key: str, body: str) -> str:
-        """Create or overwrite the single step-notification comment for this issue; return its id."""
+        """Create/overwrite step-notification comment for this issue; return comment id."""
         comments_dir = self._base / "comments"
         comments_dir.mkdir(parents=True, exist_ok=True)
         safe_key = issue_key.replace("-", "_")

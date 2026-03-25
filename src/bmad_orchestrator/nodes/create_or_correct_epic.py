@@ -69,6 +69,15 @@ def make_create_or_correct_epic_node(
             existing_desc = (existing_epic or {}).get("description") or ""
 
             if settings.execution_mode == "discovery":
+                logger.info(
+                    "discovery_epic_start",
+                    epic_key=existing_epic_id,
+                    got_epic=existing_epic is not None,
+                    summary_len=len(existing_summary),
+                    description_len=len(existing_desc),
+                    dry_run=settings.dry_run,
+                    use_bmad_runner=bmad_runner is not None,
+                )
                 if bmad_runner:
                     discovery = bmad_runner.run_discovery_epic_correction(
                         existing_epic_id,
@@ -101,13 +110,29 @@ def make_create_or_correct_epic_node(
                         on_event=on_event,
                         max_tokens=32768,
                     )
+                logger.info(
+                    "discovery_agent_result",
+                    epic_key=existing_epic_id,
+                    input_valid=discovery.input_valid,
+                    updated_description_len=len((discovery.updated_description or "").strip()),
+                    has_updated_summary=bool((discovery.updated_summary or "").strip()),
+                )
                 if not discovery.input_valid:
+                    logger.warning(
+                        "discovery_aborted_invalid_input",
+                        epic_key=existing_epic_id,
+                        insufficient_preview=(discovery.insufficient_info_message or "")[:240],
+                    )
                     log_entry["message"] = (
                         f"Discovery aborted for {existing_epic_id}: insufficient input. "
                         f"{(discovery.insufficient_info_message or '')[:800]}"
                     )
                     return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
                 if not (discovery.updated_description or "").strip():
+                    logger.warning(
+                        "discovery_empty_description",
+                        epic_key=existing_epic_id,
+                    )
                     log_entry["message"] = (
                         f"Discovery produced no description for {existing_epic_id}"
                     )
@@ -116,7 +141,22 @@ def make_create_or_correct_epic_node(
                 fields: dict[str, Any] = {"description": normalised}
                 if (discovery.updated_summary or "").strip():
                     fields["summary"] = discovery.updated_summary.strip()[:255]
-                jira.update_epic(existing_epic_id, fields)
+                logger.info(
+                    "discovery_jira_update_attempt",
+                    epic_key=existing_epic_id,
+                    fields=list(fields.keys()),
+                    description_out_len=len(normalised),
+                )
+                try:
+                    jira.update_epic(existing_epic_id, fields)
+                except Exception as exc:
+                    logger.exception(
+                        "discovery_jira_update_failed",
+                        epic_key=existing_epic_id,
+                        error=str(exc),
+                    )
+                    raise
+                logger.info("discovery_jira_update_ok", epic_key=existing_epic_id)
                 log_entry["message"] = f"Discovery updated epic {existing_epic_id}"
                 return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
 

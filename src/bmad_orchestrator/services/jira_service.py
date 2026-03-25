@@ -77,8 +77,17 @@ class JiraService:
 
     @skip_if_dry_run(fake_return=_DRY_EPIC)
     def update_epic(self, epic_key: str, fields: dict[str, Any]) -> dict[str, Any]:
+        desc = fields.get("description", "")
+        desc_len = len(desc) if isinstance(desc, str) else len(str(desc))
+        logger.info(
+            "jira_epic_update",
+            epic_key=epic_key,
+            field_keys=list(fields.keys()),
+            description_chars=desc_len,
+        )
         issue = self._client.issue(epic_key)
         issue.update(fields=fields)
+        logger.info("jira_epic_updated", epic_key=epic_key)
         return _issue_to_dict(self._client.issue(epic_key))
 
     @skip_if_dry_run(fake_return=_DRY_STORY)
