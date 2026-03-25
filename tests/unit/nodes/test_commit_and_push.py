@@ -1,7 +1,19 @@
 from __future__ import annotations
 
+import subprocess
+
+import pytest
+
 from bmad_orchestrator.nodes.commit_and_push import make_commit_and_push_node
 from tests.conftest import make_state
+
+
+@pytest.fixture(autouse=True)
+def _default_git_preflight(mock_git):
+    """Set sane defaults for new pre-flight check methods."""
+    mock_git.is_detached_head.return_value = False
+    mock_git.has_uncommitted_changes.return_value = False
+    mock_git.can_merge_cleanly.return_value = True
 
 
 def test_commits_and_returns_branch_and_sha(settings, mock_git, tmp_path, monkeypatch):
@@ -159,3 +171,119 @@ def test_dry_run_still_returns_sha(settings, mock_git):
     result = node(make_state(current_story_id="TEST-10"))
 
     assert result["commit_sha"] is not None
+
+
+# ── Edge case: detached HEAD ──────────────────────────────────────
+
+
+def test_detached_head_returns_failure_state(settings, mock_git):
+    mock_git.is_detached_head.return_value = True
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(current_story_id="TEST-10"))
+
+    assert result["failure_state"]
+    assert "detached HEAD" in result["failure_state"]
+    mock_git.create_and_checkout_branch.assert_not_called()
+    mock_git.push.assert_not_called()
+
+
+# ── Edge case: push failures ─────────────────────────────────────
+
+
+def _push_cpe(stderr: str) -> subprocess.CalledProcessError:
+    return subprocess.CalledProcessError(
+        1, ["git", "push"], output="", stderr=stderr,
+    )
+
+
+def test_push_auth_failure_returns_failure_state(
+    settings, mock_git, tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.commit.return_value = "abc123"
+    mock_git.push.side_effect = _push_cpe(
+        "Authentication failed for repo",
+    )
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="T-1", touched_files=["app.py"],
+    ))
+
+    assert result["failure_state"]
+    assert "authentication" in result["failure_state"].lower()
+    assert result["commit_sha"] == "abc123"
+    assert result["branch_name"] == "bmad/t/T-1-feat"
+
+
+def test_push_network_failure_returns_failure_state(
+    settings, mock_git, tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.commit.return_value = "abc123"
+    mock_git.push.side_effect = _push_cpe(
+        "Could not resolve host: github.com",
+    )
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="T-1", touched_files=["app.py"],
+    ))
+
+    assert result["failure_state"]
+    assert "network" in result["failure_state"].lower()
+
+
+def test_push_rejected_returns_failure_state(
+    settings, mock_git, tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.commit.return_value = "abc123"
+    mock_git.push.side_effect = _push_cpe(
+        "rejected non-fast-forward",
+    )
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="T-1", touched_files=["app.py"],
+    ))
+
+    assert result["failure_state"]
+    assert "rejected" in result["failure_state"].lower()
+
+
+# ── Edge case: merge conflict detection ──────────────────────────
+
+
+def test_merge_conflict_detected_logs_warning(
+    settings, mock_git, tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.commit.return_value = "abc123"
+    mock_git.can_merge_cleanly.return_value = False
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="T-1", touched_files=["app.py"],
+    ))
+
+    assert result["commit_sha"] == "abc123"
+    log_msg = result["execution_log"][0]["message"]
+    assert "merge conflicts" in log_msg.lower()

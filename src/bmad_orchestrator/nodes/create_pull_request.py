@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.services.protocols import GitHubServiceProtocol
 from bmad_orchestrator.state import OrchestratorState
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.utils.retry import retry_on_subprocess_error
 
 logger = get_logger(__name__)
 
@@ -214,71 +216,109 @@ def make_create_pull_request_node(
     def create_pull_request(state: OrchestratorState) -> dict[str, Any]:
         now = datetime.now(UTC).isoformat()
 
-        # Idempotency: skip if PR already exists
+        def _log(msg: str) -> dict[str, Any]:
+            return {
+                "timestamp": now,
+                "node": NODE_NAME,
+                "message": msg,
+                "dry_run": settings.dry_run,
+            }
+
+        # Idempotency: skip if PR already exists in state
         if state["pr_url"]:
             return {
                 "pr_url": state["pr_url"],
-                "execution_log": [{
-                    "timestamp": now,
-                    "node": NODE_NAME,
-                    "message": f"PR already exists: {state['pr_url']}",
-                    "dry_run": settings.dry_run,
-                }],
+                "execution_log": [
+                    _log(f"PR already exists: {state['pr_url']}"),
+                ],
             }
 
-        # Guard: if commit_and_push found no changes, skip PR creation
+        # Guard: no commit was made
         if not state["commit_sha"]:
             logger.warning("skip_pr_no_commit")
             return {
                 "pr_url": None,
-                "execution_log": [{
-                    "timestamp": now,
-                    "node": NODE_NAME,
-                    "message": "No commit was made — skipping PR creation",
-                    "dry_run": settings.dry_run,
-                }],
+                "execution_log": [
+                    _log("No commit was made — skipping PR creation"),
+                ],
             }
 
         branch_name = state["branch_name"] or ""
-        existing = github.pr_exists(branch_name)
+        base = state["base_branch"] or settings.github_base_branch
+
+        # Guard: push failed — branch doesn't exist on remote
+        failure = state.get("failure_state") or ""
+        if failure and "push" in failure.lower():
+            sha_short = state["commit_sha"][:12]
+            msg = (
+                f"Skipping PR: push failed. Local commit "
+                f"{sha_short} on branch {branch_name}. "
+                f"Manual: gh pr create --head {branch_name} "
+                f"--base {base}"
+            )
+            return {
+                "pr_url": None,
+                "execution_log": [_log(msg)],
+            }
+
+        # Check if PR already exists on GitHub
+        try:
+            existing = github.pr_exists(branch_name)
+        except subprocess.CalledProcessError:
+            logger.warning(
+                "pr_exists_check_failed", branch=branch_name,
+            )
+            existing = None
+
         if existing:
             return {
                 "pr_url": existing,
-                "execution_log": [{
-                    "timestamp": now,
-                    "node": NODE_NAME,
-                    "message": f"PR already exists on GitHub: {existing}",
-                    "dry_run": settings.dry_run,
-                }],
+                "execution_log": [
+                    _log(f"PR already exists on GitHub: {existing}"),
+                ],
             }
 
         story_id = state["current_story_id"] or "BMAD"
         input_prompt = state["input_prompt"]
-        title = f"feat({state['team_id']}): {input_prompt[:60]} [{story_id}]"
-
-        # Use the branch we were on before commit_and_push created the feature branch.
-        # Falls back to settings.github_base_branch (default: "main") when not set.
-        base = state["base_branch"] or settings.github_base_branch
-
-        # Force draft when pipeline failed so the PR is clearly WIP
-        is_draft = settings.draft_pr or bool(state.get("failure_state"))
-
-        pr_url = github.create_pr(
-            title=title,
-            body=_build_pr_body(state, settings),
-            head_branch=branch_name,
-            base_branch=base,
-            draft=is_draft,
+        title = (
+            f"feat({state['team_id']}): "
+            f"{input_prompt[:60]} [{story_id}]"
         )
+        is_draft = settings.draft_pr or bool(
+            state.get("failure_state"),
+        )
+
+        # Create PR with retry for transient failures
+        try:
+            pr_url = retry_on_subprocess_error(
+                lambda: github.create_pr(
+                    title=title,
+                    body=_build_pr_body(state, settings),
+                    head_branch=branch_name,
+                    base_branch=base,
+                    draft=is_draft,
+                ),
+                label="gh_pr_create",
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr_snippet = (exc.stderr or "")[:300]
+            msg = (
+                f"PR creation failed. stderr: {stderr_snippet}. "
+                f"Manual: gh pr create --head {branch_name} "
+                f"--base {base}"
+            )
+            # Preserve existing failure_state from earlier nodes
+            return {
+                "failure_state": (
+                    state.get("failure_state") or msg
+                ),
+                "pr_url": None,
+                "execution_log": [_log(msg)],
+            }
 
         return {
             "pr_url": pr_url,
-            "execution_log": [{
-                "timestamp": now,
-                "node": NODE_NAME,
-                "message": f"PR created: {pr_url}",
-                "dry_run": settings.dry_run,
-            }],
+            "execution_log": [_log(f"PR created: {pr_url}")],
         }
 
     return create_pull_request

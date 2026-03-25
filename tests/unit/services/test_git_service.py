@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import subprocess as _sp
 from unittest.mock import MagicMock, patch
 
-from bmad_orchestrator.services.git_service import GitService, _slugify
+from bmad_orchestrator.services.git_service import (
+    GitService,
+    _slugify,
+    classify_push_error,
+)
+
+_SP = "bmad_orchestrator.services.git_service.subprocess.run"
 
 
 def test_slugify_lowercases_and_replaces_spaces(settings):
@@ -103,7 +110,6 @@ def test_create_and_checkout_branch_existing_remote(settings):
 def test_create_and_checkout_branch_existing_local(settings):
     """Retry scenario: branch exists locally but not on remote.
     checkout -b raises 'already exists' → falls back to plain checkout."""
-    import subprocess as _sp
     svc = GitService(_live(settings))
 
     already_exists_exc = _sp.CalledProcessError(
@@ -190,3 +196,95 @@ def test_push_real_path(settings):
     mock_run.assert_called_once()
     args = mock_run.call_args[0][0]
     assert args == ["git", "push", "-u", "origin", "HEAD:refs/heads/bmad/pug/PUG-1"]
+
+
+# ── is_detached_head ──────────────────────────────────────────────────────────
+
+
+def test_is_detached_head_true(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="HEAD\n", stderr="",
+        )
+        assert svc.is_detached_head() is True
+
+
+def test_is_detached_head_false(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="main\n", stderr="",
+        )
+        assert svc.is_detached_head() is False
+
+
+# ── has_uncommitted_changes ───────────────────────────────────────────────────
+
+
+def test_has_uncommitted_changes_true(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=" M src/app.py\n",
+        )
+        assert svc.has_uncommitted_changes() is True
+
+
+def test_has_uncommitted_changes_false(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="")
+        assert svc.has_uncommitted_changes() is False
+
+
+# ── can_merge_cleanly ─────────────────────────────────────────────────────────
+
+
+def test_can_merge_cleanly_true(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        assert svc.can_merge_cleanly("feature", "main") is True
+
+
+def test_can_merge_cleanly_false(settings):
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.return_value = MagicMock(returncode=1)
+        assert svc.can_merge_cleanly("feature", "main") is False
+
+
+def test_can_merge_cleanly_fallback_on_error(settings):
+    """Old git without merge-tree --write-tree falls back to True."""
+    svc = GitService(_live(settings))
+    with patch(_SP) as mock_run:
+        mock_run.side_effect = OSError("command not found")
+        assert svc.can_merge_cleanly("feature", "main") is True
+
+
+# ── classify_push_error ───────────────────────────────────────────────────────
+
+
+def _cpe(stderr: str) -> _sp.CalledProcessError:
+    return _sp.CalledProcessError(1, ["git", "push"], stderr=stderr)
+
+
+def test_classify_push_error_auth():
+    assert classify_push_error(_cpe("Authentication failed")) == "auth"
+    assert classify_push_error(_cpe("403 Forbidden")) == "auth"
+
+
+def test_classify_push_error_rejected():
+    assert classify_push_error(_cpe("rejected")) == "rejected"
+    assert classify_push_error(_cpe("non-fast-forward")) == "rejected"
+
+
+def test_classify_push_error_network():
+    assert classify_push_error(
+        _cpe("Could not resolve host"),
+    ) == "network"
+
+
+def test_classify_push_error_unknown():
+    assert classify_push_error(_cpe("something weird")) == "unknown"

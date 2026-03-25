@@ -37,6 +37,28 @@ def _git_env_with_token(settings: Settings) -> dict[str, str] | None:
     return {**os.environ, "GH_TOKEN": token.get_secret_value()}
 
 
+def classify_push_error(exc: subprocess.CalledProcessError) -> str:
+    """Return a human-readable category for a git push failure.
+
+    Categories: ``'auth'``, ``'rejected'``, ``'network'``, ``'unknown'``.
+    """
+    stderr = (exc.stderr or "").lower()
+    if any(kw in stderr for kw in (
+        "authentication", "403", "401", "permission denied",
+    )):
+        return "auth"
+    if any(kw in stderr for kw in (
+        "rejected", "non-fast-forward", "stale info",
+    )):
+        return "rejected"
+    if any(kw in stderr for kw in (
+        "could not resolve host", "connection refused",
+        "timed out", "network", "ssl",
+    )):
+        return "network"
+    return "unknown"
+
+
 class GitService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -159,3 +181,42 @@ class GitService:
             **kwargs,
         )
         logger.info("pushed", remote=remote, branch=branch_name)
+
+    # ── Read-only query methods (no @skip_if_dry_run needed) ───────
+
+    def is_detached_head(self) -> bool:
+        """Return True if HEAD is detached (not on any branch)."""
+        result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        return result.stdout.strip() == "HEAD"
+
+    def has_uncommitted_changes(self) -> bool:
+        """Return True if the working tree has uncommitted changes."""
+        result = subprocess.run(  # noqa: S603
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+        )
+        return bool(result.stdout.strip())
+
+    def can_merge_cleanly(
+        self, head_branch: str, base_branch: str,
+    ) -> bool:
+        """Check if *head_branch* can merge into *base_branch* cleanly.
+
+        Uses ``git merge-tree --write-tree`` (Git 2.38+) for a
+        non-destructive check.  Falls back to ``True`` on old Git so
+        we never block PR creation due to an unsupported command.
+        """
+        try:
+            result = subprocess.run(  # noqa: S603
+                [
+                    "git", "merge-tree", "--write-tree",
+                    "--no-messages",
+                    base_branch, head_branch,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+        except Exception:  # noqa: BLE001
+            return True

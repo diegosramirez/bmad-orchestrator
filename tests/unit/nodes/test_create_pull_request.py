@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.nodes.create_pull_request import make_create_pull_request_node
 from tests.conftest import make_state
@@ -150,3 +152,93 @@ def test_pr_body_contains_hidden_metadata(settings, mock_github):
     assert "<!-- bmad:target_repo=org/repo -->" in body
     assert "<!-- bmad:prompt=Add user authentication -->" in body
     assert "<!-- bmad:team_id=team-alpha -->" in body
+
+
+# ── Edge case: push failure guard ─────────────────────────────────
+
+
+def test_skips_pr_when_push_failed(settings, mock_github):
+    """When failure_state mentions push, skip PR creation."""
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(
+        branch_name="bmad/t/T-1-feat",
+        commit_sha="abc123",
+        failure_state="Push failed: authentication error. stderr: ...",
+    ))
+
+    assert result["pr_url"] is None
+    msg = result["execution_log"][0]["message"]
+    assert "push failed" in msg.lower()
+    assert "gh pr create" in msg
+    mock_github.create_pr.assert_not_called()
+
+
+# ── Edge case: PR creation failure ────────────────────────────────
+
+
+def _gh_cpe(stderr: str = "") -> subprocess.CalledProcessError:
+    return subprocess.CalledProcessError(
+        1, ["gh", "pr", "create"], output="", stderr=stderr,
+    )
+
+
+def test_pr_creation_failure_returns_failure_state(
+    settings, mock_github,
+):
+    mock_github.pr_exists.return_value = None
+    mock_github.create_pr.side_effect = _gh_cpe("some API error")
+
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(
+        branch_name="bmad/t/T-1-feat",
+        current_story_id="T-1",
+        commit_sha="abc123",
+    ))
+
+    assert result["pr_url"] is None
+    assert result["failure_state"]
+    msg = result["execution_log"][0]["message"]
+    assert "PR creation failed" in msg
+    assert "gh pr create" in msg
+
+
+def test_pr_exists_failure_still_tries_create(
+    settings, mock_github,
+):
+    """If pr_exists check fails, still attempt to create PR."""
+    mock_github.pr_exists.side_effect = _gh_cpe("API error")
+    mock_github.create_pr.return_value = (
+        "https://github.com/org/repo/pull/99"
+    )
+
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(
+        branch_name="bmad/t/T-1-feat",
+        current_story_id="T-1",
+        commit_sha="abc123",
+    ))
+
+    assert result["pr_url"] == "https://github.com/org/repo/pull/99"
+    mock_github.create_pr.assert_called_once()
+
+
+def test_preserves_existing_failure_state_on_pr_error(
+    settings, mock_github,
+):
+    """Prior failure_state (e.g. from fail_with_state) is preserved."""
+    mock_github.pr_exists.return_value = None
+    mock_github.create_pr.side_effect = _gh_cpe("API error")
+
+    node = make_create_pull_request_node(mock_github, settings)
+    result = node(make_state(
+        branch_name="bmad/t/T-1-feat",
+        current_story_id="T-1",
+        commit_sha="abc123",
+        failure_state="Pipeline failed after 2 loop(s).",
+    ))
+
+    # Original failure_state preserved, not overwritten
+    assert result["failure_state"] == (
+        "Pipeline failed after 2 loop(s)."
+    )
+    assert result["pr_url"] is None
