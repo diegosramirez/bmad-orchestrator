@@ -12,11 +12,8 @@ from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
-from bmad_orchestrator.utils.jira_template import (
-    load_template,
-    matches_template,
-    normalise_jira_headings,
-)
+from bmad_orchestrator.utils.discovery_epic_prompt import DISCOVERY_EPIC_PROMPT_FINAL
+from bmad_orchestrator.utils.jira_template import load_template, normalise_jira_headings
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +30,15 @@ class EpicCorrectionDecision(BaseModel):
     needs_update: bool
     updated_description: str = ""
     reason: str = ""
+
+
+class DiscoveryEpicResult(BaseModel):
+    """Structured output for Discovery Agent (execution_mode discovery, existing epic)."""
+
+    input_valid: bool
+    insufficient_info_message: str = ""
+    updated_description: str = ""
+    updated_summary: str = ""
 
 
 def make_create_or_correct_epic_node(
@@ -59,10 +65,68 @@ def make_create_or_correct_epic_node(
 
         if existing_epic_id:
             existing_epic = jira.get_epic(existing_epic_id)
-            existing_desc = (existing_epic or {}).get("description", "")
+            existing_summary = (existing_epic or {}).get("summary") or ""
+            existing_desc = (existing_epic or {}).get("description") or ""
+
+            if settings.execution_mode == "discovery":
+                if bmad_runner:
+                    discovery = bmad_runner.run_discovery_epic_correction(
+                        existing_epic_id,
+                        existing_summary,
+                        existing_desc,
+                        prompt,
+                        DiscoveryEpicResult,
+                    )
+                else:
+                    pm_discovery = build_system_prompt("pm", settings.bmad_install_dir)
+                    pm_discovery += (
+                        "\n\nYou are executing the Discovery Agent in HEADLESS mode: "
+                        "follow the Discovery instructions in the user message exactly. "
+                        "Return ONLY valid JSON matching the requested schema."
+                    )
+                    discovery = claude.complete_structured(
+                        system_prompt=pm_discovery,
+                        user_message=(
+                            f"{DISCOVERY_EPIC_PROMPT_FINAL}\n\n"
+                            "## Orchestrator context (Jira ticket — source of truth):\n\n"
+                            f"- Epic key: {existing_epic_id}\n"
+                            f"- Current summary (title):\n{existing_summary}\n\n"
+                            f"- Current description:\n{existing_desc}\n\n"
+                            f"- Additional orchestrator context:\n{prompt}\n\n"
+                            "## JSON output\n"
+                            "Return ONLY one JSON object matching the schema."
+                        ),
+                        schema=DiscoveryEpicResult,
+                        agent_id="pm",
+                        on_event=on_event,
+                        max_tokens=32768,
+                    )
+                if not discovery.input_valid:
+                    log_entry["message"] = (
+                        f"Discovery aborted for {existing_epic_id}: insufficient input. "
+                        f"{(discovery.insufficient_info_message or '')[:800]}"
+                    )
+                    return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
+                if not (discovery.updated_description or "").strip():
+                    log_entry["message"] = (
+                        f"Discovery produced no description for {existing_epic_id}"
+                    )
+                    return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
+                normalised = normalise_jira_headings(discovery.updated_description)
+                fields: dict[str, Any] = {"description": normalised}
+                if (discovery.updated_summary or "").strip():
+                    fields["summary"] = discovery.updated_summary.strip()[:255]
+                jira.update_epic(existing_epic_id, fields)
+                log_entry["message"] = f"Discovery updated epic {existing_epic_id}"
+                return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
+
             if bmad_runner:
                 decision = bmad_runner.run_correct_course(
-                    existing_epic_id, existing_desc, prompt, EpicCorrectionDecision
+                    existing_epic_id,
+                    existing_desc,
+                    prompt,
+                    EpicCorrectionDecision,
+                    existing_summary=existing_summary,
                 )
             else:
                 decision = claude.complete_structured(
@@ -72,6 +136,7 @@ def make_create_or_correct_epic_node(
                         "workflow for Jira epics.\n\n"
                         "Evaluate whether this existing epic's description "
                         "adequately covers the new work request.\n\n"
+                        f"Existing epic ({existing_epic_id}) summary:\n{existing_summary}\n\n"
                         f"Existing epic ({existing_epic_id}) "
                         f"description:\n{existing_desc}\n\n"
                         f"New work request: {prompt}\n\n"

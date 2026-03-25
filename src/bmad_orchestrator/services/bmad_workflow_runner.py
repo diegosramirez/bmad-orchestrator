@@ -13,6 +13,7 @@ from typing import Any
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_service import ClaudeService
+from bmad_orchestrator.utils.discovery_epic_prompt import DISCOVERY_EPIC_PROMPT_FINAL
 from bmad_orchestrator.utils.jira_template import load_template
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -170,6 +171,8 @@ class BmadWorkflowRunner:
         existing_desc: str,
         prompt: str,
         schema: type[Any],
+        *,
+        existing_summary: str = "",
     ) -> Any:
         """Execute BMAD bmad-correct-course for epic description update (headless)."""
         workflow_context = load_correct_course_context(self._settings)
@@ -179,9 +182,15 @@ class BmadWorkflowRunner:
             "no user prompts. Use the workflow guidance below. "
             "Return ONLY the requested JSON structure (needs_update, updated_description, reason)."
         )
+        summary_block = (
+            f"Existing epic ({existing_epic_id}) summary:\n{existing_summary}\n\n"
+            if (existing_summary or "").strip()
+            else ""
+        )
         user_message = (
             f"## Workflow context:\n{workflow_context}\n\n"
             "## Orchestrator context:\n"
+            f"{summary_block}"
             f"Existing epic ({existing_epic_id}) description:\n{existing_desc}\n\n"
             f"New work request: {prompt}\n\n"
             "Decide if the epic description should be updated to incorporate this work. "
@@ -193,6 +202,48 @@ class BmadWorkflowRunner:
             user_message=user_message,
             schema=schema,
             agent_id="pm",
+        )
+
+    def run_discovery_epic_correction(
+        self,
+        existing_epic_id: str,
+        existing_summary: str,
+        existing_desc: str,
+        prompt: str,
+        schema: type[Any],
+    ) -> Any:
+        """Run Discovery Agent: validate Jira title+description, return structured epic markdown."""
+        system_prompt = build_system_prompt("pm", self._settings.bmad_install_dir)
+        system_prompt += (
+            "\n\nYou are executing the Discovery Agent in HEADLESS mode: "
+            "follow the Discovery instructions in the user message exactly. "
+            "Return ONLY valid JSON matching the requested schema: "
+            "input_valid (boolean), "
+            "insufficient_info_message (when input_valid is false), "
+            "updated_description (full markdown when input_valid is true), "
+            "updated_summary (optional one-line title when input_valid is true; "
+            "empty string to leave the Jira summary unchanged)."
+        )
+        user_message = (
+            f"{DISCOVERY_EPIC_PROMPT_FINAL}\n\n"
+            "## Orchestrator context (Jira ticket — source of truth):\n\n"
+            f"- Epic key: {existing_epic_id}\n"
+            f"- Current summary (title):\n{existing_summary}\n\n"
+            f"- Current description:\n{existing_desc}\n\n"
+            f"- Additional orchestrator context (e.g. echoed issue key):\n{prompt}\n\n"
+            "## JSON output\n"
+            "Return ONLY one JSON object matching the schema. "
+            "When input_valid is false, set insufficient_info_message per STEP 1; "
+            "leave updated_description and updated_summary empty. "
+            "When input_valid is true, fill updated_description with the full epic markdown "
+            "from STEP 2; optionally set updated_summary for the epic title."
+        )
+        return self._claude.complete_structured(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            schema=schema,
+            agent_id="pm",
+            max_tokens=32768,
         )
 
     def run_create_story(

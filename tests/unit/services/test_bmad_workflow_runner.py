@@ -87,6 +87,48 @@ def test_run_correct_course_calls_claude(runner, mock_claude, monkeypatch, tmp_p
     assert "existing desc" in call_kwargs["user_message"]
 
 
+def test_run_correct_course_includes_summary(runner, mock_claude, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    schema = MagicMock()
+    mock_claude.complete_structured.return_value = MagicMock()
+
+    runner.run_correct_course(
+        "PUG-437",
+        "existing desc",
+        "new request",
+        schema,
+        existing_summary="My epic title",
+    )
+
+    call_kwargs = mock_claude.complete_structured.call_args.kwargs
+    assert "My epic title" in call_kwargs["user_message"]
+    assert "summary" in call_kwargs["user_message"].lower()
+
+
+def test_run_discovery_epic_correction_calls_claude(runner, mock_claude, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    schema = MagicMock()
+    mock_claude.complete_structured.return_value = MagicMock()
+
+    runner.run_discovery_epic_correction(
+        "PUG-437",
+        "Title",
+        "Desc body",
+        "SAM-1",
+        schema,
+    )
+
+    mock_claude.complete_structured.assert_called_once()
+    call_kwargs = mock_claude.complete_structured.call_args.kwargs
+    um = call_kwargs["user_message"]
+    assert "PUG-437" in um
+    assert "Title" in um
+    assert "Desc body" in um
+    assert "SAM-1" in um
+    assert "Discovery Agent" in call_kwargs["system_prompt"] or "Discovery" in um
+    assert call_kwargs.get("max_tokens") == 32768
+
+
 def test_run_create_story_calls_claude(runner, mock_claude, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     schema = MagicMock()
