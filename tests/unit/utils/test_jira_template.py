@@ -9,7 +9,6 @@ from bmad_orchestrator.utils.jira_template import (
     normalise_jira_headings,
 )
 
-
 # ── load_template ────────────────────────────────────────────────────────────
 
 def test_load_template_returns_content_when_file_exists(tmp_path: Path):

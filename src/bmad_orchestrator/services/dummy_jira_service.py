@@ -186,7 +186,7 @@ class DummyJiraService:
         logger.warning("dummy_transition_not_found", key=issue_key)
 
     def add_comment(self, issue_key: str, body: str) -> str:
-        """Create or overwrite the single step-notification comment for this issue; return its id."""
+        """Create/overwrite step-notification comment; return its id."""
         comments_dir = self._base / "comments"
         comments_dir.mkdir(parents=True, exist_ok=True)
         safe_key = issue_key.replace("-", "_")

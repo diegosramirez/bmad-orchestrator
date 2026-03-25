@@ -33,12 +33,6 @@ class ExecutionLogEntry(TypedDict):
     dry_run: bool
 
 
-class FileOperation(TypedDict):
-    action: str  # "create" | "modify" | "delete"
-    path: str
-    content: str
-
-
 class OrchestratorState(TypedDict):
     # ── Inputs (set once at start) ────────────────────────────────────────────
     team_id: str
@@ -48,7 +42,7 @@ class OrchestratorState(TypedDict):
     # ── Jira artifacts ────────────────────────────────────────────────────────
     current_epic_id: str | None
     current_story_id: str | None
-    # When set, step start/finish notifications are posted as comments on this story (e.g. webhook runs).
+    # When set, step notifications are posted as comments on this story.
     notify_jira_story_key: str | None
     # Single comment id and body for step notifications (create once, then update/append).
     step_notification_comment_id: str | None

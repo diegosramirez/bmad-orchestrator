@@ -190,9 +190,8 @@ def test_make_initial_state_sets_notify_jira_story_key(settings, monkeypatch, tm
 
 def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings):
     """First node: add_comment with 'Process started', then update_comment with Step completed."""
-    from unittest.mock import MagicMock
-
     from datetime import UTC, datetime
+    from unittest.mock import MagicMock
 
     from bmad_orchestrator import graph
     from bmad_orchestrator.graph import _wrap_with_step_notifications
@@ -227,15 +226,16 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
     jira.update_comment.assert_called_with(
         "SAM1-51",
         "comment-123",
-        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n⏩ Process continuing...",
+        "🚀 Process started\n\n"
+        "[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n"
+        "⏩ Process continuing...",
     )
 
 
 def test_wrap_step_notifications_later_step_only_updates_comment(settings):
     """When comment_id is in state, wrapper calls update_comment once with Step completed."""
-    from unittest.mock import MagicMock
-
     from datetime import UTC, datetime
+    from unittest.mock import MagicMock
 
     from bmad_orchestrator import graph
     from bmad_orchestrator.graph import _wrap_with_step_notifications
@@ -264,7 +264,7 @@ def test_wrap_step_notifications_later_step_only_updates_comment(settings):
             "🚀 Process started\n\n✅ Step completed: Dev story\n\n⏩ Process continuing..."
         ),
     )
-    result = wrapped(state)
+    wrapped(state)
 
     jira.add_comment.assert_not_called()
     assert jira.update_comment.call_count == 1

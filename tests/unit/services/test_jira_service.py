@@ -196,7 +196,9 @@ def test_set_story_branch_field(jira_svc):
     issue = _make_mock_issue()
     client.issue.return_value = issue
     svc.set_story_branch_field("SAM1-61", "bmad/sam1/SAM1-61-add-signup")
-    issue.update.assert_called_once_with(fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"})
+    issue.update.assert_called_once_with(
+        fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"},
+    )
 
 
 # ── get_subtasks ───────────────────────────────────────────────────────────────

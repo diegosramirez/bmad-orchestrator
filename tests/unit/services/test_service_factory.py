@@ -5,9 +5,9 @@ from pathlib import Path
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.services.dummy_github_service import DummyGitHubService
 from bmad_orchestrator.services.dummy_jira_service import DummyJiraService
+from bmad_orchestrator.services.dummy_slack_service import DummySlackService
 from bmad_orchestrator.services.github_service import GitHubService
 from bmad_orchestrator.services.jira_service import JiraService
-from bmad_orchestrator.services.dummy_slack_service import DummySlackService
 from bmad_orchestrator.services.null_slack_service import NullSlackService
 from bmad_orchestrator.services.service_factory import (
     create_github_service,

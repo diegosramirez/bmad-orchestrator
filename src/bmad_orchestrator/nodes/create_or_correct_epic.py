@@ -14,7 +14,6 @@ from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.jira_template import (
     load_template,
-    matches_template,
     normalise_jira_headings,
 )
 from bmad_orchestrator.utils.logger import get_logger

@@ -51,7 +51,8 @@ def _parse_kv(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for m in _KV_RE.finditer(text):
         key = m.group(1)
-        val = m.group(2) if m.group(2) is not None else (m.group(3) if m.group(3) is not None else m.group(4))
+        g2, g3, g4 = m.group(2), m.group(3), m.group(4)
+        val = g2 if g2 is not None else (g3 if g3 is not None else g4)
         result[key] = val
     return result
 
@@ -137,7 +138,7 @@ def _format_agent_timeline(structlog_text: str) -> str:
     output: list[str] = ["## Agent Timeline\n"]
     current_agent: str | None = None
 
-    for hms, level, event, _rest, kv in entries:
+    for hms, _level, event, _rest, kv in entries:
         # Skip events with empty details from _SUMMARY_EVENTS
         if event in _SUMMARY_EVENTS and not _SUMMARY_EVENTS[event]:
             continue
@@ -274,7 +275,10 @@ def _token_report_as_text(claude: object) -> str:
     col_calls = "Calls"
     col_time = "Time"
     if mixed:
-        header = f"{col_step:30} {'Model':20} {col_in:>8} {col_out:>8} {col_tot:>8} {col_calls:>6} {col_time:>8}"
+        header = (
+            f"{col_step:30} {'Model':20} {col_in:>8}"
+            f" {col_out:>8} {col_tot:>8} {col_calls:>6} {col_time:>8}"
+        )
     else:
         header = f"{col_step:30} {col_in:>8} {col_out:>8} {col_tot:>8} {col_calls:>6} {col_time:>8}"
     sep = "-" * len(header)
@@ -810,7 +814,8 @@ def run(
     _print_token_report(claude)
     _post_token_report_to_jira(
         claude, settings,
-        (final.values.get("notify_jira_story_key") if final and final.values else None) or story_key,
+        (final.values.get("notify_jira_story_key") if final and final.values else None)
+        or story_key,
     )
     log_path = _save_log(thread_id)
     console.print(f"[dim]Log saved to {log_path}[/dim]")

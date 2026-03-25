@@ -8,11 +8,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from bmad_orchestrator.webhook.jira_payload import parse_jira_webhook
-from dotenv import load_dotenv
+
 load_dotenv()
 
 app = FastAPI(title="BMAD Jira Webhook", version="0.1.0")
@@ -169,7 +170,7 @@ async def jira_webhook(request: Request):
 
 @app.post("/bmad/jira-comment-webhook")
 async def jira_comment_webhook(request: Request):
-    """Receive Jira comment webhook, optionally dispatch a retry/refine run based on /bmad commands."""
+    """Receive Jira comment webhook; dispatch retry/refine run."""
     body = await request.json()
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     key = body.get("issue", {}).get("key", "unknown")

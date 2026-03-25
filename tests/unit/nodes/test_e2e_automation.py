@@ -10,7 +10,7 @@ from tests.conftest import make_state
 def test_e2e_defaults_to_playwright_when_no_commands(settings, mock_agent_service):
     """When no e2e_commands detected, node defaults to 'npx playwright test'."""
     node = make_e2e_automation_node(mock_agent_service, settings)
-    result = node(make_state(e2e_commands=[]))
+    node(make_state(e2e_commands=[]))
     mock_agent_service.run_agent.assert_called_once()
     prompt = mock_agent_service.run_agent.call_args.args[0]
     assert "npx playwright test" in prompt

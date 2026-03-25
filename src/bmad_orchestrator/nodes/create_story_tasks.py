@@ -12,12 +12,11 @@ from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
-from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.jira_template import (
     load_template,
-    matches_template,
     normalise_jira_headings,
 )
+from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)

@@ -12,12 +12,12 @@ from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
-from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.jira_template import (
     load_template,
     matches_template,
     normalise_jira_headings,
 )
+from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,9 +109,10 @@ def make_party_mode_node(
                     corrected = claude.complete_structured(
                         system_prompt=aggregator_prompt_title,
                         user_message=(
-                            f"Rewrite this Jira story title into standard user story format: "
-                            f'"As a [role], I want [action], so that [benefit]." '
-                            f"Keep it one sentence, clear and concise.\n\nCurrent title: {current_summary}"
+                            f"Rewrite this Jira story title into standard user "
+                            f'story format: "As a [role], I want [action], so '
+                            f'that [benefit]." Keep it one sentence, clear and '
+                            f"concise.\n\nCurrent title: {current_summary}"
                         ),
                         schema=UserStorySummary,
                         agent_id="scrum_master",
@@ -122,7 +123,7 @@ def make_party_mode_node(
                         log_entries.append({
                             "timestamp": now,
                             "node": NODE_NAME,
-                            "message": f"Updated story {story_id} title to user story format (webhook)",
+                            "message": f"Updated story {story_id} title (webhook)",
                             "dry_run": settings.dry_run,
                         })
 
@@ -246,13 +247,16 @@ def make_party_mode_node(
             f"Developer feedback (Amelia):\n{developer_out}\n\n"
             f"Produce:\n"
             f"- updated_summary: refined one-line story title\n"
-            f"- updated_description: improved story body incorporating all feedback. {format_instruction}\n"
+            f"- updated_description: improved story body incorporating "
+            f"all feedback. {format_instruction}\n"
             f"- acceptance_criteria: updated, unambiguous list "
             f"(max 8 items — essential, verifiable only)\n"
-            f"- implementation_notes: key technical points for the developer (be concise). "
-            f"For Jira compatibility: do NOT use numbered or lettered outlines (no '1.', 'a.', 'i.'). "
-            f"Use only short paragraphs or simple '-' bullet lists; use **bold** for subsection titles "
-            f"if needed, not outline-style headings."
+            f"- implementation_notes: key technical points for the "
+            f"developer (be concise). For Jira compatibility: do NOT "
+            f"use numbered or lettered outlines (no '1.', 'a.', 'i.'). "
+            f"Use only short paragraphs or simple '-' bullet lists; "
+            f"use **bold** for subsection titles if needed, "
+            f"not outline-style headings."
         )
         if jira_template:
             aggregator_user_msg += f"\n\n## Jira template reference:\n{jira_template[:4000]}"
@@ -298,12 +302,15 @@ def make_party_mode_node(
                 sublist = claude.complete_structured(
                     system_prompt=aggregator_prompt_tasks,
                     user_message=(
-                        f"From this refined story, produce 2 to 6 concrete subtasks (Jira subtasks) "
-                        f"that a developer would implement. Each task: summary (short), description (what to do).\n\n"
+                        f"From this refined story, produce 2 to 6 concrete "
+                        f"subtasks (Jira subtasks) that a developer would "
+                        f"implement. Each task: summary (short), "
+                        f"description (what to do).\n\n"
                         f"Refined description:\n{refined.updated_description}\n\n"
                         f"Acceptance criteria:\n"
                         + "\n".join(f"- {ac}" for ac in refined.acceptance_criteria)
-                        + f"\n\nImplementation notes:\n{refined.implementation_notes or '(none)'}\n\n"
+                        + "\n\nImplementation notes:\n"
+                        + f"{refined.implementation_notes or '(none)'}\n\n"
                         f"Return a list of tasks with 'summary' and 'description' for each. "
                         f"Do NOT use numbered or lettered outlines in the text."
                     ),
@@ -316,7 +323,10 @@ def make_party_mode_node(
                 log_entries.append({
                     "timestamp": now,
                     "node": NODE_NAME,
-                    "message": f"Created {len(sublist.tasks)} subtasks for story {story_id} (webhook)",
+                    "message": (
+                        f"Created {len(sublist.tasks)} subtasks "
+                        f"for story {story_id} (webhook)"
+                    ),
                     "dry_run": settings.dry_run,
                 })
 

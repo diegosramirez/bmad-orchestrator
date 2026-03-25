@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.graph import _make_verbose_callback, _wrap_with_slack_notifications

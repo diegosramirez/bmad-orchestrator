@@ -100,7 +100,9 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
     mock_claude.complete.return_value = "feedback"
     # Structured calls: 1) UserStorySummary (title fix), 2) RefinedStory, 3) _SubtaskList
     mock_claude.complete_structured.side_effect = [
-        UserStorySummary(summary="As a user, I want to improve dashboard copy so that it is clearer"),
+        UserStorySummary(
+            summary="As a user, I want to improve dashboard copy so that it is clearer",
+        ),
         RefinedStory(
             updated_summary="Improved",
             updated_description="Refined description",

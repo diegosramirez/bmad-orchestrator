@@ -84,7 +84,7 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
 
 
 def _step_status_suffix(node_name: str) -> str:
-    """Return the status line to show once at the end (Process continuing / completed / finished)."""
+    """Return the status line to show once at the end."""
     if node_name == "create_pull_request":
         return "🎉 Process completed successfully"
     if node_name == "fail_with_state":
@@ -119,7 +119,7 @@ def _wrap_with_step_notifications(
     node_name: str,
     node_fn: Callable[[OrchestratorState], dict[str, Any]],
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
-    """Wrap a node: one Jira comment; list of Step completed lines, single status line at the end."""
+    """Wrap a node with Jira step notifications (step-completed lines + status)."""
 
     def _wrapped(state: OrchestratorState) -> dict[str, Any]:
         notify_key = state.get("notify_jira_story_key")
@@ -148,7 +148,7 @@ def _wrap_with_step_notifications(
                 "step_notification_comment_body": body,
             }
 
-        # Later steps: strip previous status, append step (single newline between steps) and new status
+        # Later steps: strip previous status, append step + new status
         out = node_fn(state)
         base = _strip_trailing_status(current_body)
         step_line = _format_step_completed_line(label)

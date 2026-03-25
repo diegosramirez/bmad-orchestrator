@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 # Sections that must be present for content to be considered "template-compliant".
 # Match bold headings as in docs/template-jira.md (normaliser may add \u200B prefix).
@@ -60,7 +60,7 @@ def load_template(app_root: Path | None = None) -> str:
 
 
 def matches_template(content: str) -> bool:
-    """Return True if content contains all template sections (Hypothesis through Acceptance Criteria)."""
+    """Return True if content contains all template sections."""
     if not (content or "").strip():
         return False
     text = content.strip()
