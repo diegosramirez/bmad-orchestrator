@@ -204,9 +204,8 @@ def test_make_initial_state_sets_notify_jira_story_key(settings, monkeypatch, tm
 
 def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings):
     """First node: add_comment with 'Process started', then update_comment with Step completed."""
-    from unittest.mock import MagicMock
-
     from datetime import UTC, datetime
+    from unittest.mock import MagicMock
 
     from bmad_orchestrator import graph
     from bmad_orchestrator.graph import _wrap_with_step_notifications
@@ -238,18 +237,17 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
     )
     jira.add_comment.assert_called_once_with("SAM1-51", "🚀 Process started")
     assert jira.update_comment.call_count == 1
-    jira.update_comment.assert_called_with(
-        "SAM1-51",
-        "comment-123",
-        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n⏩ Process continuing...",
+    expected_body = (
+        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n"
+        "⏩ Process continuing..."
     )
+    jira.update_comment.assert_called_with("SAM1-51", "comment-123", expected_body)
 
 
 def test_wrap_step_notifications_later_step_only_updates_comment(settings):
     """When comment_id is in state, wrapper calls update_comment once with Step completed."""
-    from unittest.mock import MagicMock
-
     from datetime import UTC, datetime
+    from unittest.mock import MagicMock
 
     from bmad_orchestrator import graph
     from bmad_orchestrator.graph import _wrap_with_step_notifications
@@ -278,12 +276,104 @@ def test_wrap_step_notifications_later_step_only_updates_comment(settings):
             "🚀 Process started\n\n✅ Step completed: Dev story\n\n⏩ Process continuing..."
         ),
     )
-    result = wrapped(state)
+    wrapped(state)
 
     jira.add_comment.assert_not_called()
     assert jira.update_comment.call_count == 1
     body = jira.update_comment.call_args_list[0][0][2]
     assert "[10 Mar 2026 - 14:32] ✅ Step completed: QA automation" in body
+
+
+def test_wrap_step_notifications_first_step_skipped_omits_step_completed(settings):
+    """Skip nodes do not append a Step completed line (only Process started + status)."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 3, 10, 14, 32, tzinfo=UTC)
+
+    jira = MagicMock()
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+    jira.add_comment.return_value = "comment-skip"
+
+    def fake_skip_node(state):
+        return {
+            "execution_log": [{
+                "timestamp": "2026-03-10T14:32:00+00:00",
+                "node": "create_story_tasks",
+                "message": "Skipped (--skip-nodes)",
+                "dry_run": False,
+            }],
+        }
+
+    wrapped = _wrap_with_step_notifications(
+        jira, settings.model_copy(update={"dry_run": False}),
+        "create_story_tasks", fake_skip_node,
+    )
+    state = make_state(notify_jira_story_key="SAM1-51")
+    result = wrapped(state)
+
+    body = result["step_notification_comment_body"]
+    assert "🚀 Process started" in body
+    assert "Step completed" not in body
+    assert "⏩ Process continuing..." in body
+    jira.update_comment.assert_called_with(
+        "SAM1-51",
+        "comment-skip",
+        "🚀 Process started\n\n⏩ Process continuing...",
+    )
+
+
+def test_wrap_step_notifications_later_step_skipped_omits_step_completed(settings):
+    """Later skip nodes update comment without a new Step completed line."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 3, 10, 14, 33, tzinfo=UTC)
+
+    jira = MagicMock()
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+
+    def fake_skip_node(state):
+        return {
+            "execution_log": [{
+                "timestamp": "2026-03-10T14:33:00+00:00",
+                "node": "party_mode_refinement",
+                "message": "Skipped (--skip-nodes)",
+                "dry_run": False,
+            }],
+        }
+
+    wrapped = _wrap_with_step_notifications(
+        jira, settings.model_copy(update={"dry_run": False}),
+        "party_mode_refinement", fake_skip_node,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body=(
+            "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Check epic state\n\n"
+            "⏩ Process continuing..."
+        ),
+    )
+    result = wrapped(state)
+
+    body = result["step_notification_comment_body"]
+    assert "Step completed: Check epic state" in body
+    assert "Step completed: Party mode refinement" not in body
+    assert body.endswith("⏩ Process continuing...")
+    jira.update_comment.assert_called_once()
 
 
 def test_wrap_step_notifications_no_notify_key_skips_jira(settings):
