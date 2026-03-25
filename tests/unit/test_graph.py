@@ -136,6 +136,20 @@ def test_build_graph_discovery_execution_mode(settings, tmp_path):
     assert graph is not None
 
 
+def test_build_graph_epic_architect_execution_mode(settings, tmp_path):
+    """Smoke test: epic_architect execution mode compiles (Forge /bmad/architect-run)."""
+    from bmad_orchestrator.graph import build_graph
+
+    arch = settings.model_copy(
+        update={
+            "execution_mode": "epic_architect",
+            "checkpoint_db_path": str(tmp_path / "architect_cp.db"),
+        },
+    )
+    graph, _, _ = build_graph(arch)
+    assert graph is not None
+
+
 def test_skip_node_returns_log_entry():
     """A skipped node returns an execution_log entry with 'Skipped' message."""
     from bmad_orchestrator.graph import _make_skip_node

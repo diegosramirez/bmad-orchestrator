@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 DISCOVERY_SECRET_HEADER = "X-BMAD-Discovery-Secret"
+# Preferred header for Forge apps (Discovery + Epic Architect); Discovery header remains supported.
+FORGE_SECRET_HEADER = "X-BMAD-Forge-Secret"
 
 
 def team_id_from_issue_key(issue_key: str, *, default_team_id: str) -> str:
@@ -42,6 +44,7 @@ def build_discovery_workflow_inputs(
         "skip_e2e_automation": "true",
         "skip_commit_and_push": "true",
         "skip_create_pull_request": "true",
+        "skip_epic_architect": "true",
         "slack_verbose": "false",
         "slack_thread_ts": "",
         "branch": "",

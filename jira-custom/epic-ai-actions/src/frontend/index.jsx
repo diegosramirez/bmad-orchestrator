@@ -57,6 +57,33 @@ const App = () => {
       }
       return;
     }
+    if (action === 'architect') {
+      if (!issueKey) {
+        setBanner({
+          appearance: 'error',
+          title: 'No issue context',
+          body: 'Open an issue (epic) to run Design Architect.',
+        });
+        return;
+      }
+      const result = await invoke('runArchitect', { issueKey });
+      if (result?.ok) {
+        setBanner({
+          appearance: 'success',
+          title: 'Design Architect started',
+          body:
+            result.message ||
+            'GitHub Actions workflow was dispatched. Check the issue comment for progress.',
+        });
+      } else {
+        setBanner({
+          appearance: 'error',
+          title: 'Design Architect failed',
+          body: result?.message || 'Unknown error',
+        });
+      }
+      return;
+    }
     setBanner({
       appearance: 'information',
       title: 'Not available yet',

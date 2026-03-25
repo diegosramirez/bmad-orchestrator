@@ -37,5 +37,6 @@ def test_build_discovery_workflow_inputs_epic_only_path() -> None:
     assert inputs["skip_e2e_automation"] == "true"
     assert inputs["skip_commit_and_push"] == "true"
     assert inputs["skip_create_pull_request"] == "true"
+    assert inputs["skip_epic_architect"] == "true"
     assert "skip_create_github_issue" not in inputs
     assert "--epic-key SAM1-275 --story-key SAM1-275" in inputs["extra_flags"]

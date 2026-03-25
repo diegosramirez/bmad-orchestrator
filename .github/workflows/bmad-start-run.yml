@@ -72,6 +72,10 @@ on:
         description: "Skip: Create GitHub PR"
         type: boolean
         default: false
+      skip_epic_architect:
+        description: "Skip: Epic architect (Design Architect block on Epic description)"
+        type: boolean
+        default: false
       # ── Slack verbose ────────────────────────────────────────────────
       slack_verbose:
         description: "Verbose: stream agent events to Slack thread"
@@ -100,7 +104,7 @@ on:
         default: ""
         type: string
       execution_mode:
-        description: "inline | github-agent (plan + Issue) | discovery (epic check only, no Issue)"
+        description: "inline | github-agent | discovery | epic_architect (Forge Design Architect)"
         required: false
         default: "inline"
         type: string
@@ -207,6 +211,7 @@ jobs:
           if [ "${{ inputs.skip_e2e_automation }}" = "true" ]; then nodes="$nodes,e2e_automation,e2e_fix_loop"; fi
           if [ "${{ inputs.skip_commit_and_push }}" = "true" ]; then nodes="$nodes,commit_and_push"; fi
           if [ "${{ inputs.skip_create_pull_request }}" = "true" ]; then nodes="$nodes,create_pull_request"; fi
+          if [ "${{ inputs.skip_epic_architect }}" = "true" ]; then nodes="$nodes,epic_architect"; fi
           nodes="${nodes#,}"
           if [ -n "$nodes" ]; then
             echo "flag=--skip-nodes $nodes" >> "$GITHUB_OUTPUT"

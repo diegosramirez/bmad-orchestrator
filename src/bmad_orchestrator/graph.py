@@ -28,6 +28,7 @@ from bmad_orchestrator.nodes.dev_story import make_dev_story_node
 from bmad_orchestrator.nodes.dev_story_fix_loop import make_fix_loop_node
 from bmad_orchestrator.nodes.e2e_automation import make_e2e_automation_node, make_e2e_router
 from bmad_orchestrator.nodes.e2e_fix_loop import make_e2e_fix_loop_node
+from bmad_orchestrator.nodes.epic_architect import make_epic_architect_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
 from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
@@ -65,6 +66,7 @@ NODE_LABELS: dict[str, str] = {
     "commit_and_push": "Commit and push",
     "update_jira_branch": "Update Jira branch field",
     "create_pull_request": "Create pull request",
+    "epic_architect": "Epic architect",
 }
 
 
@@ -85,7 +87,7 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
 
 def _step_status_suffix(node_name: str) -> str:
     """Return trailing status (Process continuing / completed / finished)."""
-    if node_name == "create_pull_request":
+    if node_name in ("create_pull_request", "epic_architect"):
         return "🎉 Process completed successfully"
     if node_name == "fail_with_state":
         return "Process finished."
@@ -218,13 +220,15 @@ def _wrap_with_slack_notifications(
             # Retry button only makes sense when a branch exists (code was committed)
             branch = out.get("branch_name") or state.get("branch_name") or ""
             if branch:
-                retry_meta = json.dumps({
-                    "branch": branch,
-                    "team_id": team_id,
-                    "target_repo": settings.github_repo or "",
-                    "story_key": state.get("current_story_id") or "",
-                    "thread_ts": thread_ts or "",
-                })
+                retry_meta = json.dumps(
+                    {
+                        "branch": branch,
+                        "team_id": team_id,
+                        "target_repo": settings.github_repo or "",
+                        "story_key": state.get("current_story_id") or "",
+                        "thread_ts": thread_ts or "",
+                    }
+                )
                 blocks = [
                     {
                         "type": "section",
@@ -232,26 +236,30 @@ def _wrap_with_slack_notifications(
                     },
                     {
                         "type": "actions",
-                        "elements": [{
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Retry"},
-                            "style": "primary",
-                            "action_id": "bmad_retry",
-                            "value": retry_meta,
-                        }],
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Retry"},
+                                "style": "primary",
+                                "action_id": "bmad_retry",
+                                "value": retry_meta,
+                            }
+                        ],
                     },
                 ]
         elif pr_url:
             text = f":tada: *PR created:* {pr_url}"
             branch = out.get("branch_name") or state.get("branch_name") or ""
             if branch:
-                refine_meta = json.dumps({
-                    "branch": branch,
-                    "team_id": team_id,
-                    "target_repo": settings.github_repo or "",
-                    "story_key": state.get("current_story_id") or "",
-                    "thread_ts": thread_ts or "",
-                })
+                refine_meta = json.dumps(
+                    {
+                        "branch": branch,
+                        "team_id": team_id,
+                        "target_repo": settings.github_repo or "",
+                        "story_key": state.get("current_story_id") or "",
+                        "thread_ts": thread_ts or "",
+                    }
+                )
                 blocks = [
                     {
                         "type": "section",
@@ -259,12 +267,14 @@ def _wrap_with_slack_notifications(
                     },
                     {
                         "type": "actions",
-                        "elements": [{
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Refine"},
-                            "action_id": "bmad_refine",
-                            "value": refine_meta,
-                        }],
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Refine"},
+                                "action_id": "bmad_refine",
+                                "value": refine_meta,
+                            }
+                        ],
                     },
                 ]
         else:
@@ -328,9 +338,7 @@ def build_graph(
     claude_agent = ClaudeAgentService(settings, usage_tracker=claude._usage)
 
     # When jira_only, force Git/GitHub into dry-run regardless of global flag
-    git_settings = (
-        settings.model_copy(update={"dry_run": True}) if settings.jira_only else settings
-    )
+    git_settings = settings.model_copy(update={"dry_run": True}) if settings.jira_only else settings
     git = GitService(git_settings)
     github = create_github_service(git_settings)
     slack = create_slack_service(settings)
@@ -351,7 +359,11 @@ def build_graph(
         raw = _make_skip_node(name) if name in skip else factory_fn
         wrapped = _wrap_with_step_notifications(jira, settings, name, raw)
         wrapped = _wrap_with_slack_notifications(
-            slack, settings, name, wrapped, thread_ts_holder,
+            slack,
+            settings,
+            name,
+            wrapped,
+            thread_ts_holder,
         )
         builder.add_node(name, wrapped)
 
@@ -362,6 +374,10 @@ def build_graph(
     _node(
         "create_or_correct_epic",
         make_create_or_correct_epic_node(jira, claude, settings, bmad_runner, on_event=on_event),
+    )
+    _node(
+        "epic_architect",
+        make_epic_architect_node(claude, jira, settings, on_event=on_event),
     )
     _node(
         "create_story_tasks",
@@ -387,7 +403,21 @@ def build_graph(
     # ── Linear edges ──────────────────────────────────────────────────────────
     builder.add_edge(START, "check_epic_state")
     builder.add_edge("check_epic_state", "create_or_correct_epic")
-    builder.add_edge("create_or_correct_epic", "create_story_tasks")
+
+    def _after_create_epic_router(_state: OrchestratorState) -> str:
+        if settings.execution_mode == "epic_architect":
+            return "epic_architect"
+        return "create_story_tasks"
+
+    builder.add_conditional_edges(
+        "create_or_correct_epic",
+        _after_create_epic_router,
+        {
+            "epic_architect": "epic_architect",
+            "create_story_tasks": "create_story_tasks",
+        },
+    )
+    builder.add_edge("epic_architect", END)
     builder.add_edge("create_story_tasks", "party_mode_refinement")
     builder.add_edge("party_mode_refinement", "detect_commands")
 

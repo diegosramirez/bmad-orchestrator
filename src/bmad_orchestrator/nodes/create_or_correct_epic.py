@@ -138,7 +138,9 @@ def make_create_or_correct_epic_node(
                     )
                     return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
                 normalised = normalise_jira_headings(discovery.updated_description)
-                fields: dict[str, Any] = {"description": normalised}
+                # Marker for downstream Epic Architect step (same Epic description field).
+                marked = f"<!-- bmad:discovery -->\n\n{normalised}"
+                fields: dict[str, Any] = {"description": marked}
                 if (discovery.updated_summary or "").strip():
                     fields["summary"] = discovery.updated_summary.strip()[:255]
                 logger.info(
