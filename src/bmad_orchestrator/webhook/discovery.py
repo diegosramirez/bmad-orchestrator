@@ -19,8 +19,9 @@ def build_discovery_workflow_inputs(
 ) -> dict[str, str]:
     """Build GitHub Actions workflow_dispatch inputs for a Discovery-only run.
 
-    Runs check_epic_state and create_or_correct_epic with real work; routes via
-    github-agent to END after skipping create_github_issue (no code, tests, or PR).
+    Only ``check_epic_state`` and ``create_or_correct_epic`` run real work; every
+    other skippable node is skipped. Uses ``execution_mode`` ``discovery`` so the
+    graph ends without creating a GitHub Issue (no workflow checkbox required).
     """
     extra_flags = f"--epic-key {issue_key} --story-key {issue_key}"
     # workflow_dispatch inputs are string-valued; booleans as "true"/"false".
@@ -35,19 +36,18 @@ def build_discovery_workflow_inputs(
         "skip_create_story_tasks": "true",
         "skip_party_mode_refinement": "true",
         "skip_detect_commands": "true",
-        "skip_dev_story": "false",
-        "skip_qa_automation": "false",
-        "skip_code_review": "false",
-        "skip_e2e_automation": "false",
-        "skip_commit_and_push": "false",
-        "skip_create_pull_request": "false",
-        "skip_create_github_issue": "true",
+        "skip_dev_story": "true",
+        "skip_qa_automation": "true",
+        "skip_code_review": "true",
+        "skip_e2e_automation": "true",
+        "skip_commit_and_push": "true",
+        "skip_create_pull_request": "true",
         "slack_verbose": "false",
         "slack_thread_ts": "",
         "branch": "",
         "extra_flags": extra_flags,
         "guidance": "",
-        "execution_mode": "github-agent",
+        "execution_mode": "discovery",
         "auto_execute_issue": "false",
         "code_agent": "",
     }

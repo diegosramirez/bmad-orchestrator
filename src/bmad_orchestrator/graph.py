@@ -378,10 +378,12 @@ def build_graph(
     builder.add_edge("create_story_tasks", "party_mode_refinement")
     builder.add_edge("party_mode_refinement", "detect_commands")
 
-    # ── Execution mode routing: inline (default) or github-agent ─────────────
+    # ── Execution mode routing: inline | github-agent | discovery ───────────
     def _execution_mode_router(_state: OrchestratorState) -> str:
         if settings.execution_mode == "github-agent":
             return "create_github_issue"
+        if settings.execution_mode == "discovery":
+            return "discovery_end"
         return "dev_story"
 
     builder.add_conditional_edges(
@@ -390,6 +392,7 @@ def build_graph(
         {
             "dev_story": "dev_story",
             "create_github_issue": "create_github_issue",
+            "discovery_end": END,
         },
     )
     builder.add_edge("create_github_issue", END)

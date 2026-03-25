@@ -122,6 +122,20 @@ def test_build_graph_with_skip_nodes(settings):
     assert graph is not None
 
 
+def test_build_graph_discovery_execution_mode(settings, tmp_path):
+    """Smoke test: discovery execution mode compiles (Forge /bmad/discovery-run)."""
+    from bmad_orchestrator.graph import build_graph
+
+    disc = settings.model_copy(
+        update={
+            "execution_mode": "discovery",
+            "checkpoint_db_path": str(tmp_path / "discovery_cp.db"),
+        },
+    )
+    graph, _, _ = build_graph(disc)
+    assert graph is not None
+
+
 def test_skip_node_returns_log_entry():
     """A skipped node returns an execution_log entry with 'Skipped' message."""
     from bmad_orchestrator.graph import _make_skip_node
