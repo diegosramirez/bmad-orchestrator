@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 # Sections that must be present for content to be considered "template-compliant".
 # Match bold headings as in docs/template-jira.md (normaliser may add \u200B prefix).
@@ -60,7 +60,10 @@ def load_template(app_root: Path | None = None) -> str:
 
 
 def matches_template(content: str) -> bool:
-    """Return True if content contains all template sections (Hypothesis through Acceptance Criteria)."""
+    """
+    Return True if content contains all template sections
+    (Hypothesis through Acceptance Criteria).
+    """
     if not (content or "").strip():
         return False
     text = content.strip()
@@ -156,3 +159,70 @@ def normalise_jira_headings(content: str) -> str:
         new_lines.append(line)
 
     return "\n".join(new_lines)
+
+
+# Discovery epic sections (emoji-led titles). Inner text after stripping # / 1. / ** wrappers.
+_DISCOVERY_TITLE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^🧩\s+\S"),
+    re.compile(r"^📖\s+Overview\b", re.IGNORECASE),
+    re.compile(r"^🎯\s+Goals\b", re.IGNORECASE),
+    re.compile(r"^👤\s+User\s+Value\b", re.IGNORECASE),
+    re.compile(r"^📦\s+Scope\b", re.IGNORECASE),
+    re.compile(r"^⚙️\s+Functional\s+Requirements\b", re.IGNORECASE),
+    re.compile(r"^✅\s+Acceptance\s+Criteria\b", re.IGNORECASE),
+    re.compile(r"^🚫\s+Out\s+of\s+Scope\b", re.IGNORECASE),
+)
+
+
+def _strip_discovery_heading_artifacts(text: str) -> str:
+    """Strip markdown #, outline prefixes (1., a.), and full-line **bold** wrappers."""
+    s = text.strip()
+    bold_wrap = re.fullmatch(r"\*\*(.+)\*\*", s)
+    if bold_wrap:
+        s = bold_wrap.group(1).strip()
+    while True:
+        prev = s
+        s = re.sub(r"^#+\s*", "", s).strip()
+        while True:
+            ns = _STRIP_OUTLINE_RE.sub("", s, count=1).strip()
+            if ns == s:
+                break
+            s = ns
+        if s == prev:
+            break
+    return s
+
+
+def _is_discovery_section_title(inner: str) -> bool:
+    return any(p.match(inner) for p in _DISCOVERY_TITLE_PATTERNS)
+
+
+def normalise_discovery_epic_headings(content: str) -> str:
+    """
+    Rewrite Discovery epic section lines into Jira-friendly bold headings.
+
+    Strips accidental ``1.`` / ``#`` prefixes and wraps matching emoji section titles with
+    a U+200B prefix plus ``**...**`` so Jira does not render them as ordered-list items.
+    """
+    if not content:
+        return content
+
+    lines = content.splitlines()
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        if stripped.startswith("\u200B**") and stripped.endswith("**"):
+            inner_check = stripped[3:-2]
+            if _is_discovery_section_title(_strip_discovery_heading_artifacts(inner_check)):
+                out.append(line)
+                continue
+        inner = _strip_discovery_heading_artifacts(stripped)
+        if _is_discovery_section_title(inner):
+            out.append(f"\u200B**{inner}**")
+        else:
+            out.append(line)
+
+    return "\n".join(out)

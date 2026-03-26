@@ -13,7 +13,11 @@ from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.discovery_epic_prompt import DISCOVERY_EPIC_PROMPT_FINAL
-from bmad_orchestrator.utils.jira_template import load_template, normalise_jira_headings
+from bmad_orchestrator.utils.jira_template import (
+    load_template,
+    normalise_discovery_epic_headings,
+    normalise_jira_headings,
+)
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -138,6 +142,7 @@ def make_create_or_correct_epic_node(
                     )
                     return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
                 normalised = normalise_jira_headings(discovery.updated_description)
+                normalised = normalise_discovery_epic_headings(normalised)
                 # Marker for downstream Epic Architect step (same Epic description field).
                 marked = f"<!-- bmad:discovery -->\n\n{normalised}"
                 fields: dict[str, Any] = {"description": marked}

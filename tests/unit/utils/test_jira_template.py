@@ -6,9 +6,9 @@ from bmad_orchestrator.utils.jira_template import (
     JIRA_TEMPLATE_SECTIONS,
     load_template,
     matches_template,
+    normalise_discovery_epic_headings,
     normalise_jira_headings,
 )
-
 
 # ── load_template ────────────────────────────────────────────────────────────
 
@@ -104,3 +104,52 @@ def test_normalise_multiple_lines():
     assert lines[1] == "Some body text"
     assert lines[2] == "\u200B**Intervention**"
     assert lines[3] == "- bullet"
+
+
+# ── normalise_discovery_epic_headings ────────────────────────────────────────
+
+def test_normalise_discovery_empty():
+    assert normalise_discovery_epic_headings("") == ""
+
+
+def test_normalise_discovery_strips_number_and_hashes():
+    raw = "1. 📖 Overview\n\nBody here."
+    result = normalise_discovery_epic_headings(raw)
+    assert result.splitlines()[0] == "\u200B**📖 Overview**"
+    assert "Body here." in result
+
+
+def test_normalise_discovery_hash_heading():
+    raw = "# 🎯 Goals\n\n- One"
+    result = normalise_discovery_epic_headings(raw)
+    assert result.splitlines()[0] == "\u200B**🎯 Goals**"
+
+
+def test_normalise_discovery_epic_title_line():
+    raw = "1. 🧩 User Registration with Email and Password"
+    assert normalise_discovery_epic_headings(raw) == (
+        "\u200B**🧩 User Registration with Email and Password**"
+    )
+
+
+def test_normalise_discovery_idempotent_with_zwsp_bold():
+    line = "\u200B**📖 Overview**"
+    assert normalise_discovery_epic_headings(line) == line
+
+
+def test_normalise_discovery_unwraps_bold_then_wraps_zwsp():
+    raw = "**👤 User Value**"
+    assert normalise_discovery_epic_headings(raw) == "\u200B**👤 User Value**"
+
+
+def test_normalise_discovery_preserves_non_headings():
+    raw = "- User can sign in\nStill a bullet line"
+    assert normalise_discovery_epic_headings(raw) == raw
+
+
+def test_normalise_discovery_chained_with_jira_normalise():
+    # As in create_or_correct_epic: jira first, then discovery
+    raw = "1. 📖 Overview\n\nText"
+    step1 = normalise_jira_headings(raw)
+    step2 = normalise_discovery_epic_headings(step1)
+    assert step2.splitlines()[0] == "\u200B**📖 Overview**"

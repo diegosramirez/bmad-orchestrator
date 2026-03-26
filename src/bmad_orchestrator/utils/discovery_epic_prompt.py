@@ -45,31 +45,38 @@ DO NOT generate the Epic if there is not enough information.
 
 ## STEP 2 — GENERATE EPIC (ONLY if input is valid)
 
-Rewrite and enrich the ticket using this structure:
+Rewrite and enrich the ticket using this structure.
+
+**Section titles (critical):** Each section below must start with a single line in this exact
+pattern: ``**emoji + title text**`` — for example ``**📖 Overview**`` on its own line.
+- Do **not** prefix section titles with numbers (no ``1.``, ``2.``, ``a.``).
+- Do **not** use ``#`` markdown headings for these sections; use **bold** only on that title line.
+- The first section line must be ``**🧩`` then a space then your full rewritten epic title,
+  ending with ``**`` (replace the placeholder text, keep the 🧩 emoji).
 
 ---
 
-# 🧩 Epic Title
-Rewrite the title to be clear and outcome-focused.
+**🧩 Epic Title**
+Rewrite the title to be clear and outcome-focused (this line becomes ``**🧩 Your Title Here**``).
 
 ---
 
-# 📖 Overview
+**📖 Overview**
 Explain what we are building and why.
 
 ---
 
-# 🎯 Goals
+**🎯 Goals**
 List the main objectives.
 
 ---
 
-# 👤 User Value
+**👤 User Value**
 Explain what problem this solves.
 
 ---
 
-# 📦 Scope (High-Level Features)
+**📦 Scope (High-Level Features)**
 List complete features (NOT technical tasks).
 
 GOOD:
@@ -81,19 +88,19 @@ BAD:
 
 ---
 
-# ⚙️ Functional Requirements
+**⚙️ Functional Requirements**
 Use simple sentences:
 - User can...
 - System should...
 
 ---
 
-# ✅ Acceptance Criteria
+**✅ Acceptance Criteria**
 Define success conditions.
 
 ---
 
-# 🚫 Out of Scope (Optional)
+**🚫 Out of Scope (Optional)**
 (Optional but recommended)
 
 ---
@@ -104,6 +111,7 @@ Define success conditions.
 - No code
 - No low-level technical details
 - Focus on outcomes, not implementation
+- Section headers: one line each, bold as above — never numbered list items for headers
 
 ---
 
