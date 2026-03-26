@@ -7,6 +7,7 @@ from bmad_orchestrator.utils.jira_template import (
     load_template,
     matches_template,
     normalise_discovery_epic_headings,
+    normalise_epic_architect_headings,
     normalise_jira_headings,
 )
 
@@ -153,3 +154,53 @@ def test_normalise_discovery_chained_with_jira_normalise():
     step1 = normalise_jira_headings(raw)
     step2 = normalise_discovery_epic_headings(step1)
     assert step2.splitlines()[0] == "\u200B**📖 Overview**"
+
+
+# ── normalise_epic_architect_headings ────────────────────────────────────────
+
+def test_normalise_epic_architect_empty():
+    assert normalise_epic_architect_headings("") == ""
+
+
+def test_normalise_epic_architect_strips_roman_outline():
+    raw = "i. Architecture Overview\n\nBody."
+    result = normalise_epic_architect_headings(raw)
+    assert result.splitlines()[0] == "\u200B**Architecture Overview**"
+    assert "Body." in result
+
+
+def test_normalise_epic_architect_strips_letter_outline():
+    raw = "a. Epic Architect\n\nNote"
+    result = normalise_epic_architect_headings(raw)
+    assert result.splitlines()[0] == "\u200B**Epic Architect**"
+
+
+def test_normalise_epic_architect_hash_heading():
+    raw = "### System Components\n- A"
+    result = normalise_epic_architect_headings(raw)
+    assert result.splitlines()[0] == "\u200B**System Components**"
+
+
+def test_normalise_epic_architect_idempotent_zwsp():
+    line = "\u200B**Data Flow**"
+    assert normalise_epic_architect_headings(line) == line
+
+
+def test_normalise_epic_architect_preserves_non_headings():
+    raw = "- Router calls service layer\nPlain line"
+    assert normalise_epic_architect_headings(raw) == raw
+
+
+def test_normalise_epic_architect_chained_after_jira():
+    raw = "1. a. i. Architecture Overview\n\ntext"
+    step1 = normalise_jira_headings(raw)
+    step2 = normalise_epic_architect_headings(step1)
+    assert step2.splitlines()[0] == "\u200B**Architecture Overview**"
+
+
+def test_normalise_epic_architect_preserves_merge_heading():
+    raw = "## Epic Architect\n\ni. Architecture Overview"
+    out = normalise_epic_architect_headings(raw)
+    lines = out.splitlines()
+    assert lines[0] == "## Epic Architect"
+    assert lines[2] == "\u200B**Architecture Overview**"

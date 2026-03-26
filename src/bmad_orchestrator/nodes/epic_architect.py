@@ -12,7 +12,10 @@ from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.epic_architect_prompt import EPIC_ARCHITECT_PROMPT_FINAL
-from bmad_orchestrator.utils.jira_template import normalise_jira_headings
+from bmad_orchestrator.utils.jira_template import (
+    normalise_epic_architect_headings,
+    normalise_jira_headings,
+)
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -137,6 +140,7 @@ def make_epic_architect_node(
 
         merged = merge_epic_architect_description(description, result.architecture_block)
         merged = normalise_jira_headings(merged)
+        merged = normalise_epic_architect_headings(merged)
 
         try:
             jira.update_epic(epic_id, {"description": merged})

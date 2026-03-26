@@ -226,3 +226,56 @@ def normalise_discovery_epic_headings(content: str) -> str:
             out.append(line)
 
     return "\n".join(out)
+
+
+# Epic Architect block: plain section titles (see EPIC_ARCHITECT_PROMPT_FINAL).
+_EPIC_ARCHITECT_TITLE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^Architecture\s+Overview\b", re.IGNORECASE),
+    re.compile(r"^System\s+Components\b", re.IGNORECASE),
+    re.compile(r"^Data\s+Flow\b", re.IGNORECASE),
+    re.compile(r"^Integrations\b", re.IGNORECASE),
+    re.compile(r"^Technical\s+Decisions\b", re.IGNORECASE),
+    re.compile(r"^Epic\s+Architect\b", re.IGNORECASE),
+)
+
+
+def _is_epic_architect_section_title(inner: str) -> bool:
+    return any(p.match(inner) for p in _EPIC_ARCHITECT_TITLE_PATTERNS)
+
+
+def normalise_epic_architect_headings(content: str) -> str:
+    """
+    Rewrite Epic Architect subsection lines into Jira-friendly bold headings.
+
+    Strips accidental ``1.`` / ``a.`` / ``i.`` / ``#`` prefixes and wraps known
+    architecture section titles with a U+200B prefix plus ``**...**``.
+
+    The canonical markdown heading ``## Epic Architect`` (merge delimiter) is left unchanged.
+    """
+    if not content:
+        return content
+
+    _arch_merge_heading = "## Epic Architect"
+
+    lines = content.splitlines()
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        if stripped == _arch_merge_heading:
+            out.append(line)
+            continue
+        if stripped.startswith("\u200B**") and stripped.endswith("**"):
+            inner_check = stripped[3:-2]
+            if _is_epic_architect_section_title(_strip_discovery_heading_artifacts(inner_check)):
+                out.append(line)
+                continue
+        inner = _strip_discovery_heading_artifacts(stripped)
+        if _is_epic_architect_section_title(inner):
+            out.append(f"\u200B**{inner}**")
+        else:
+            out.append(line)
+
+    return "\n".join(out)
