@@ -287,3 +287,54 @@ def test_merge_conflict_detected_logs_warning(
     assert result["commit_sha"] == "abc123"
     log_msg = result["execution_log"][0]["message"]
     assert "merge conflicts" in log_msg.lower()
+
+
+# ── Edge case: branch creation failure ────────────────────────────
+
+
+def test_branch_creation_failure_returns_failure_state(
+    settings, mock_git,
+):
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.create_and_checkout_branch.side_effect = (
+        subprocess.CalledProcessError(
+            128, ["git", "checkout", "-b"],
+            stderr="fatal: cannot lock ref",
+        )
+    )
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(current_story_id="T-1"))
+
+    assert result["failure_state"]
+    assert "branch creation failed" in result["failure_state"].lower()
+    mock_git.commit.assert_not_called()
+    mock_git.push.assert_not_called()
+
+
+# ── Edge case: commit failure ─────────────────────────────────────
+
+
+def test_commit_hook_failure_returns_failure_state(
+    settings, mock_git, tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/t/T-1-feat"
+    mock_git.commit.side_effect = subprocess.CalledProcessError(
+        1, ["git", "commit"],
+        stderr="pre-commit hook failed",
+    )
+
+    node = make_commit_and_push_node(mock_git, settings)
+    result = node(make_state(
+        current_story_id="T-1", touched_files=["app.py"],
+    ))
+
+    assert result["failure_state"]
+    assert "pre-commit hook" in result["failure_state"].lower()
+    assert result.get("branch_name") == "bmad/t/T-1-feat"
+    mock_git.push.assert_not_called()

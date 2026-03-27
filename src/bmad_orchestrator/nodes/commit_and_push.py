@@ -29,6 +29,31 @@ Artifacts:
 """
 
 
+def _classify_commit_error(
+    exc: subprocess.CalledProcessError,
+    branch: str,
+) -> str:
+    """Return an actionable message for a git commit failure."""
+    stderr = (exc.stderr or "").lower()
+    snippet = (exc.stderr or "")[:300]
+    if "pre-commit" in stderr or "hook" in stderr:
+        return (
+            f"Commit blocked by pre-commit hook on {branch}. "
+            f"stderr: {snippet}"
+        )
+    if "gpg" in stderr or "signing" in stderr:
+        return (
+            f"Commit failed: GPG signing error on {branch}. "
+            f"stderr: {snippet}"
+        )
+    if "lock" in stderr or "index.lock" in stderr:
+        return (
+            f"Git index locked on {branch} — another git "
+            f"process may be running. stderr: {snippet}"
+        )
+    return f"Commit failed on {branch}. stderr: {snippet}"
+
+
 def make_commit_and_push_node(
     git: GitService,
     settings: Settings,
@@ -110,7 +135,19 @@ def make_commit_and_push_node(
 
         # ── Stage & commit ─────────────────────────────────────────
         if not on_existing_bmad_branch:
-            git.create_and_checkout_branch(branch_name)
+            try:
+                git.create_and_checkout_branch(branch_name)
+            except subprocess.CalledProcessError as exc:
+                snippet = (exc.stderr or "")[:300]
+                msg = (
+                    f"Branch creation failed for "
+                    f"{branch_name}. stderr: {snippet}"
+                )
+                log_entry["message"] = msg
+                return {
+                    "failure_state": msg,
+                    "execution_log": [log_entry],
+                }
 
         seen: set[str] = set()
         for path in state.get("touched_files") or []:
@@ -122,8 +159,27 @@ def make_commit_and_push_node(
             else:
                 logger.info("skip_stage_missing_path", path=path)
 
+        def _do_commit(**kwargs: Any) -> str | None:
+            """Attempt git commit; return None on failure."""
+            try:
+                return git.commit(
+                    commit_message, **kwargs,
+                ) or "dry-run-sha"
+            except subprocess.CalledProcessError as exc:
+                msg = _classify_commit_error(exc, branch_name)
+                log_entry["message"] = msg
+                return None
+
         if git.has_staged_changes():
-            sha = git.commit(commit_message) or "dry-run-sha"
+            sha_or_none = _do_commit()
+            if sha_or_none is None:
+                return {
+                    "failure_state": log_entry["message"],
+                    "base_branch": base_branch,
+                    "branch_name": branch_name,
+                    "execution_log": [log_entry],
+                }
+            sha = sha_or_none
         else:
             head_sha = git.get_head_sha()
             base_sha = git.rev_parse(base_branch)
@@ -133,15 +189,22 @@ def make_commit_and_push_node(
                         "empty_commit_for_failure_pr",
                         branch=branch_name,
                     )
-                    sha = git.commit(
-                        commit_message, allow_empty=True,
-                    ) or "dry-run-sha"
+                    sha_or_none = _do_commit(allow_empty=True)
+                    if sha_or_none is None:
+                        return {
+                            "failure_state": log_entry["message"],
+                            "base_branch": base_branch,
+                            "branch_name": branch_name,
+                            "execution_log": [log_entry],
+                        }
+                    sha = sha_or_none
                 else:
                     logger.warning(
                         "no_changes_to_commit", branch=branch_name,
                     )
                     log_entry["message"] = (
-                        "No files changed — nothing to commit or push"
+                        "No files changed — nothing to commit "
+                        "or push"
                     )
                     return {
                         "base_branch": base_branch,

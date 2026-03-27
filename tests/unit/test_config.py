@@ -87,3 +87,28 @@ def test_settings_agent_models_user_override_wins() -> None:
     assert s.agent_models["pm"] == "claude-haiku-4-5-20251001"
     # Built-in defaults still present for keys not overridden
     assert "build-expert" in s.agent_models
+
+
+def test_execution_timeout_default() -> None:
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        github_repo="o/r",
+    )
+    assert s.execution_timeout_minutes == 30
+
+
+def test_execution_timeout_disabled() -> None:
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        github_repo="o/r",
+        execution_timeout_minutes=0,
+    )
+    assert s.execution_timeout_minutes == 0

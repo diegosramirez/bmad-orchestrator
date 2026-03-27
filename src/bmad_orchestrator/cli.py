@@ -650,7 +650,10 @@ def run(
     # ── Build graph and derive thread ────────────────────────────────────
     graph, checkpointer, claude = build_graph(settings, console=console)
     thread_id = _derive_thread_id(team_id, original_prompt)
-    config: dict = {"configurable": {"thread_id": thread_id}}
+    config: dict = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": 50,
+    }
 
     # Persist context so next --resume doesn't need to re-prompt
     _save_last_run(thread_id, team_id, original_prompt)
@@ -723,6 +726,23 @@ def run(
 
     _MEDIUM_PLUS = {"medium", "high", "critical"}
 
+    # ── Execution timeout (Unix only) ─────────────────────────────
+    import signal
+
+    class _ExecutionTimeout(Exception):
+        pass
+
+    timeout_sec = settings.execution_timeout_minutes * 60
+
+    def _alarm_handler(_signum: int, _frame: object) -> None:
+        raise _ExecutionTimeout(
+            f"Execution timeout ({settings.execution_timeout_minutes}m)",
+        )
+
+    if timeout_sec > 0 and hasattr(signal, "SIGALRM"):
+        signal.signal(signal.SIGALRM, _alarm_handler)
+        signal.alarm(timeout_sec)
+
     try:
         for event in graph.stream(stream_input, config=config, stream_mode="updates"):
             for node_name, update in event.items():
@@ -783,6 +803,22 @@ def run(
         log_path = _save_log(thread_id)
         console.print(f"[dim]Log saved to {log_path}[/dim]")
         raise typer.Exit(1) from exc
+    except _ExecutionTimeout:
+        if timeout_sec > 0 and hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+        console.print(
+            f"\n[bold red]Execution timeout "
+            f"({settings.execution_timeout_minutes}m) reached."
+            f"[/bold red] Checkpoint saved — resume with "
+            f"--resume.",
+        )
+        _print_token_report(claude)
+        log_path = _save_log(thread_id)
+        console.print(f"[dim]Log saved to {log_path}[/dim]")
+        raise typer.Exit(1) from None
+    finally:
+        if timeout_sec > 0 and hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
 
     # ── Show final result ─────────────────────────────────────────────────
     final = graph.get_state(config)

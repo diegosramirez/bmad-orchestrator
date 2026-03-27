@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     slack_verbose: bool = False
     slack_thread_ts: str | None = None
 
+    # ── Timeout ───────────────────────────────────────────────────────────
+    # Maximum execution time in minutes. 0 = no timeout.
+    execution_timeout_minutes: int = 30
+
     # ── Skip nodes ──────────────────────────────────────────────────────────
     skip_nodes: list[str] = []
 

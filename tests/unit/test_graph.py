@@ -311,3 +311,52 @@ def test_wrap_step_notifications_dry_run_skips_jira(settings):
     jira.add_comment.assert_not_called()
     jira.update_comment.assert_not_called()
     assert "step_notification_comment_id" not in result
+
+
+def test_wrap_step_notifications_survives_jira_add_comment_exception(settings):
+    """If add_comment raises, node still executes without crashing."""
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    jira = MagicMock()
+    jira.add_comment.side_effect = RuntimeError("Jira API down")
+    run_settings = settings.model_copy(update={"dry_run": False})
+
+    def fake_node(state):
+        return {"execution_log": [], "touched_files": ["a.py"]}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, run_settings, "dev_story", fake_node,
+    )
+    state = make_state(notify_jira_story_key="SAM1-51")
+    result = wrapped(state)
+
+    # Node still executed despite Jira failure
+    assert result["touched_files"] == ["a.py"]
+
+
+def test_wrap_step_notifications_survives_jira_update_exception(settings):
+    """If update_comment raises, node result is still returned."""
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    jira = MagicMock()
+    jira.update_comment.side_effect = RuntimeError("Jira API down")
+    run_settings = settings.model_copy(update={"dry_run": False})
+
+    def fake_node(state):
+        return {"execution_log": []}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, run_settings, "qa_automation", fake_node,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body="🚀 Process started",
+    )
+    # Should not raise
+    result = wrapped(state)
+    assert "step_notification_comment_body" in result

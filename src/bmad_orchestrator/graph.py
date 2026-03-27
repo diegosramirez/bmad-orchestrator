@@ -42,10 +42,13 @@ from bmad_orchestrator.services.service_factory import (
     create_slack_service,
 )
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import (
     gather_project_context,
     read_dev_guidelines,
 )
+
+logger = get_logger(__name__)
 
 # Human-readable labels for step-level Jira notifications (node name -> label).
 NODE_LABELS: dict[str, str] = {
@@ -134,14 +137,32 @@ def _wrap_with_step_notifications(
         if comment_id is None:
             # First step: create comment with "Process started"
             body_init = "🚀 Process started"
-            new_comment_id = jira.add_comment(notify_key, body_init)
+            try:
+                new_comment_id = jira.add_comment(
+                    notify_key, body_init,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "step_notification_failed",
+                    story_key=notify_key,
+                )
+                return node_fn(state)
             if new_comment_id is None:
                 return node_fn(state)
             out = node_fn(state)
-            # List of steps, then one status line at the end
             step_line = _format_step_completed_line(label)
-            body = body_init + "\n\n" + step_line + "\n\n" + status
-            jira.update_comment(notify_key, new_comment_id, body)
+            body = (
+                body_init + "\n\n" + step_line + "\n\n" + status
+            )
+            try:
+                jira.update_comment(
+                    notify_key, new_comment_id, body,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "step_notification_failed",
+                    story_key=notify_key,
+                )
             return {
                 **out,
                 "step_notification_comment_id": new_comment_id,
@@ -153,7 +174,13 @@ def _wrap_with_step_notifications(
         base = _strip_trailing_status(current_body)
         step_line = _format_step_completed_line(label)
         body = base + "\n" + step_line + "\n\n" + status
-        jira.update_comment(notify_key, comment_id, body)
+        try:
+            jira.update_comment(notify_key, comment_id, body)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "step_notification_failed",
+                story_key=notify_key,
+            )
         return {**out, "step_notification_comment_body": body}
 
     return _wrapped

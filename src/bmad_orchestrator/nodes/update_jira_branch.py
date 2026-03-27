@@ -38,8 +38,23 @@ def make_update_jira_branch_node(
             )
             return {"execution_log": [log_entry]}
 
-        jira.set_story_branch_field(story_key, branch_name)
-        log_entry["message"] = f"Updated Jira field customfield_10145 with branch {branch_name}"
+        try:
+            jira.set_story_branch_field(story_key, branch_name)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "jira_branch_field_update_failed",
+                story_key=story_key,
+            )
+            log_entry["message"] = (
+                "Failed to update Jira branch field "
+                "(non-blocking)"
+            )
+            return {"execution_log": [log_entry]}
+
+        log_entry["message"] = (
+            f"Updated Jira field customfield_10145 "
+            f"with branch {branch_name}"
+        )
         return {"execution_log": [log_entry]}
 
     return update_jira_branch
