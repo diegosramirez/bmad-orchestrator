@@ -100,7 +100,9 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
     mock_claude.complete.return_value = "feedback"
     # Structured calls: 1) UserStorySummary (title fix), 2) RefinedStory, 3) _SubtaskList
     mock_claude.complete_structured.side_effect = [
-        UserStorySummary(summary="As a user, I want to improve dashboard copy so that it is clearer"),
+        UserStorySummary(
+            summary="As a user, I want to improve dashboard copy so that it is clearer",
+        ),
         RefinedStory(
             updated_summary="Improved",
             updated_description="Refined description",
@@ -130,6 +132,43 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
     # Two subtasks created via Jira
     assert mock_jira.create_task.call_count == 2
     assert result["execution_log"]
+
+
+def test_stories_breakdown_refines_each_created_story(settings):
+    """stories_breakdown: party runs refinement for every key in created_story_ids."""
+    mock_claude = MagicMock()
+    mock_jira = MagicMock()
+    refined = RefinedStory(
+        updated_summary="Refined",
+        updated_description="**Hypothesis**\nH\n\n**Intervention**\nI",
+        acceptance_criteria=["AC 1"],
+        implementation_notes="Notes",
+    )
+    mock_claude.complete.return_value = "feedback"
+    mock_claude.complete_structured.return_value = refined
+
+    def _story_body(k: str) -> dict:
+        return {
+            "key": k,
+            "summary": "As a user I want x so that y",
+            "description": "**Acceptance Criteria:**\n- AC 1\n",
+        }
+
+    mock_jira.get_story.side_effect = lambda key: _story_body(key)
+
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    node = make_party_mode_node(mock_claude, mock_jira, sb)
+    result = node(
+        make_state(
+            created_story_ids=["PUG-10", "PUG-11"],
+            current_story_id="PUG-10",
+        ),
+    )
+
+    assert mock_jira.get_story.call_count >= 2
+    assert mock_jira.update_story_description.call_count == 2
+    assert result["execution_log"]
+    assert result["story_content"]
 
 
 def test_non_webhook_does_not_call_summary_or_subtasks(settings):

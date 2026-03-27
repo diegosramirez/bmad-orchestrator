@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -7,17 +8,14 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from bmad_orchestrator.config import Settings
+from bmad_orchestrator.nodes.epic_architect import DISCOVERY_MARKER
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.jira_template import load_template, normalise_jira_headings
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
-from bmad_orchestrator.utils.jira_template import (
-    load_template,
-    matches_template,
-    normalise_jira_headings,
-)
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -92,6 +90,48 @@ class StoryDraft(BaseModel):
         return parse_stringified_list(v)
 
 
+def _normalize_story_summary(summary: str) -> str:
+    """Lowercase, collapse whitespace, strip punctuation for dedupe keys."""
+    s = (summary or "").strip().lower()
+    s = re.sub(r"[^\w\s]", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+class PlannedStoryItem(BaseModel):
+    """One story in an epic breakdown batch (tasks optional)."""
+
+    summary: str = Field(max_length=_JIRA_SUMMARY_MAX)
+    description: str
+    acceptance_criteria: list[str] = Field(min_length=2)
+    tasks: list[TaskItem] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    qa_scope: list[str] = Field(default_factory=list)
+    definition_of_done: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "acceptance_criteria",
+        "tasks",
+        "dependencies",
+        "qa_scope",
+        "definition_of_done",
+        mode="before",
+    )
+    @classmethod
+    def _parse_stringified_json(cls, v: Any) -> Any:
+        return parse_stringified_list(v)
+
+
+class EpicStoryBreakdown(BaseModel):
+    """Multiple user stories covering one epic (Forge stories_breakdown mode)."""
+
+    stories: list[PlannedStoryItem] = Field(min_length=1)
+
+    @field_validator("stories", mode="before")
+    @classmethod
+    def _parse_stringified_json(cls, v: Any) -> Any:
+        return parse_stringified_list(v)
+
+
 def make_create_story_tasks_node(
     jira: JiraServiceProtocol,
     claude: ClaudeService,
@@ -102,7 +142,153 @@ def make_create_story_tasks_node(
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
     system_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
 
+    def _stories_breakdown_create(state: OrchestratorState) -> dict[str, Any]:
+        """Create N stories under the epic from epic description (Discovery + Architect)."""
+        team_id = state["team_id"]
+        prompt = state["input_prompt"]
+        epic_id = state.get("current_epic_id")
+        log_entry: ExecutionLogEntry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "node": NODE_NAME,
+            "message": "",
+            "dry_run": settings.dry_run,
+        }
+        if not epic_id or epic_id == "UNKNOWN":
+            log_entry["message"] = "stories_breakdown: missing current_epic_id (use --epic-key)"
+            return {"execution_log": [log_entry]}
+
+        epic = jira.get_epic(epic_id)
+        if not epic:
+            log_entry["message"] = f"stories_breakdown: epic {epic_id} not found"
+            return {"execution_log": [log_entry]}
+
+        description = (epic.get("description") or "").strip()
+        if DISCOVERY_MARKER not in description:
+            log_entry["message"] = (
+                f"stories_breakdown: epic {epic_id} has no Discovery marker "
+                f"({DISCOVERY_MARKER}). Run Discovery on this epic first."
+            )
+            return {"execution_log": [log_entry]}
+
+        existing_issues = jira.list_stories_under_epic(epic_id)
+        existing_keys = {
+            _normalize_story_summary(str(x.get("summary") or "")) for x in existing_issues
+        }
+        existing_keys.discard("")
+
+        jira_template = load_template()
+        ctx_block = (
+            f"Target project context:\n{(state.get('project_context') or '').strip()}\n\n"
+            if (state.get("project_context") or "").strip()
+            else ""
+        )
+        existing_summaries_text = "\n".join(
+            f"- {x.get('summary', '')}" for x in existing_issues[:50]
+        )
+        format_note = ""
+        if jira_template:
+            format_note = (
+                "Each story description MUST follow the Jira template section order as bold "
+                "markdown (**Hypothesis**, **Intervention**, etc.) like other BMAD stories.\n\n"
+            )
+        user_msg = (
+            f"{ctx_block}"
+            "You are breaking down ONE Jira Epic into multiple USER STORIES for BMAD.\n\n"
+            "Rules:\n"
+            "- Each story must be a vertical, end-to-end slice one agent can implement (not "
+            "separate frontend-only / backend-only tickets).\n"
+            "- Stories must be mutually distinct; together they should cover the epic scope "
+            "implied by Discovery and Epic Architect below.\n"
+            "- Do NOT propose a story whose summary is essentially the same as an EXISTING "
+            "story summary listed below (same intent).\n"
+            "- Each story: summary as 'As a ... I want ... so that ...', concrete description, "
+            "at least 2 acceptance criteria.\n"
+            "- Tasks are optional; include only when they add value (concrete sub-steps).\n"
+            f"{format_note}"
+            f"- Epic key: {epic_id}\n"
+            f"- Team: {team_id}\n"
+            f"- Orchestrator prompt context: {prompt}\n\n"
+            "## EXISTING stories under this epic (do not duplicate):\n"
+            f"{existing_summaries_text or '(none)'}\n\n"
+            "## Epic description (source of truth — includes Discovery and Epic Architect):\n"
+            f"{description[:24000]}\n\n"
+            "Return JSON matching the EpicStoryBreakdown schema (field: stories array)."
+        )
+        if jira_template:
+            user_msg += f"\n\n## Jira template reference:\n{jira_template[:4000]}"
+
+        breakdown = claude.complete_structured(
+            system_prompt=system_prompt,
+            user_message=user_msg,
+            schema=EpicStoryBreakdown,
+            agent_id="scrum_master",
+            max_tokens=32768,
+            on_event=on_event,
+        )
+
+        seen_in_batch: set[str] = set()
+        created_keys: list[str] = []
+        skipped: list[str] = []
+
+        for planned in breakdown.stories:
+            norm = _normalize_story_summary(planned.summary)
+            if not norm:
+                continue
+            if norm in existing_keys or norm in seen_in_batch:
+                skipped.append(planned.summary[:80])
+                continue
+            seen_in_batch.add(norm)
+
+            body = normalise_jira_headings(planned.description)
+            story = jira.create_story(
+                epic_key=epic_id,
+                summary=planned.summary[:_JIRA_SUMMARY_MAX],
+                description=body,
+                acceptance_criteria=planned.acceptance_criteria,
+                team_id=team_id,
+            )
+            key = str(story["key"])
+            created_keys.append(key)
+            existing_keys.add(norm)
+
+            for task in planned.tasks:
+                jira.create_task(
+                    story_key=key,
+                    summary=task.summary[:_JIRA_SUMMARY_MAX],
+                    description=task.description,
+                )
+
+        if not created_keys:
+            log_entry["message"] = (
+                "stories_breakdown: no new stories created "
+                f"(duplicates skipped or empty plan). Skipped hints: {skipped[:5]}"
+            )
+            return {"execution_log": [log_entry]}
+
+        last_key = created_keys[-1]
+        last_story = jira.get_story(last_key)
+        last_desc = (last_story or {}).get("description") or ""
+        last_ac = _parse_acceptance_criteria(last_desc)
+
+        log_entry["message"] = (
+            f"stories_breakdown: created {len(created_keys)} story/stories under {epic_id}: "
+            f"{', '.join(created_keys)}"
+        )
+        return {
+            "current_story_id": last_key,
+            "created_story_ids": created_keys,
+            "story_content": last_desc,
+            "acceptance_criteria": last_ac,
+            "dependencies": [],
+            "qa_scope": [],
+            "definition_of_done": [],
+            "execution_log": [log_entry],
+        }
+
     def create_story_tasks(state: OrchestratorState) -> dict[str, Any]:
+        if settings.execution_mode == "stories_breakdown":
+            return _stories_breakdown_create(state)
+
         team_id = state["team_id"]
         prompt = state["input_prompt"]
         epic_id = state["current_epic_id"] or "UNKNOWN"

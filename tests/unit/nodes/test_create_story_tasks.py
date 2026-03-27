@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 
 from bmad_orchestrator.nodes.create_story_tasks import (
+    EpicStoryBreakdown,
+    PlannedStoryItem,
     StoryDraft,
     TaskItem,
     make_create_story_tasks_node,
 )
+from bmad_orchestrator.nodes.epic_architect import DISCOVERY_MARKER
 from tests.conftest import make_state
 
 
@@ -104,3 +107,95 @@ def test_story_draft_parses_stringified_tasks():
     )
     assert len(draft.tasks) == 2
     assert draft.tasks[0].summary == "Task A"
+
+
+def _epic_with_discovery() -> dict:
+    return {
+        "key": "TEST-1",
+        "summary": "Epic",
+        "description": f"{DISCOVERY_MARKER}\n\nSome discovery text.",
+    }
+
+
+def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_claude):
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    mock_jira.get_epic.return_value = _epic_with_discovery()
+    mock_jira.list_stories_under_epic.return_value = []
+    breakdown = EpicStoryBreakdown(
+        stories=[
+            PlannedStoryItem(
+                summary="As a user I want feature alpha so that I succeed",
+                description="**Hypothesis**\nH1\n\n**Intervention**\nI1",
+                acceptance_criteria=["AC a1", "AC a2"],
+                tasks=[],
+            ),
+            PlannedStoryItem(
+                summary="As a user I want feature beta so that I win",
+                description="**Hypothesis**\nH2\n\n**Intervention**\nI2",
+                acceptance_criteria=["AC b1", "AC b2"],
+                tasks=[
+                    TaskItem(summary="Sub 1", description="Do 1"),
+                    TaskItem(summary="Sub 2", description="Do 2"),
+                ],
+            ),
+        ]
+    )
+    mock_claude.complete_structured.return_value = breakdown
+    mock_jira.create_story.side_effect = [
+        {"key": "TEST-10", "summary": breakdown.stories[0].summary},
+        {"key": "TEST-11", "summary": breakdown.stories[1].summary},
+    ]
+    mock_jira.create_task.return_value = {"key": "TEST-12"}
+    mock_jira.get_story.return_value = {
+        "key": "TEST-11",
+        "description": "**Acceptance Criteria:**\n- AC b1\n- AC b2\n",
+    }
+
+    node = make_create_story_tasks_node(mock_jira, mock_claude, sb)
+    result = node(
+        make_state(current_epic_id="TEST-1", team_id="growth", input_prompt="TEST-1"),
+    )
+
+    assert result["created_story_ids"] == ["TEST-10", "TEST-11"]
+    assert result["current_story_id"] == "TEST-11"
+    assert mock_jira.create_story.call_count == 2
+    assert mock_jira.create_task.call_count == 2
+
+
+def test_stories_breakdown_skips_duplicate_against_existing(settings, mock_jira, mock_claude):
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    mock_jira.get_epic.return_value = _epic_with_discovery()
+    mock_jira.list_stories_under_epic.return_value = [
+        {"summary": "As a user I want feature alpha so that I succeed", "key": "TEST-99"},
+    ]
+    breakdown = EpicStoryBreakdown(
+        stories=[
+            PlannedStoryItem(
+                summary="As a user I want feature alpha so that I succeed",
+                description="Dup",
+                acceptance_criteria=["AC 1", "AC 2"],
+                tasks=[],
+            ),
+            PlannedStoryItem(
+                summary="As a user I want only new work so that it ships",
+                description="**Hypothesis**\nH\n\n**Intervention**\nI",
+                acceptance_criteria=["AC n1", "AC n2"],
+                tasks=[],
+            ),
+        ]
+    )
+    mock_claude.complete_structured.return_value = breakdown
+    mock_jira.create_story.return_value = {
+        "key": "TEST-20",
+        "summary": breakdown.stories[1].summary,
+    }
+    mock_jira.get_story.return_value = {
+        "key": "TEST-20",
+        "description": "**Acceptance Criteria:**\n- AC n1\n- AC n2\n",
+    }
+
+    node = make_create_story_tasks_node(mock_jira, mock_claude, sb)
+    result = node(make_state(current_epic_id="TEST-1", team_id="growth"))
+
+    assert result["created_story_ids"] == ["TEST-20"]
+    assert mock_jira.create_story.call_count == 1

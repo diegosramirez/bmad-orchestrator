@@ -150,6 +150,20 @@ def test_build_graph_epic_architect_execution_mode(settings, tmp_path):
     assert graph is not None
 
 
+def test_build_graph_stories_breakdown_execution_mode(settings, tmp_path):
+    """Smoke test: stories_breakdown mode compiles (Forge /bmad/stories-run)."""
+    from bmad_orchestrator.graph import build_graph
+
+    sb = settings.model_copy(
+        update={
+            "execution_mode": "stories_breakdown",
+            "checkpoint_db_path": str(tmp_path / "stories_cp.db"),
+        },
+    )
+    graph, _, _ = build_graph(sb)
+    assert graph is not None
+
+
 def test_skip_node_returns_log_entry():
     """A skipped node returns an execution_log entry with 'Skipped' message."""
     from bmad_orchestrator.graph import _make_skip_node

@@ -162,3 +162,19 @@ class TestTransitionIssue:
         fetched = svc.get_epic(epic["key"])
         assert fetched is not None
         assert fetched["status"] == "In Progress"
+
+
+class TestListStoriesUnderEpic:
+    def test_returns_only_stories_for_parent_epic(self, svc: DummyJiraService) -> None:
+        e1 = svc.create_epic("Epic one", "d", "growth")
+        e2 = svc.create_epic("Epic two", "d", "growth")
+        s1 = svc.create_story(e1["key"], "Story A", "body", ["AC"], "growth")
+        s2 = svc.create_story(e1["key"], "Story B", "body", ["AC"], "growth")
+        _ = svc.create_story(e2["key"], "Other epic story", "body", ["AC"], "growth")
+
+        under = svc.list_stories_under_epic(e1["key"])
+        assert {x["key"] for x in under} == {s1["key"], s2["key"]}
+
+    def test_empty_when_no_stories(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("Empty", "d", "growth")
+        assert svc.list_stories_under_epic(epic["key"]) == []

@@ -63,7 +63,8 @@ class Settings(BaseSettings):
     # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
     # "github-agent" creates a GitHub Issue and terminates (external agent takes over).
     # "discovery" ends after planning nodes (Forge /bmad/discovery-run; no Issue, no dev/QA/PR).
-    # "epic_architect" runs only epic_architect after create_or_correct_epic (Forge /bmad/architect-run).
+    # "epic_architect": only epic_architect after create_or_correct_epic (Forge architect-run).
+    # "stories_breakdown": N stories + party from epic description; ends before detect_commands.
     execution_mode: str = "inline"
     # When True in github-agent mode, the create_github_issue node adds a
     # "bmad-execute" label that triggers immediate code generation via the

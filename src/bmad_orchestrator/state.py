@@ -48,7 +48,9 @@ class OrchestratorState(TypedDict):
     # ── Jira artifacts ────────────────────────────────────────────────────────
     current_epic_id: str | None
     current_story_id: str | None
-    # When set, step start/finish notifications are posted as comments on this story (e.g. webhook runs).
+    # Story keys from one create_story_tasks batch (stories_breakdown mode).
+    created_story_ids: list[str] | None
+    # Step notifications target story (e.g. webhook runs).
     notify_jira_story_key: str | None
     # Single comment id and body for step notifications (create once, then update/append).
     step_notification_comment_id: str | None

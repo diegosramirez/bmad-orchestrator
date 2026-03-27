@@ -19,6 +19,7 @@ from bmad_orchestrator.webhook.discovery import (
 )
 from bmad_orchestrator.webhook.epic_architect import build_epic_architect_workflow_inputs
 from bmad_orchestrator.webhook.jira_payload import parse_jira_webhook
+from bmad_orchestrator.webhook.stories import build_stories_workflow_inputs
 
 load_dotenv()
 
@@ -327,6 +328,106 @@ async def architect_run(request: Request):
     else:
         logger.warning(
             "architect_run_dispatch_failed",
+            issue_key=issue_key,
+            target_repo=target_repo,
+            team_id=team_id,
+            dispatch_status=dispatch_status,
+            dispatch_error=_truncate_github_body(dispatch_error),
+        )
+
+    github_actions_url = (
+        f"https://github.com/{GITHUB_REPO}/actions/workflows/bmad-start-run.yml"
+        if GITHUB_REPO
+        else None
+    )
+
+    content: dict[str, object] = {
+        "ok": True,
+        "saved": str(path),
+        "run_started": ok,
+        "issue_key": issue_key,
+    }
+    if github_actions_url is not None:
+        content["actions_url"] = github_actions_url
+    content["message"] = (
+        "GitHub Actions workflow dispatched."
+        if ok
+        else "Payload saved, but failed to dispatch GitHub Actions workflow."
+    )
+    if dispatch_status is not None:
+        content["dispatch_status"] = dispatch_status
+    if dispatch_error is not None:
+        content["dispatch_error"] = dispatch_error
+
+    return JSONResponse(
+        content=content,
+        status_code=202 if ok else 500,
+    )
+
+
+@app.post("/bmad/stories-run")
+async def stories_run(request: Request):
+    """Forge panel: run create_story_tasks (N stories) + party_mode_refinement, then END.
+
+    Expects JSON ``{"issue_key": "PROJ-123", "target_repo": "optional"}`` and Forge secret header.
+    """
+    if not FORGE_WEBHOOK_SECRET:
+        return JSONResponse(
+            content={
+                "ok": False,
+                "run_started": False,
+                "message": (
+                    "Set BMAD_FORGE_WEBHOOK_SECRET or BMAD_DISCOVERY_WEBHOOK_SECRET on the server."
+                ),
+            },
+            status_code=503,
+        )
+
+    body = await request.json()
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    issue_key = (body.get("issue_key") or "").strip()
+    if not issue_key:
+        return JSONResponse(
+            content={"ok": False, "run_started": False, "message": "Missing issue_key"},
+            status_code=400,
+        )
+
+    path = WEBHOOK_STORE_DIR / f"{ts}_stories_{issue_key.replace('-', '_')}.json"
+    path.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    target_raw = (body.get("target_repo") or "").strip() or DEFAULT_TARGET_REPO
+    target_repo = _normalize_target_repo(target_raw)
+    if not target_repo:
+        return JSONResponse(
+            content={
+                "ok": False,
+                "run_started": False,
+                "saved": str(path),
+                "message": "Missing target_repo (body or DEFAULT_TARGET_REPO).",
+            },
+            status_code=400,
+        )
+
+    team_override = (body.get("team_id") or "").strip()
+    team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)
+
+    inputs = build_stories_workflow_inputs(
+        issue_key=issue_key,
+        target_repo=target_repo,
+        team_id=team_id,
+    )
+    ok, dispatch_status, dispatch_error = await _dispatch_bmad_workflow(inputs)
+
+    if ok:
+        logger.info(
+            "stories_run_dispatched",
+            issue_key=issue_key,
+            target_repo=target_repo,
+            team_id=team_id,
+        )
+    else:
+        logger.warning(
+            "stories_run_dispatch_failed",
             issue_key=issue_key,
             target_repo=target_repo,
             team_id=team_id,

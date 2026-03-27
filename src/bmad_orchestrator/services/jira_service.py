@@ -151,6 +151,19 @@ class JiraService:
         except Exception:
             return None
 
+    def list_stories_under_epic(self, epic_key: str) -> list[dict[str, Any]]:
+        """Return Story issues whose parent is the given epic (same linkage as create_story)."""
+        try:
+            jql = (
+                f'project = "{self.settings.jira_project_key}" '
+                f'AND parent = "{epic_key}" '
+                f'AND issuetype = Story'
+            )
+            issues = self._client.search_issues(jql, maxResults=100)
+            return [_issue_to_dict(i) for i in issues]
+        except Exception:
+            return []
+
     def get_subtasks(self, story_key: str) -> list[dict[str, Any]]:
         """Return all subtasks of the given story. Empty list if none or on error."""
         try:

@@ -11,6 +11,7 @@ def test_settings_with_required_values() -> None:
         jira_api_token="token",  # type: ignore[arg-type]
         jira_project_key="PROJ",
         github_repo="org/repo",
+        github_base_branch="main",
     )
     assert s.dry_run is False
     assert s.max_review_loops == 2

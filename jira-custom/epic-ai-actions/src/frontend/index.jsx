@@ -84,6 +84,33 @@ const App = () => {
       }
       return;
     }
+    if (action === 'stories') {
+      if (!issueKey) {
+        setBanner({
+          appearance: 'error',
+          title: 'No issue context',
+          body: 'Open an issue (epic) to generate stories.',
+        });
+        return;
+      }
+      const result = await invoke('runStories', { issueKey });
+      if (result?.ok) {
+        setBanner({
+          appearance: 'success',
+          title: 'Generate Stories started',
+          body:
+            result.message ||
+            'GitHub Actions workflow was dispatched. Check the issue comment for progress.',
+        });
+      } else {
+        setBanner({
+          appearance: 'error',
+          title: 'Generate Stories failed',
+          body: result?.message || 'Unknown error',
+        });
+      }
+      return;
+    }
     setBanner({
       appearance: 'information',
       title: 'Not available yet',

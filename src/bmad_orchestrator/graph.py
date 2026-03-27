@@ -419,7 +419,20 @@ def build_graph(
     )
     builder.add_edge("epic_architect", END)
     builder.add_edge("create_story_tasks", "party_mode_refinement")
-    builder.add_edge("party_mode_refinement", "detect_commands")
+
+    def _after_party_mode_router(_state: OrchestratorState) -> str:
+        if settings.execution_mode == "stories_breakdown":
+            return "stories_breakdown_end"
+        return "detect_commands"
+
+    builder.add_conditional_edges(
+        "party_mode_refinement",
+        _after_party_mode_router,
+        {
+            "stories_breakdown_end": END,
+            "detect_commands": "detect_commands",
+        },
+    )
 
     # ── Execution mode routing: inline | github-agent | discovery ───────────
     def _execution_mode_router(_state: OrchestratorState) -> str:
@@ -502,6 +515,7 @@ def make_initial_state(
         project_context=gather_project_context(cwd) or None,
         current_epic_id=epic_key,
         current_story_id=story_key,
+        created_story_ids=None,
         notify_jira_story_key=story_key,
         step_notification_comment_id=None,
         step_notification_comment_body=None,

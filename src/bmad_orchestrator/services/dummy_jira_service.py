@@ -167,6 +167,11 @@ class DummyJiraService:
     def get_story(self, story_key: str) -> dict[str, Any] | None:
         return self._read_issue("stories", story_key)
 
+    def list_stories_under_epic(self, epic_key: str) -> list[dict[str, Any]]:
+        """Stories stored under stories/ with parent_key == epic_key."""
+        all_stories = self._read_all_in("stories")
+        return [s for s in all_stories if s.get("parent_key") == epic_key]
+
     def get_subtasks(self, story_key: str) -> list[dict[str, Any]]:
         """Return all subtasks of the given story."""
         all_tasks = self._read_all_in("tasks")

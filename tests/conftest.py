@@ -19,6 +19,7 @@ def settings() -> Settings:
         jira_api_token="test-token",  # type: ignore[arg-type]
         jira_project_key="TEST",
         github_repo="org/repo",
+        github_base_branch="main",
         dry_run=True,
     )
 
@@ -31,6 +32,7 @@ def base_state() -> OrchestratorState:
         project_context=None,
         current_epic_id=None,
         current_story_id=None,
+        created_story_ids=None,
         notify_jira_story_key=None,
         step_notification_comment_id=None,
         step_notification_comment_body=None,
@@ -127,6 +129,7 @@ def make_state(**overrides: Any) -> OrchestratorState:
         project_context=None,
         current_epic_id=None,
         current_story_id=None,
+        created_story_ids=None,
         notify_jira_story_key=None,
         step_notification_comment_id=None,
         step_notification_comment_body=None,
