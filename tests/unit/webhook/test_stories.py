@@ -21,4 +21,4 @@ def test_build_stories_workflow_inputs() -> None:
     assert inputs["skip_detect_commands"] == "true"
     assert inputs["skip_dev_story"] == "true"
     assert inputs["skip_epic_architect"] == "true"
-    assert "--epic-key SAM1-275 --story-key SAM1-275" in inputs["extra_flags"]
+    assert inputs["extra_flags"] == "--epic-key SAM1-275"

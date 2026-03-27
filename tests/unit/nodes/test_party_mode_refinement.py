@@ -171,6 +171,21 @@ def test_stories_breakdown_refines_each_created_story(settings):
     assert result["story_content"]
 
 
+def test_stories_breakdown_does_not_refine_epic_fallback(settings):
+    """When current_story_id equals current_epic_id, skip refinement without created ids."""
+    mock_claude = MagicMock()
+    mock_jira = MagicMock()
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    node = make_party_mode_node(mock_claude, mock_jira, sb)
+
+    result = node(make_state(current_epic_id="PUG-1", current_story_id="PUG-1"))
+
+    mock_jira.get_story.assert_not_called()
+    mock_jira.update_story_description.assert_not_called()
+    assert result["execution_log"]
+    assert "no story keys to refine" in result["execution_log"][0]["message"]
+
+
 def test_non_webhook_does_not_call_summary_or_subtasks(settings):
     """When not webhook (skip_nodes does not include create_story_tasks), skip webhook logic."""
     mock_claude = MagicMock()

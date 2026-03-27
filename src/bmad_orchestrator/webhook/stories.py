@@ -16,7 +16,9 @@ def build_stories_workflow_inputs(
 
     Skips epic prep nodes; runs create_story_tasks and party_mode_refinement.
     """
-    extra_flags = f"--epic-key {issue_key} --story-key {issue_key}"
+    # stories_breakdown starts from an epic, not an existing story key.
+    # Passing --story-key=<epic> makes CLI preload epic content as if it were a story.
+    extra_flags = f"--epic-key {issue_key}"
     return {
         "target_repo": target_repo,
         "base_branch": "main",

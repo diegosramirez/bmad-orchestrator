@@ -98,7 +98,8 @@ def make_party_mode_node(
             id_list = [x for x in (state.get("created_story_ids") or []) if x and x != "UNKNOWN"]
             if not id_list and state.get("current_story_id"):
                 ck = state["current_story_id"]
-                if ck and ck != "UNKNOWN":
+                epic_id = state.get("current_epic_id")
+                if ck and ck != "UNKNOWN" and ck != epic_id:
                     id_list = [ck]
             if not id_list:
                 empty: ExecutionLogEntry = {
