@@ -26,6 +26,7 @@ const App = () => {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [selectedAgent, setSelectedAgent] = useState(null);
   const [banner, setBanner] = useState(null);
 
   const handleClick = async (action) => {
@@ -119,6 +120,7 @@ const App = () => {
   };
 
   const openConfirm = (action) => {
+    setSelectedAgent(action);
     setPendingAction(action);
     setConfirmOpen(true);
   };
@@ -146,7 +148,7 @@ const App = () => {
 
         {issueKey && (
           <Text>
-            <Text as="strong">Issue:</Text> {issueKey}
+            <Text as="strong">Epic:</Text> {issueKey}
           </Text>
         )}
 
@@ -160,7 +162,8 @@ const App = () => {
 
         <Inline space="space.150" alignBlock="center">
           <Button
-            appearance="primary"
+            appearance={selectedAgent === 'discovery' ? 'primary' : 'default'}
+            isSelected={selectedAgent === 'discovery'}
             onClick={() => openConfirm('discovery')}
             iconBefore={<Icon glyph="search" label="Discovery" />}
           >
@@ -168,6 +171,8 @@ const App = () => {
           </Button>
 
           <Button
+            appearance={selectedAgent === 'architect' ? 'primary' : 'default'}
+            isSelected={selectedAgent === 'architect'}
             onClick={() => openConfirm('architect')}
             iconBefore={<Icon glyph="component" label="Architect" />}
           >
@@ -175,6 +180,8 @@ const App = () => {
           </Button>
 
           <Button
+            appearance={selectedAgent === 'stories' ? 'primary' : 'default'}
+            isSelected={selectedAgent === 'stories'}
             onClick={() => openConfirm('stories')}
             iconBefore={<Icon glyph="page" label="Stories" />}
           >
