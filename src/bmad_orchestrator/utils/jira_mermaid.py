@@ -21,6 +21,91 @@ _MermaidSeg = tuple[Literal["text", "mermaid"], str]
 
 _MAX_MEDIA_DIM = 4096
 
+_MEDIA_FILE_ID_KEYS: tuple[str, ...] = (
+    "mediaApiFileId",
+    "mediaApiFileID",
+    "mediaClientFileId",
+    "mediaClientFileID",
+)
+
+
+def _is_classic_jira_attachment_id(value: str) -> bool:
+    """True for REST attachment ids (digits only). ADF media nodes need a Media Services id."""
+    s = str(value).strip()
+    return bool(s) and s.isdigit()
+
+
+def _extract_media_file_id_from_attachment_payload(payload: dict[str, Any]) -> str | None:
+    """Read Media Services file id from attachment JSON (top-level or ``properties``)."""
+    for key in _MEDIA_FILE_ID_KEYS:
+        v = payload.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    props = payload.get("properties")
+    if isinstance(props, dict):
+        for key in _MEDIA_FILE_ID_KEYS:
+            v = props.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    return None
+
+
+def resolve_jira_adf_media_file_id(jira_client: Any | None, attachment: Any) -> str | None:
+    """
+    Return the Media Services file id for ADF ``media.attrs.id``.
+
+    Jira Cloud rejects classic attachment ids (numeric) in ADF; the document must reference
+    ``mediaApiFileId`` (see Attachment metadata and ADF media node docs).
+    """
+    raw = getattr(attachment, "raw", None)
+    if isinstance(raw, dict):
+        mid = _extract_media_file_id_from_attachment_payload(raw)
+        if mid:
+            return mid
+    aid = getattr(attachment, "id", None)
+    if aid is None:
+        return None
+    aid_str = str(aid)
+    if not _is_classic_jira_attachment_id(aid_str):
+        return None
+    get_json = getattr(jira_client, "_get_json", None) if jira_client is not None else None
+    if not callable(get_json):
+        return None
+    try:
+        meta = get_json(f"attachment/{aid_str}")
+    except Exception:
+        logger.debug(
+            "jira_attachment_metadata_fetch_failed",
+            attachment_id=aid_str,
+            exc_info=True,
+        )
+        return None
+    if isinstance(meta, dict):
+        mid = _extract_media_file_id_from_attachment_payload(meta)
+        if mid:
+            return mid
+    return None
+
+
+def effective_adf_media_id_for_attachment(
+    jira_client: Any | None,
+    attachment: Any,
+) -> str | None:
+    """
+    Id suitable for ``media.attrs.id``: resolved Media Services id when the attachment id is
+    numeric; otherwise (e.g. dummy file-backed ids) ``str(attachment.id)``.
+    """
+    resolved = resolve_jira_adf_media_file_id(jira_client, attachment)
+    if resolved:
+        return resolved
+    aid = getattr(attachment, "id", None)
+    if aid is None:
+        return None
+    aid_str = str(aid)
+    if _is_classic_jira_attachment_id(aid_str):
+        return None
+    return aid_str
+
 
 def split_markdown_mermaid_segments(markdown: str) -> list[_MermaidSeg]:
     """Split markdown into alternating text and mermaid fence bodies (no fences)."""
@@ -112,6 +197,8 @@ def build_description_adf_with_mermaid(
     settings: Settings,
     issue_key: str,
     add_attachment: Callable[[str, BytesIO, str], Any],
+    *,
+    jira_client: Any | None = None,
 ) -> dict[str, Any]:
     """
     Build full ADF doc: text segments via markdown_to_adf; each mermaid fence rendered
@@ -139,14 +226,22 @@ def build_description_adf_with_mermaid(
         diagram_idx += 1
         try:
             att = add_attachment(issue_key, BytesIO(png), fname)
-            aid = str(att.id) if hasattr(att, "id") else str(att)
         except Exception as exc:
             logger.warning("mermaid_attachment_failed", issue_key=issue_key, error=str(exc))
             content.append(_code_block(seg, "mermaid"))
             continue
+        media_id = effective_adf_media_id_for_attachment(jira_client, att)
+        if not media_id:
+            logger.warning(
+                "mermaid_adf_media_id_unresolved",
+                issue_key=issue_key,
+                attachment_id=getattr(att, "id", None),
+            )
+            content.append(_code_block(seg, "mermaid"))
+            continue
         content.append(
             media_single_adf_node(
-                aid,
+                media_id,
                 w,
                 h,
                 fname,

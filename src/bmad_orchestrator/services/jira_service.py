@@ -28,7 +28,13 @@ def _finalize_description_with_mermaid(
     def add_attachment(ik: str, fp: BytesIO, fname: str) -> Any:
         return client.add_attachment(ik, fp, filename=fname)
 
-    return build_description_adf_with_mermaid(markdown, settings, issue_key, add_attachment)
+    return build_description_adf_with_mermaid(
+        markdown,
+        settings,
+        issue_key,
+        add_attachment,
+        jira_client=client,
+    )
 
 # Jira Cloud expects Atlassian Document Format (ADF) for ``description``; that only works on
 # REST API v3. API v2 rejects ADF with: errors.description = "Operation value must be a string".
