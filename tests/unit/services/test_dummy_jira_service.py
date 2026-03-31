@@ -208,7 +208,7 @@ class TestDummyMermaidPipeline:
             lambda _s, _src: (_PNG_1X1, None),
         )
         r = svc_m.create_epic("E", "```mermaid\nflowchart LR\n  A-->B\n```", "g")
-        assert "[Diagram attached]" in r["description"]
+        assert "review it in the Attachments section" in r["description"]
 
     def test_update_epic_mermaid(
         self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
@@ -222,7 +222,7 @@ class TestDummyMermaidPipeline:
             created["key"],
             {"description": "```mermaid\nflowchart LR\n  A-->B\n```"},
         )
-        assert "[Diagram attached]" in out["description"]
+        assert "review it in the Attachments section" in out["description"]
 
     def test_create_story_mermaid(
         self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
@@ -239,7 +239,7 @@ class TestDummyMermaidPipeline:
             ["AC"],
             "g",
         )
-        assert "[Diagram attached]" in story["description"]
+        assert "review it in the Attachments section" in story["description"]
 
     def test_create_task_mermaid(
         self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
@@ -255,7 +255,7 @@ class TestDummyMermaidPipeline:
             "T",
             "```mermaid\nflowchart LR\n  A-->B\n```",
         )
-        assert "[Diagram attached]" in task["description"]
+        assert "review it in the Attachments section" in task["description"]
 
     def test_update_story_description_mermaid(
         self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
@@ -272,4 +272,4 @@ class TestDummyMermaidPipeline:
         )
         fetched = svc_m.get_story(story["key"])
         assert fetched is not None
-        assert "[Diagram attached]" in fetched["description"]
+        assert "review it in the Attachments section" in fetched["description"]

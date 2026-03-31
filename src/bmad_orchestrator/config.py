@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     jira_username: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str = "DUMMY"
-    # ADF media.attrs.collection for inline images from attachments (often "" on Jira Cloud).
+    # Reserved for future Jira ADF inline media; Mermaid diagrams are attached as PNG only.
     jira_media_collection: str = ""
     # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
     mermaid_renderer: str = "kroki"

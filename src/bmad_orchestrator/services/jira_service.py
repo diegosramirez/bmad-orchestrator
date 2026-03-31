@@ -10,9 +10,9 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
 from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
 from bmad_orchestrator.utils.jira_mermaid import (
-    build_description_adf_with_mermaid,
     markdown_intermediate_without_mermaid_images,
     mermaid_pipeline_enabled,
+    upload_mermaid_png_attachments,
 )
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -25,16 +25,12 @@ def _finalize_description_with_mermaid(
     issue_key: str,
     markdown: str,
 ) -> dict[str, Any]:
+    """Upload Mermaid PNGs; description is ADF with mermaid fences replaced by a note."""
     def add_attachment(ik: str, fp: BytesIO, fname: str) -> Any:
         return client.add_attachment(ik, fp, filename=fname)
 
-    return build_description_adf_with_mermaid(
-        markdown,
-        settings,
-        issue_key,
-        add_attachment,
-        jira_client=client,
-    )
+    upload_mermaid_png_attachments(markdown, settings, issue_key, add_attachment)
+    return description_for_jira_api(markdown_intermediate_without_mermaid_images(markdown))
 
 # Jira Cloud expects Atlassian Document Format (ADF) for ``description``; that only works on
 # REST API v3. API v2 rejects ADF with: errors.description = "Operation value must be a string".

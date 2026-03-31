@@ -178,7 +178,7 @@ def test_create_epic_dry_run_skips(settings):
 
 
 def test_create_epic_mermaid_pipeline_two_phase(jira_svc):
-    """With mermaid renderer on, create_issue then update with ADF containing media."""
+    """With mermaid renderer on: attach PNGs, description ADF with placeholder (no inline media)."""
     import base64
 
     svc, client = jira_svc
@@ -190,10 +190,7 @@ def test_create_epic_mermaid_pipeline_two_phase(jira_svc):
     created.key = "PUG-99"
     created.update = MagicMock()
     client.create_issue.return_value = created
-    mock_att = MagicMock()
-    mock_att.id = "10001"
-    mock_att.raw = {"mediaApiFileId": "550e8400-e29b-41d4-a716-446655440000"}
-    client.add_attachment.return_value = mock_att
+    client.add_attachment.return_value = MagicMock()
     with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
         mock_render.return_value = (png, None)
         svc.create_epic("E", "```mermaid\nflowchart LR\n  A-->B\n```", "pug")
@@ -201,12 +198,10 @@ def test_create_epic_mermaid_pipeline_two_phase(jira_svc):
     created.update.assert_called_once()
     final_desc = created.update.call_args.kwargs["fields"]["description"]
     assert final_desc["type"] == "doc"
-    media_singles = [b for b in final_desc.get("content", []) if b.get("type") == "mediaSingle"]
-    assert len(media_singles) == 1
-    assert (
-        media_singles[0]["content"][0]["attrs"]["id"]
-        == "550e8400-e29b-41d4-a716-446655440000"
+    assert not any(
+        b.get("type") == "mediaSingle" for b in final_desc.get("content", [])
     )
+    assert "review it in the Attachments section" in str(final_desc)
     client.add_attachment.assert_called_once()
 
 

@@ -10,11 +10,11 @@ from typing import Any, cast
 import yaml
 
 from bmad_orchestrator.config import Settings
-from bmad_orchestrator.utils.jira_adf import description_from_jira_api
+from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
 from bmad_orchestrator.utils.jira_mermaid import (
-    build_description_adf_with_mermaid,
     markdown_intermediate_without_mermaid_images,
     mermaid_pipeline_enabled,
+    upload_mermaid_png_attachments,
 )
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -71,12 +71,8 @@ class DummyJiraService:
             fp.seek(0)
             return SimpleNamespace(id=aid)
 
-        return build_description_adf_with_mermaid(
-            markdown,
-            self.settings,
-            issue_key,
-            add_attachment,
-        )
+        upload_mermaid_png_attachments(markdown, self.settings, issue_key, add_attachment)
+        return description_for_jira_api(markdown_intermediate_without_mermaid_images(markdown))
 
     def _write_issue(self, subdir: str, issue_dict: dict[str, Any]) -> None:
         prefix = _SUBDIR_FILE_PREFIX.get(subdir, "")
