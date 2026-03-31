@@ -8,13 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # the BMAD_AGENT_MODELS env var (JSON dict).
 _DEFAULT_AGENT_MODELS: dict[str, str] = {
     # All agents use Opus for testing — revert to tiered models after evaluation
-    "pm": "claude-haiku-4.5-20250101",
-    "designer": "claude-haiku-4.5-20250101",
-    "architect_party": "claude-haiku-4.5-20250101",
-    "developer_party": "claude-haiku-4.5-20250101",
-    "scrum_master": "claude-haiku-4.5-20250101",
-    "build-expert": "claude-haiku-4.5-20250101",
-    "e2e_tester": "claude-haiku-4.5-20250101",
+    "pm": "claude-sonnet-4-20250514",
+    "designer": "claude-sonnet-4-20250514",
+    "architect_party": "claude-sonnet-4-20250514",
+    "developer_party": "claude-sonnet-4-20250514",
+    "scrum_master": "claude-sonnet-4-20250514",
+    "build-expert": "claude-sonnet-4-20250514",
+    "e2e_tester": "claude-sonnet-4-20250514",
 }
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # ── Anthropic ──────────────────────────────────────────────────────────────
     anthropic_api_key: SecretStr
-    model_name: str = "claude-haiku-4.5-20250101"
+    model_name: str = "claude-sonnet-4-20250514"
     temperature: float = 0.0
     # Per-agent model overrides. JSON dict mapping agent_id → model name.
     # E.g. BMAD_AGENT_MODELS='{"developer":"claude-opus-4","qa":"claude-haiku-4-5-20251001"}'

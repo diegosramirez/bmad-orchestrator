@@ -335,17 +335,17 @@ def test_get_usage_report_groups_by_agent(settings):
 def test_model_for_uses_agent_models_override(settings):
     live = settings.model_copy(update={
         "dry_run": False,
-        "agent_models": {"developer": "claude-haiku-4.5-20250101"},
+        "agent_models": {"developer": "claude-sonnet-4-20250514"},
     })
     svc = ClaudeService(live)
-    assert svc._model_for("developer") == "claude-haiku-4.5-20250101"
+    assert svc._model_for("developer") == "claude-sonnet-4-20250514"
     assert svc._model_for("qa") == live.model_name  # fallback
 
 
 def test_agent_model_override_used_in_api_call(settings):
     live = settings.model_copy(update={
         "dry_run": False,
-        "agent_models": {"developer": "claude-haiku-4.5-20250101"},
+        "agent_models": {"developer": "claude-sonnet-4-20250514"},
     })
     svc = ClaudeService(live)
     resp = _make_text_response("ok")
@@ -356,13 +356,13 @@ def test_agent_model_override_used_in_api_call(settings):
         svc.complete("sys", "msg", agent_id="developer")
 
     call_kwargs = mock_create.call_args[1]
-    assert call_kwargs["model"] == "claude-haiku-4.5-20250101"
+    assert call_kwargs["model"] == "claude-sonnet-4-20250514"
 
 
 def test_usage_report_shows_mixed_models(settings):
     live = settings.model_copy(update={
         "dry_run": False,
-        "agent_models": {"qa": "claude-haiku-4.5-20250101"},
+        "agent_models": {"qa": "claude-sonnet-4-20250514"},
     })
     svc = ClaudeService(live)
     text_resp = _make_text_response("ok")
@@ -385,4 +385,4 @@ def test_usage_report_shows_mixed_models(settings):
     qa_row = next(
         r for r in report["rows"] if r["agent"] == "Quinn (QA)"
     )
-    assert qa_row["model"] == "claude-haiku-4.5-20250101"
+    assert qa_row["model"] == "claude-sonnet-4-20250514"
