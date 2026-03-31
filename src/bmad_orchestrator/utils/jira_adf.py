@@ -175,21 +175,158 @@ def markdown_to_adf(markdown: str) -> dict[str, Any]:
 
 
 def _inline_from_adf(nodes: list[dict[str, Any]]) -> str:
+    """Extract plain text from inline ADF nodes (text, line breaks, emoji, etc.)."""
     parts: list[str] = []
     for n in nodes:
-        if n.get("type") != "text":
+        if not isinstance(n, dict):
             continue
-        t = n.get("text") or ""
-        marks = n.get("marks") or []
-        is_strong = any(m.get("type") == "strong" for m in marks)
-        if is_strong:
-            parts.append(f"*{t}*")
-        else:
-            parts.append(t)
+        ntype = n.get("type")
+        if ntype == "text":
+            t = n.get("text") or ""
+            marks = n.get("marks") or []
+            is_strong = any(m.get("type") == "strong" for m in marks)
+            if is_strong:
+                parts.append(f"*{t}*")
+            else:
+                parts.append(t)
+        elif ntype == "hardBreak":
+            parts.append("\n")
+        elif ntype == "emoji":
+            attrs = n.get("attrs") or {}
+            parts.append(str(attrs.get("text") or attrs.get("shortName") or ""))
+        elif ntype == "mention":
+            attrs = n.get("attrs") or {}
+            parts.append(str(attrs.get("text") or attrs.get("id") or "mention"))
+        elif ntype in ("inlineCard", "date"):
+            attrs = n.get("attrs") or {}
+            if isinstance(attrs.get("url"), str):
+                parts.append(attrs["url"])
+            elif isinstance(attrs.get("timestamp"), str):
+                parts.append(attrs["timestamp"])
     return "".join(parts)
 
 
+def _adf_collect_plain_text(node: Any) -> str:
+    """Deep-recursively collect all ``text`` node payloads (fallback for unknown block types)."""
+    chunks: list[str] = []
+
+    def walk(n: Any) -> None:
+        if isinstance(n, dict):
+            if n.get("type") == "text" and "text" in n:
+                t = n.get("text")
+                if isinstance(t, str) and t:
+                    chunks.append(t)
+            for c in n.get("content") or []:
+                walk(c)
+            attrs = n.get("attrs")
+            if isinstance(attrs, dict):
+                for k in ("text", "title", "alt", "label"):
+                    v = attrs.get(k)
+                    if isinstance(v, str) and v:
+                        chunks.append(v)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+
+    walk(node)
+    return " ".join(chunks)
+
+
+def _bullet_list_to_markdown(block: dict[str, Any], indent: str) -> str:
+    lines: list[str] = []
+    for li in block.get("content") or []:
+        if li.get("type") != "listItem":
+            continue
+        chunk = _list_item_to_markdown(li, indent)
+        if chunk:
+            lines.append(chunk)
+    return "\n".join(lines)
+
+
+def _ordered_list_to_markdown(block: dict[str, Any], indent: str) -> str:
+    lines: list[str] = []
+    idx = 1
+    for li in block.get("content") or []:
+        if li.get("type") != "listItem":
+            continue
+        chunk = _list_item_to_markdown_numbered(li, indent, idx)
+        idx += 1
+        if chunk:
+            lines.append(chunk)
+    return "\n".join(lines)
+
+
+def _list_item_to_markdown(li: dict[str, Any], indent: str) -> str:
+    """Render one bullet list item (may contain nested lists)."""
+    parts: list[str] = []
+    for child in li.get("content") or []:
+        if not isinstance(child, dict):
+            continue
+        ct = child.get("type")
+        if ct == "paragraph":
+            parts.append(f"{indent}- {_inline_from_adf(child.get('content') or [])}")
+        elif ct == "bulletList":
+            nested = _bullet_list_to_markdown(child, indent + "  ")
+            if nested:
+                parts.append(nested)
+        elif ct == "orderedList":
+            nested = _ordered_list_to_markdown(child, indent + "  ")
+            if nested:
+                parts.append(nested)
+        elif ct == "heading":
+            level = (child.get("attrs") or {}).get("level") or 1
+            hashes = "#" * int(level)
+            title = _inline_from_adf(child.get("content") or [])
+            parts.append(f"{indent}- {hashes} {title}")
+        elif ct == "blockquote":
+            inner = _blockquote_to_markdown(child)
+            if inner:
+                parts.append(f"{indent}- {inner}")
+        else:
+            md = _block_to_markdown_impl(child, use_plain_fallback=True)
+            if md:
+                parts.append(f"{indent}- {md}")
+    return "\n".join(parts)
+
+
+def _list_item_to_markdown_numbered(li: dict[str, Any], indent: str, num: int) -> str:
+    parts: list[str] = []
+    for child in li.get("content") or []:
+        if not isinstance(child, dict):
+            continue
+        ct = child.get("type")
+        if ct == "paragraph":
+            parts.append(f"{indent}{num}. {_inline_from_adf(child.get('content') or [])}")
+        elif ct == "bulletList":
+            nested = _bullet_list_to_markdown(child, indent + "  ")
+            if nested:
+                parts.append(nested)
+        elif ct == "orderedList":
+            nested = _ordered_list_to_markdown(child, indent + "  ")
+            if nested:
+                parts.append(nested)
+        else:
+            md = _block_to_markdown_impl(child, use_plain_fallback=True)
+            if md:
+                parts.append(f"{indent}{num}. {md}")
+    return "\n".join(parts)
+
+
+def _blockquote_to_markdown(block: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for inner in block.get("content") or []:
+        if isinstance(inner, dict):
+            md = _block_to_markdown_impl(inner, use_plain_fallback=True)
+            if md:
+                lines.append(md)
+    return " ".join(lines)
+
+
 def _block_to_markdown(block: dict[str, Any]) -> str:
+    return _block_to_markdown_impl(block, use_plain_fallback=True)
+
+
+def _block_to_markdown_impl(block: dict[str, Any], *, use_plain_fallback: bool) -> str:
     btype = block.get("type")
     if btype == "paragraph":
         return _inline_from_adf(block.get("content") or [])
@@ -199,14 +336,7 @@ def _block_to_markdown(block: dict[str, Any]) -> str:
         title = _inline_from_adf(block.get("content") or [])
         return f"{hashes} {title}"
     if btype == "bulletList":
-        lines = []
-        for li in block.get("content") or []:
-            if li.get("type") != "listItem":
-                continue
-            for inner in li.get("content") or []:
-                if inner.get("type") == "paragraph":
-                    lines.append("- " + _inline_from_adf(inner.get("content") or []))
-        return "\n".join(lines)
+        return _bullet_list_to_markdown(block, "")
     if btype == "codeBlock":
         lang = (block.get("attrs") or {}).get("language") or ""
         text = ""
@@ -216,16 +346,18 @@ def _block_to_markdown(block: dict[str, Any]) -> str:
         fence = "```" + (lang or "")
         return f"{fence}\n{text}\n```"
     if btype == "orderedList":
-        lines = []
-        idx = 1
-        for li in block.get("content") or []:
-            if li.get("type") != "listItem":
-                continue
-            for inner in li.get("content") or []:
-                if inner.get("type") == "paragraph":
-                    lines.append(f"{idx}. {_inline_from_adf(inner.get('content') or [])}")
-                    idx += 1
-        return "\n".join(lines)
+        return _ordered_list_to_markdown(block, "")
+    if btype == "blockquote":
+        return _blockquote_to_markdown(block)
+    if btype == "rule":
+        return "---"
+    if btype in ("panel", "extension", "expand", "nestedExpand"):
+        inner = _adf_collect_plain_text(block)
+        return inner if inner else ""
+    if btype in ("mediaGroup", "mediaSingle"):
+        return ""
+    if use_plain_fallback:
+        return _adf_collect_plain_text(block)
     return ""
 
 

@@ -66,3 +66,326 @@ def test_description_for_api_and_from_api() -> None:
 
 def test_description_from_jira_api_none() -> None:
     assert description_from_jira_api(None) == ""
+
+
+def test_adf_hard_break_in_paragraph() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Line A"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "Line B"},
+                ],
+            }
+        ],
+    }
+    assert adf_to_markdown(doc) == "Line A\nLine B"
+
+
+def test_adf_nested_bullet_list() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Outer"}],
+                            },
+                            {
+                                "type": "bulletList",
+                                "content": [
+                                    {
+                                        "type": "listItem",
+                                        "content": [
+                                            {
+                                                "type": "paragraph",
+                                                "content": [{"type": "text", "text": "Inner"}],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "Outer" in out
+    assert "Inner" in out
+
+
+def test_adf_unknown_block_collects_text_fallback() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "extension",
+                "attrs": {"extensionType": "com.atlassian.x"},
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "From extension"}]}
+                ],
+            }
+        ],
+    }
+    assert "From extension" in adf_to_markdown(doc)
+
+
+def test_adf_inline_emoji_mention_card_date() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "emoji", "attrs": {"text": "🚀", "shortName": ":rocket:"}},
+                    {"type": "mention", "attrs": {"text": "@alice", "id": "acc-1"}},
+                    {"type": "inlineCard", "attrs": {"url": "https://example.com"}},
+                    {"type": "date", "attrs": {"timestamp": "2026-03-31"}},
+                ],
+            }
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "🚀" in out
+    assert "@alice" in out
+    assert "https://example.com" in out
+    assert "2026-03-31" in out
+
+
+def test_adf_top_level_ordered_list() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "orderedList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "First"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Second"}],
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "1. First" in out
+    assert "2. Second" in out
+
+
+def test_adf_bullet_nested_ordered_list() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "orderedList",
+                                "content": [
+                                    {
+                                        "type": "listItem",
+                                        "content": [
+                                            {
+                                                "type": "paragraph",
+                                                "content": [{"type": "text", "text": "Sub"}],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    assert "Sub" in adf_to_markdown(doc)
+
+
+def test_adf_list_item_heading_and_blockquote() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "heading",
+                                "attrs": {"level": 3},
+                                "content": [{"type": "text", "text": "Subhead"}],
+                            },
+                            {
+                                "type": "blockquote",
+                                "content": [
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "Quoted"}],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "Subhead" in out
+    assert "Quoted" in out
+
+
+def test_adf_rule_blockquote_top_level() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {"type": "rule"},
+            {
+                "type": "blockquote",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Quote line"}],
+                    }
+                ],
+            },
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "---" in out
+    assert "Quote line" in out
+
+
+def test_adf_panel_expand_media_and_attrs_fallback() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "panel",
+                "attrs": {"extensionType": "x"},
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "In panel"}]}
+                ],
+            },
+            {
+                "type": "expand",
+                "attrs": {"title": "More"},
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "Hidden"}]}
+                ],
+            },
+            {"type": "nestedExpand", "attrs": {}},
+            {"type": "mediaSingle", "content": []},
+            {
+                "type": "customBlock",
+                "attrs": {"alt": "Alt text", "label": "Label"},
+                "content": [{"type": "text", "text": "Body"}],
+            },
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert "In panel" in out
+    assert "Hidden" in out
+    assert "Alt text" in out or "Label" in out or "Body" in out
+
+
+def test_adf_paragraph_plus_bullet_list_newsletter_style() -> None:
+    """Simulates Jira Cloud rich text: intro + bullets (like Discovery epic input)."""
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Users should be able to subscribe to a newsletter on the website.",
+                    }
+                ],
+            },
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "The system should provide a simple form where users "
+                            "can enter their email."
+                        ),
+                    }
+                ],
+            },
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Validate the email format"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Store the email in a database",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+    out = adf_to_markdown(doc)
+    assert len(out) > 200
+    assert "newsletter" in out
+    assert "Validate the email" in out
+    assert "Store the email" in out
