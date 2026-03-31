@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from jira.resources import dict2resource
+
 from bmad_orchestrator.utils.jira_adf import (
     adf_to_markdown,
     description_for_jira_api,
@@ -66,6 +68,25 @@ def test_description_for_api_and_from_api() -> None:
 
 def test_description_from_jira_api_none() -> None:
     assert description_from_jira_api(None) == ""
+
+
+def test_description_from_jira_api_property_holder_like_jira_client() -> None:
+    """python-jira parses ADF JSON into PropertyHolder; must not use str() (~56-char repr)."""
+    adf_json = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Full epic body from Jira Cloud."}],
+            }
+        ],
+    }
+    ph = dict2resource(adf_json)
+    assert str(ph).startswith("<jira.resources.PropertyHolder")
+    out = description_from_jira_api(ph)
+    assert "Full epic body" in out
+    assert len(out) > 20
 
 
 def test_adf_hard_break_in_paragraph() -> None:

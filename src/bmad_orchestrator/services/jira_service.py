@@ -21,10 +21,25 @@ _DRY_STORY: dict[str, Any] = {"key": "DRY-002", "id": "dry-story-002", "summary"
 _DRY_TASK: dict[str, Any] = {"key": "DRY-003", "id": "dry-task-003", "summary": "Dry-run Task"}
 
 
+def _issue_description_payload(issue: Any) -> Any:
+    """Return ``fields.description`` in a form suitable for ``description_from_jira_api``.
+
+    Prefer ``issue.raw['fields']['description']`` (plain JSON dict/str) from the REST response.
+    ``issue.fields.description`` is parsed by python-jira into ``PropertyHolder`` objects; using
+    that alone forces ``description_from_jira_api`` to fall back to ``str()`` (~56-char repr).
+    """
+    raw_issue = getattr(issue, "raw", None)
+    if isinstance(raw_issue, dict):
+        fields_json = raw_issue.get("fields")
+        if isinstance(fields_json, dict) and "description" in fields_json:
+            return fields_json["description"]
+    return getattr(issue.fields, "description", None)
+
+
 def _issue_to_dict(issue: Any) -> dict[str, Any]:
     """Convert a jira.Issue resource to a plain dict safe for checkpointing."""
     fields = issue.fields
-    raw_desc = fields.description
+    raw_desc = _issue_description_payload(issue)
     desc_str = description_from_jira_api(raw_desc) if raw_desc is not None else ""
     return {
         "key": issue.key,

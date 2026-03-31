@@ -88,6 +88,32 @@ def test_issue_to_dict_converts_adf_description_to_markdown():
     assert result["description"] == "From ADF"
 
 
+def test_issue_to_dict_prefers_raw_json_description_over_property_holder():
+    """Use issue.raw fields.description dict so we do not rely on python-jira PropertyHolder."""
+    from jira.resources import dict2resource
+
+    issue = MagicMock()
+    issue.key = "TEST-275"
+    issue.id = "11457"
+    issue.fields.summary = "Epic title"
+    adf = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "From raw JSON fields"}]},
+        ],
+    }
+    issue.fields.description = dict2resource(adf)
+    issue.fields.status.name = "Open"
+    issue.fields.issuetype.name = "Epic"
+    issue.fields.labels = []
+    issue.fields.parent = None
+    issue.raw = {"fields": {"description": adf}}
+
+    result = _issue_to_dict(issue)
+    assert result["description"] == "From raw JSON fields"
+
+
 # ── find_epic_by_team ─────────────────────────────────────────────────────────
 
 def test_find_epic_by_team_returns_list(jira_svc):

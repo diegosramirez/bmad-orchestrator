@@ -385,6 +385,29 @@ def description_for_jira_api(markdown: str) -> dict[str, Any]:
     return markdown_to_adf(markdown)
 
 
+def _jira_adf_payload_to_dict(obj: Any) -> Any:
+    """Turn python-jira ``PropertyHolder`` trees (nested ADF) into plain ``dict``/list for parsing.
+
+    The jira library parses JSON ``fields.description`` into ``PropertyHolder`` objects.
+    ``str()`` on those yields a useless ~56-char repr; we need the real structure.
+    """
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _jira_adf_payload_to_dict(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jira_adf_payload_to_dict(x) for x in obj]
+    if hasattr(obj, "__dict__"):
+        d = vars(obj)
+        if d and not isinstance(obj, type):
+            return {
+                k: _jira_adf_payload_to_dict(v)
+                for k, v in d.items()
+                if not str(k).startswith("_")
+            }
+    return obj
+
+
 def description_from_jira_api(raw: Any) -> str:
     """Normalise API description (string or ADF doc) to markdown string."""
     if raw is None:
@@ -393,4 +416,9 @@ def description_from_jira_api(raw: Any) -> str:
         return raw
     if isinstance(raw, dict) and raw.get("type") == "doc":
         return adf_to_markdown(raw)
+    # python-jira wraps ADF JSON in PropertyHolder (not a dict); convert then parse.
+    if getattr(raw, "type", None) == "doc" and hasattr(raw, "content"):
+        as_dict = _jira_adf_payload_to_dict(raw)
+        if isinstance(as_dict, dict) and as_dict.get("type") == "doc":
+            return adf_to_markdown(as_dict)
     return str(raw)
