@@ -200,6 +200,30 @@ def test_get_story_returns_none_on_error(jira_svc):
 
 # ── update_story_description ──────────────────────────────────────────────────
 
+def test_add_comment_converts_body_to_adf(jira_svc):
+    """REST API v3 requires ADF for comment body (same as issue description)."""
+    svc, client = jira_svc
+    mock_comment = MagicMock()
+    mock_comment.id = "c42"
+    client.add_comment.return_value = mock_comment
+    result = svc.add_comment("PUG-5", "Hello **bold**")
+    assert result == "c42"
+    client.add_comment.assert_called_once_with(
+        "PUG-5",
+        description_for_jira_api("Hello **bold**"),
+    )
+
+
+def test_update_comment_converts_body_to_adf(jira_svc):
+    svc, client = jira_svc
+    mock_comment = MagicMock()
+    client.comment.return_value = mock_comment
+    svc.update_comment("PUG-5", "99", "Line one")
+    mock_comment.update.assert_called_once_with(
+        body=description_for_jira_api("Line one"),
+    )
+
+
 def test_update_story_description(jira_svc):
     svc, client = jira_svc
     issue = _make_mock_issue()

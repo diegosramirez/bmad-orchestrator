@@ -46,6 +46,11 @@ def _fields_with_adf_description(fields: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _comment_body_for_jira_api(body: str) -> Any:
+    """REST API v3 expects comment ``body`` as ADF (same document shape as issue description)."""
+    return description_for_jira_api(body)
+
+
 class JiraService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -231,7 +236,8 @@ class JiraService:
     @skip_if_dry_run(fake_return=None)
     def add_comment(self, issue_key: str, body: str) -> str | None:
         """Add a comment to the given Jira issue. Returns the comment id for later updates."""
-        comment = self._client.add_comment(issue_key, body)
+        # python-jira types body as str; v3 requires ADF dict (see _comment_body_for_jira_api).
+        comment = self._client.add_comment(issue_key, _comment_body_for_jira_api(body))
         logger.info("comment_added", issue_key=issue_key)
         return str(comment.id) if comment else None
 
@@ -239,7 +245,7 @@ class JiraService:
     def update_comment(self, issue_key: str, comment_id: str, body: str) -> None:
         """Update an existing comment's body (e.g. append step notifications)."""
         comment = self._client.comment(issue_key, comment_id)
-        comment.update(body=body)
+        comment.update(body=_comment_body_for_jira_api(body))
         logger.info("comment_updated", issue_key=issue_key, comment_id=comment_id)
 
     @skip_if_dry_run(fake_return=None)
