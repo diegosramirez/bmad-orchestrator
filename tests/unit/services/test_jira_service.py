@@ -44,6 +44,17 @@ def jira_svc(settings):
         yield svc, mock_client
 
 
+def test_jira_client_uses_rest_api_v3_for_adf_descriptions(settings):
+    """ADF issue descriptions require /rest/api/3; v2 expects a string and rejects dicts."""
+    with patch("bmad_orchestrator.services.jira_service.JIRA") as MockJIRA:
+        MockJIRA.return_value = MagicMock()
+        non_dry = settings.model_copy(update={"dry_run": False})
+        svc = JiraService(non_dry)
+        _ = svc._client
+        MockJIRA.assert_called_once()
+        assert MockJIRA.call_args.kwargs["options"]["rest_api_version"] == "3"
+
+
 # ── _issue_to_dict ────────────────────────────────────────────────────────────
 
 def test_issue_to_dict_maps_all_fields():

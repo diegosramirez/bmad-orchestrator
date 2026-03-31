@@ -12,6 +12,10 @@ from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Jira Cloud expects Atlassian Document Format (ADF) for ``description``; that only works on
+# REST API v3. API v2 rejects ADF with: errors.description = "Operation value must be a string".
+_JIRA_REST_OPTIONS: dict[str, Any] = {"rest_api_version": "3"}
+
 _DRY_EPIC: dict[str, Any] = {"key": "DRY-001", "id": "dry-epic-001", "summary": "Dry-run Epic"}
 _DRY_STORY: dict[str, Any] = {"key": "DRY-002", "id": "dry-story-002", "summary": "Dry-run Story"}
 _DRY_TASK: dict[str, Any] = {"key": "DRY-003", "id": "dry-task-003", "summary": "Dry-run Task"}
@@ -50,6 +54,7 @@ class JiraService:
     def _client(self) -> JIRA:
         return JIRA(
             server=self.settings.jira_base_url,
+            options=_JIRA_REST_OPTIONS,
             basic_auth=(
                 self.settings.jira_username,
                 self.settings.jira_api_token.get_secret_value(),
