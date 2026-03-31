@@ -26,6 +26,8 @@ Artifacts:
 - epic updated: {epic_id}
 - story updated: {story_id}
 - qa automation added
+
+Co-Authored-By: BMAD Orchestrator <bmad@noreply.local>
 """
 
 
