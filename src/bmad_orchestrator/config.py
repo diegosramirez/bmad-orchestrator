@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # ADF media.attrs.collection for inline images from attachments (often "" on Jira Cloud).
     jira_media_collection: str = ""
     # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
-    mermaid_renderer: str = "off"
+    mermaid_renderer: str = "kroki"
     kroki_url: str = "https://kroki.io"
     mermaid_kroki_timeout_seconds: float = 30.0
     mmdc_path: str = "mmdc"
