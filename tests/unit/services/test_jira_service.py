@@ -177,6 +177,35 @@ def test_create_epic_dry_run_skips(settings):
     assert result["key"] == "DRY-001"
 
 
+def test_create_epic_mermaid_pipeline_two_phase(jira_svc):
+    """With mermaid renderer on, create_issue then update with ADF containing media."""
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    created = MagicMock()
+    created.key = "PUG-99"
+    created.update = MagicMock()
+    client.create_issue.return_value = created
+    mock_att = MagicMock()
+    mock_att.id = "10001"
+    client.add_attachment.return_value = mock_att
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.create_epic("E", "```mermaid\nflowchart LR\n  A-->B\n```", "pug")
+    client.create_issue.assert_called_once()
+    created.update.assert_called_once()
+    final_desc = created.update.call_args.kwargs["fields"]["description"]
+    assert final_desc["type"] == "doc"
+    assert any(
+        b.get("type") == "mediaSingle" for b in final_desc.get("content", [])
+    )
+    client.add_attachment.assert_called_once()
+
+
 # ── update_epic ───────────────────────────────────────────────────────────────
 
 def test_update_epic_calls_jira(jira_svc):
@@ -186,6 +215,47 @@ def test_update_epic_calls_jira(jira_svc):
     result = svc.update_epic("PUG-5", {"description": "New"})
     assert result["key"] == "PUG-5"
     issue.update.assert_called_once()
+
+
+def test_update_epic_mermaid_pipeline(jira_svc):
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    issue = _make_mock_issue(key="PUG-5")
+    client.issue.return_value = issue
+    mock_att = MagicMock()
+    mock_att.id = "att-9"
+    client.add_attachment.return_value = mock_att
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.update_epic("PUG-5", {"description": "```mermaid\nflowchart LR\n  A-->B\n```"})
+    issue.update.assert_called_once()
+    call_kw = issue.update.call_args.kwargs["fields"]
+    assert call_kw["description"]["type"] == "doc"
+
+
+def test_update_story_description_mermaid(jira_svc):
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    issue = _make_mock_issue()
+    client.issue.return_value = issue
+    mock_att = MagicMock()
+    mock_att.id = "a1"
+    client.add_attachment.return_value = mock_att
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.update_story_description("PUG-5", "```mermaid\nflowchart LR\n  A-->B\n```")
+    issue.update.assert_called_once()
+    assert issue.update.call_args.kwargs["fields"]["description"]["type"] == "doc"
 
 
 # ── create_story ──────────────────────────────────────────────────────────────

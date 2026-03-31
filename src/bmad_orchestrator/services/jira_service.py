@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from io import BytesIO
 from typing import Any
 
 from jira import JIRA
@@ -8,9 +9,26 @@ from jira import JIRA
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
 from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
+from bmad_orchestrator.utils.jira_mermaid import (
+    build_description_adf_with_mermaid,
+    markdown_intermediate_without_mermaid_images,
+    mermaid_pipeline_enabled,
+)
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _finalize_description_with_mermaid(
+    client: JIRA,
+    settings: Settings,
+    issue_key: str,
+    markdown: str,
+) -> dict[str, Any]:
+    def add_attachment(ik: str, fp: BytesIO, fname: str) -> Any:
+        return client.add_attachment(ik, fp, filename=fname)
+
+    return build_description_adf_with_mermaid(markdown, settings, issue_key, add_attachment)
 
 # Jira Cloud expects Atlassian Document Format (ADF) for ``description``; that only works on
 # REST API v3. API v2 rejects ADF with: errors.description = "Operation value must be a string".
@@ -99,23 +117,44 @@ class JiraService:
         description: str,
         team_id: str,
     ) -> dict[str, Any]:
-        issue = self._client.create_issue(
-            fields=_fields_with_adf_description(
-                {
-                    "project": {"key": self.settings.jira_project_key},
-                    "issuetype": {"name": "Epic"},
-                    "summary": summary,
-                    "description": description,
-                    "labels": [team_id],
-                }
+        fields = {
+            "project": {"key": self.settings.jira_project_key},
+            "issuetype": {"name": "Epic"},
+            "summary": summary,
+            "description": description,
+            "labels": [team_id],
+        }
+        if mermaid_pipeline_enabled(self.settings, description):
+            fields["description"] = markdown_intermediate_without_mermaid_images(description)
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+            issue.update(
+                fields={
+                    "description": _finalize_description_with_mermaid(
+                        self._client,
+                        self.settings,
+                        issue.key,
+                        description,
+                    ),
+                },
             )
-        )
+        else:
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
         logger.info("epic_created", key=issue.key)
         return _issue_to_dict(issue)
 
     @skip_if_dry_run(fake_return=_DRY_EPIC)
     def update_epic(self, epic_key: str, fields: dict[str, Any]) -> dict[str, Any]:
-        fields = _fields_with_adf_description(fields)
+        fields = dict(fields)
+        desc_raw = fields.get("description")
+        if isinstance(desc_raw, str) and mermaid_pipeline_enabled(self.settings, desc_raw):
+            fields["description"] = _finalize_description_with_mermaid(
+                self._client,
+                self.settings,
+                epic_key,
+                desc_raw,
+            )
+        else:
+            fields = _fields_with_adf_description(fields)
         desc = fields.get("description", "")
         desc_len = len(desc) if isinstance(desc, str) else len(str(desc))
         logger.info(
@@ -140,18 +179,29 @@ class JiraService:
     ) -> dict[str, Any]:
         ac_text = "\n".join(f"- {ac}" for ac in acceptance_criteria)
         full_description = f"{description}\n\n**Acceptance Criteria:**\n{ac_text}"
-        issue = self._client.create_issue(
-            fields=_fields_with_adf_description(
-                {
-                    "project": {"key": self.settings.jira_project_key},
-                    "issuetype": {"name": "Story"},
-                    "summary": summary,
-                    "description": full_description,
-                    "labels": [team_id],
-                    "parent": {"key": epic_key},
-                }
+        fields = {
+            "project": {"key": self.settings.jira_project_key},
+            "issuetype": {"name": "Story"},
+            "summary": summary,
+            "description": full_description,
+            "labels": [team_id],
+            "parent": {"key": epic_key},
+        }
+        if mermaid_pipeline_enabled(self.settings, full_description):
+            fields["description"] = markdown_intermediate_without_mermaid_images(full_description)
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+            issue.update(
+                fields={
+                    "description": _finalize_description_with_mermaid(
+                        self._client,
+                        self.settings,
+                        issue.key,
+                        full_description,
+                    ),
+                },
             )
-        )
+        else:
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
         logger.info("story_created", key=issue.key, epic=epic_key)
         return _issue_to_dict(issue)
 
@@ -162,17 +212,28 @@ class JiraService:
         summary: str,
         description: str,
     ) -> dict[str, Any]:
-        issue = self._client.create_issue(
-            fields=_fields_with_adf_description(
-                {
-                    "project": {"key": self.settings.jira_project_key},
-                    "issuetype": {"name": "Subtask"},
-                    "summary": summary,
-                    "description": description,
-                    "parent": {"key": story_key},
-                }
+        fields = {
+            "project": {"key": self.settings.jira_project_key},
+            "issuetype": {"name": "Subtask"},
+            "summary": summary,
+            "description": description,
+            "parent": {"key": story_key},
+        }
+        if mermaid_pipeline_enabled(self.settings, description):
+            fields["description"] = markdown_intermediate_without_mermaid_images(description)
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+            issue.update(
+                fields={
+                    "description": _finalize_description_with_mermaid(
+                        self._client,
+                        self.settings,
+                        issue.key,
+                        description,
+                    ),
+                },
             )
-        )
+        else:
+            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
         logger.info("task_created", key=issue.key, story=story_key)
         return _issue_to_dict(issue)
 
@@ -222,9 +283,18 @@ class JiraService:
 
     @skip_if_dry_run(fake_return=None)
     def update_story_description(self, story_key: str, description: str) -> None:
-        self._client.issue(story_key).update(
-            fields=_fields_with_adf_description({"description": description}),
-        )
+        if mermaid_pipeline_enabled(self.settings, description):
+            adf = _finalize_description_with_mermaid(
+                self._client,
+                self.settings,
+                story_key,
+                description,
+            )
+            self._client.issue(story_key).update(fields={"description": adf})
+        else:
+            self._client.issue(story_key).update(
+                fields=_fields_with_adf_description({"description": description}),
+            )
 
     @skip_if_dry_run(fake_return=None)
     def update_story_summary(self, story_key: str, summary: str) -> None:

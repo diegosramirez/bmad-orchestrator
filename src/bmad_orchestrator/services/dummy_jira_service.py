@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import yaml
 
 from bmad_orchestrator.config import Settings
+from bmad_orchestrator.utils.jira_adf import description_from_jira_api
+from bmad_orchestrator.utils.jira_mermaid import (
+    build_description_adf_with_mermaid,
+    markdown_intermediate_without_mermaid_images,
+    mermaid_pipeline_enabled,
+)
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +35,7 @@ class DummyJiraService:
     def __init__(self, settings: Settings, base_dir: Path | None = None) -> None:
         self.settings = settings
         self._base = base_dir or Path(settings.dummy_data_dir).expanduser() / "jira"
+        self._mermaid_att_id = 0
         for subdir in ("epics", "stories", "tasks"):
             (self._base / subdir).mkdir(parents=True, exist_ok=True)
 
@@ -45,9 +54,36 @@ class DummyJiraService:
 
     # ── File I/O helpers ──────────────────────────────────────────────────────
 
+    def _normalize_stored_description(self, desc: Any) -> str:
+        if isinstance(desc, dict) and desc.get("type") == "doc":
+            return description_from_jira_api(desc)
+        if isinstance(desc, str):
+            return desc
+        return str(desc)
+
+    def _finalize_mermaid_description(self, issue_key: str, markdown: str) -> dict[str, Any]:
+        def add_attachment(ik: str, fp: BytesIO, fname: str) -> Any:
+            self._mermaid_att_id += 1
+            aid = f"dummy-att-{self._mermaid_att_id}"
+            att_dir = self._base / "attachments" / ik
+            att_dir.mkdir(parents=True, exist_ok=True)
+            att_dir.joinpath(fname).write_bytes(fp.read())
+            fp.seek(0)
+            return SimpleNamespace(id=aid)
+
+        return build_description_adf_with_mermaid(
+            markdown,
+            self.settings,
+            issue_key,
+            add_attachment,
+        )
+
     def _write_issue(self, subdir: str, issue_dict: dict[str, Any]) -> None:
         prefix = _SUBDIR_FILE_PREFIX.get(subdir, "")
         path = self._base / subdir / f"{prefix}{issue_dict['key']}.md"
+        issue_dict = dict(issue_dict)
+        raw_desc = issue_dict.get("description", "")
+        issue_dict["description"] = self._normalize_stored_description(raw_desc)
         frontmatter = yaml.dump(issue_dict, default_flow_style=False, sort_keys=False)
         desc = issue_dict.get("description", "")
         body = f"# {issue_dict['key']}: {issue_dict['summary']}\n\n{desc}"
@@ -63,7 +99,10 @@ class DummyJiraService:
         parts = text.split("---", 2)
         if len(parts) < 3:
             return None
-        return yaml.safe_load(parts[1])
+        data = yaml.safe_load(parts[1])
+        if not isinstance(data, dict):
+            return None
+        return cast(dict[str, Any], data)
 
     def _read_all_in(self, subdir: str) -> list[dict[str, Any]]:
         results = []
@@ -108,12 +147,24 @@ class DummyJiraService:
 
     def create_epic(self, summary: str, description: str, team_id: str) -> dict[str, Any]:
         key = self._next_key()
-        issue = self._make_issue_dict(key, summary, description, "Epic", [team_id])
-        self._write_issue("epics", issue)
-        logger.info("dummy_epic_created", key=key)
+        if mermaid_pipeline_enabled(self.settings, description):
+            inter = markdown_intermediate_without_mermaid_images(description)
+            issue = self._make_issue_dict(key, summary, inter, "Epic", [team_id])
+            self._write_issue("epics", issue)
+            final_adf = self._finalize_mermaid_description(key, description)
+            issue["description"] = self._normalize_stored_description(final_adf)
+            self._write_issue("epics", issue)
+        else:
+            issue = self._make_issue_dict(key, summary, description, "Epic", [team_id])
+            self._write_issue("epics", issue)
+        logger.info("dummy_epic_created", key=issue["key"])
         return issue
 
     def update_epic(self, epic_key: str, fields: dict[str, Any]) -> dict[str, Any]:
+        fields = dict(fields)
+        desc_raw = fields.get("description")
+        if isinstance(desc_raw, str) and mermaid_pipeline_enabled(self.settings, desc_raw):
+            fields["description"] = self._finalize_mermaid_description(epic_key, desc_raw)
         desc = fields.get("description", "")
         desc_len = len(desc) if isinstance(desc, str) else len(str(desc))
         logger.info(
@@ -127,6 +178,8 @@ class DummyJiraService:
             msg = f"Epic {epic_key} not found in dummy store"
             raise ValueError(msg)
         issue.update(fields)
+        if "description" in fields:
+            issue["description"] = self._normalize_stored_description(issue.get("description"))
         self._write_issue("epics", issue)
         logger.info("jira_epic_updated", epic_key=epic_key)
         return issue
@@ -142,20 +195,40 @@ class DummyJiraService:
         key = self._next_key()
         ac_text = "\n".join(f"- {ac}" for ac in acceptance_criteria)
         full_description = f"{description}\n\n**Acceptance Criteria:**\n{ac_text}"
-        issue = self._make_issue_dict(
-            key, summary, full_description, "Story", [team_id], parent_key=epic_key
-        )
-        self._write_issue("stories", issue)
-        logger.info("dummy_story_created", key=key, epic=epic_key)
+        if mermaid_pipeline_enabled(self.settings, full_description):
+            inter = markdown_intermediate_without_mermaid_images(full_description)
+            issue = self._make_issue_dict(
+                key, summary, inter, "Story", [team_id], parent_key=epic_key
+            )
+            self._write_issue("stories", issue)
+            final_adf = self._finalize_mermaid_description(key, full_description)
+            issue["description"] = self._normalize_stored_description(final_adf)
+            self._write_issue("stories", issue)
+        else:
+            issue = self._make_issue_dict(
+                key, summary, full_description, "Story", [team_id], parent_key=epic_key
+            )
+            self._write_issue("stories", issue)
+        logger.info("dummy_story_created", key=issue["key"], epic=epic_key)
         return issue
 
     def create_task(self, story_key: str, summary: str, description: str) -> dict[str, Any]:
         key = self._next_key()
-        issue = self._make_issue_dict(
-            key, summary, description, "Sub-task", [], parent_key=story_key
-        )
-        self._write_issue("tasks", issue)
-        logger.info("dummy_task_created", key=key, story=story_key)
+        if mermaid_pipeline_enabled(self.settings, description):
+            inter = markdown_intermediate_without_mermaid_images(description)
+            issue = self._make_issue_dict(
+                key, summary, inter, "Sub-task", [], parent_key=story_key
+            )
+            self._write_issue("tasks", issue)
+            final_adf = self._finalize_mermaid_description(key, description)
+            issue["description"] = self._normalize_stored_description(final_adf)
+            self._write_issue("tasks", issue)
+        else:
+            issue = self._make_issue_dict(
+                key, summary, description, "Sub-task", [], parent_key=story_key
+            )
+            self._write_issue("tasks", issue)
+        logger.info("dummy_task_created", key=issue["key"], story=story_key)
         return issue
 
     def get_epic(self, epic_key: str) -> dict[str, Any] | None:
@@ -180,7 +253,10 @@ class DummyJiraService:
     def update_story_description(self, story_key: str, description: str) -> None:
         issue = self._read_issue("stories", story_key)
         if issue:
-            issue["description"] = description
+            if mermaid_pipeline_enabled(self.settings, description):
+                issue["description"] = self._finalize_mermaid_description(story_key, description)
+            else:
+                issue["description"] = description
             self._write_issue("stories", issue)
 
     def update_story_summary(self, story_key: str, summary: str) -> None:

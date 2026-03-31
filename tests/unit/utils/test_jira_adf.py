@@ -45,6 +45,33 @@ def test_markdown_to_adf_fenced_mermaid() -> None:
     assert "flowchart" in blk["content"][0]["text"]
 
 
+def test_adf_to_markdown_media_single_placeholder() -> None:
+    doc = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "mediaSingle",
+                "attrs": {"layout": "center"},
+                "content": [
+                    {
+                        "type": "media",
+                        "attrs": {
+                            "id": "1",
+                            "type": "file",
+                            "collection": "",
+                            "alt": "x.png",
+                            "width": 10,
+                            "height": 10,
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    assert adf_to_markdown(doc) == "[Diagram attached]"
+
+
 def test_markdown_to_adf_bullet_list() -> None:
     doc = markdown_to_adf("- one\n- two")
     assert doc["content"][0]["type"] == "bulletList"

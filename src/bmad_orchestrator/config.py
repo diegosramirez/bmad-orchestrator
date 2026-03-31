@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     jira_username: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str = "DUMMY"
+    # ADF media.attrs.collection for inline images from attachments (often "" on Jira Cloud).
+    jira_media_collection: str = ""
+    # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
+    mermaid_renderer: str = "off"
+    kroki_url: str = "https://kroki.io"
+    mermaid_kroki_timeout_seconds: float = 30.0
+    mmdc_path: str = "mmdc"
+    mermaid_mmdc_timeout_seconds: float = 60.0
+    mermaid_max_source_chars: int = 500_000
 
     # ── GitHub (optional when dummy_github=True) ──────────────────────────────
     github_repo: str | None = None

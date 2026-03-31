@@ -354,7 +354,9 @@ def _block_to_markdown_impl(block: dict[str, Any], *, use_plain_fallback: bool) 
     if btype in ("panel", "extension", "expand", "nestedExpand"):
         inner = _adf_collect_plain_text(block)
         return inner if inner else ""
-    if btype in ("mediaGroup", "mediaSingle"):
+    if btype == "mediaSingle":
+        return "[Diagram attached]"
+    if btype == "mediaGroup":
         return ""
     if use_plain_fallback:
         return _adf_collect_plain_text(block)
