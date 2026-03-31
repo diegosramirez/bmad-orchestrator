@@ -97,7 +97,7 @@ def test_discovery_updates_epic_when_valid(settings, mock_jira, mock_claude):
     call = mock_jira.update_epic.call_args
     assert call[0][0] == "EPIC-2"
     assert "Better login epic" in str(call[0][1].get("summary", ""))
-    assert "<!-- bmad:discovery -->" in call[0][1]["description"]
+    assert "# Discovery" in call[0][1]["description"]
     assert "Overview" in call[0][1]["description"]
 
 

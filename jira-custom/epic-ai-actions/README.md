@@ -5,7 +5,7 @@ Forge UI Kit app: **AI Actions** panel on Jira issues (including Epics). Dispatc
 | Button | Orchestrator mode | Workflow |
 |--------|-------------------|----------|
 | **Run Discovery** | `discovery` | `check_epic_state` + `create_or_correct_epic`, then END |
-| **Design Architect** | `epic_architect` | `epic_architect` only (appends `## Epic Architect` to the Epic description), then END |
+| **Design Architect** | `epic_architect` | `epic_architect` only (appends `# Architecture` to the Epic description), then END |
 
 ## Requirements
 
@@ -75,7 +75,7 @@ Tunnel hot-reloads UI/resolver changes; manifest changes still require redeploy.
 ## UI behaviour
 
 - **Run Discovery** — confirms, then dispatches Discovery for the current issue key (Epic view).
-- **Design Architect** — confirms, then dispatches Epic Architect (requires prior Discovery: `<!-- bmad:discovery -->` in the Epic description).
+- **Design Architect** — confirms, then dispatches Epic Architect (requires prior Discovery: Epic description must include the H1 section **`# Discovery`**).
 - **Generate Stories** — not wired in this version (informational message after confirm).
 
 ## Support

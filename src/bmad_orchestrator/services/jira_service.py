@@ -7,6 +7,7 @@ from jira import JIRA
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
+from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -19,16 +20,26 @@ _DRY_TASK: dict[str, Any] = {"key": "DRY-003", "id": "dry-task-003", "summary": 
 def _issue_to_dict(issue: Any) -> dict[str, Any]:
     """Convert a jira.Issue resource to a plain dict safe for checkpointing."""
     fields = issue.fields
+    raw_desc = fields.description
+    desc_str = description_from_jira_api(raw_desc) if raw_desc is not None else ""
     return {
         "key": issue.key,
         "id": issue.id,
         "summary": fields.summary,
-        "description": fields.description or "",
+        "description": desc_str,
         "status": fields.status.name if fields.status else None,
         "issue_type": fields.issuetype.name if fields.issuetype else None,
         "labels": list(fields.labels) if fields.labels else [],
         "parent_key": fields.parent.key if getattr(fields, "parent", None) else None,
     }
+
+
+def _fields_with_adf_description(fields: dict[str, Any]) -> dict[str, Any]:
+    """Jira Cloud: description must be ADF; convert markdown strings at the API boundary."""
+    out = dict(fields)
+    if "description" in out and isinstance(out["description"], str):
+        out["description"] = description_for_jira_api(out["description"])
+    return out
 
 
 class JiraService:
@@ -64,19 +75,22 @@ class JiraService:
         team_id: str,
     ) -> dict[str, Any]:
         issue = self._client.create_issue(
-            fields={
-                "project": {"key": self.settings.jira_project_key},
-                "issuetype": {"name": "Epic"},
-                "summary": summary,
-                "description": description,
-                "labels": [team_id],
-            }
+            fields=_fields_with_adf_description(
+                {
+                    "project": {"key": self.settings.jira_project_key},
+                    "issuetype": {"name": "Epic"},
+                    "summary": summary,
+                    "description": description,
+                    "labels": [team_id],
+                }
+            )
         )
         logger.info("epic_created", key=issue.key)
         return _issue_to_dict(issue)
 
     @skip_if_dry_run(fake_return=_DRY_EPIC)
     def update_epic(self, epic_key: str, fields: dict[str, Any]) -> dict[str, Any]:
+        fields = _fields_with_adf_description(fields)
         desc = fields.get("description", "")
         desc_len = len(desc) if isinstance(desc, str) else len(str(desc))
         logger.info(
@@ -102,14 +116,16 @@ class JiraService:
         ac_text = "\n".join(f"- {ac}" for ac in acceptance_criteria)
         full_description = f"{description}\n\n**Acceptance Criteria:**\n{ac_text}"
         issue = self._client.create_issue(
-            fields={
-                "project": {"key": self.settings.jira_project_key},
-                "issuetype": {"name": "Story"},
-                "summary": summary,
-                "description": full_description,
-                "labels": [team_id],
-                "parent": {"key": epic_key},
-            }
+            fields=_fields_with_adf_description(
+                {
+                    "project": {"key": self.settings.jira_project_key},
+                    "issuetype": {"name": "Story"},
+                    "summary": summary,
+                    "description": full_description,
+                    "labels": [team_id],
+                    "parent": {"key": epic_key},
+                }
+            )
         )
         logger.info("story_created", key=issue.key, epic=epic_key)
         return _issue_to_dict(issue)
@@ -122,13 +138,15 @@ class JiraService:
         description: str,
     ) -> dict[str, Any]:
         issue = self._client.create_issue(
-            fields={
-                "project": {"key": self.settings.jira_project_key},
-                "issuetype": {"name": "Subtask"},
-                "summary": summary,
-                "description": description,
-                "parent": {"key": story_key},
-            }
+            fields=_fields_with_adf_description(
+                {
+                    "project": {"key": self.settings.jira_project_key},
+                    "issuetype": {"name": "Subtask"},
+                    "summary": summary,
+                    "description": description,
+                    "parent": {"key": story_key},
+                }
+            )
         )
         logger.info("task_created", key=issue.key, story=story_key)
         return _issue_to_dict(issue)
@@ -179,7 +197,9 @@ class JiraService:
 
     @skip_if_dry_run(fake_return=None)
     def update_story_description(self, story_key: str, description: str) -> None:
-        self._client.issue(story_key).update(fields={"description": description})
+        self._client.issue(story_key).update(
+            fields=_fields_with_adf_description({"description": description}),
+        )
 
     @skip_if_dry_run(fake_return=None)
     def update_story_summary(self, story_key: str, summary: str) -> None:

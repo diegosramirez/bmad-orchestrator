@@ -13,6 +13,7 @@ from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.epic_architect_prompt import EPIC_ARCHITECT_PROMPT_FINAL
 from bmad_orchestrator.utils.jira_template import (
+    epic_has_discovery_section,
     normalise_epic_architect_headings,
     normalise_jira_headings,
 )
@@ -22,8 +23,8 @@ logger = get_logger(__name__)
 
 NODE_NAME = "epic_architect"
 
-DISCOVERY_MARKER = "<!-- bmad:discovery -->"
-ARCH_HEADING = "## Epic Architect"
+ARCH_HEADING = "# Architecture"
+LEGACY_ARCH_HEADING = "## Epic Architect"
 
 
 class ArchitectureBlockResult(BaseModel):
@@ -31,12 +32,17 @@ class ArchitectureBlockResult(BaseModel):
 
     architecture_block: str = Field(
         ...,
-        description="Markdown body only; no ## Epic Architect heading.",
+        description="Markdown body only; no # Architecture heading (orchestrator adds it).",
     )
 
 
+def _is_h1_line(stripped: str) -> bool:
+    """True for ATX H1 ``# Title`` but not ``##``."""
+    return stripped.startswith("# ") and not stripped.startswith("## ")
+
+
 def merge_epic_architect_description(existing: str, architecture_block: str) -> str:
-    """Insert or replace the ## Epic Architect section; preserve Discovery content above."""
+    """Insert or replace the # Architecture section; preserve Discovery and fences."""
     block = (architecture_block or "").strip()
     new_section = f"{ARCH_HEADING}\n\n{block}"
     text = (existing or "").rstrip()
@@ -44,25 +50,43 @@ def merge_epic_architect_description(existing: str, architecture_block: str) -> 
         return new_section + "\n"
 
     lines = text.splitlines()
+    n = len(lines)
     start_idx: int | None = None
-    for i, line in enumerate(lines):
-        if line.strip() == ARCH_HEADING:
+    in_fence = False
+    for i in range(n):
+        if lines[i].strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        s = lines[i].strip()
+        if s in (ARCH_HEADING, LEGACY_ARCH_HEADING):
             start_idx = i
             break
 
     if start_idx is None:
         return text + "\n\n" + new_section + "\n"
 
-    end_idx = len(lines)
-    for j in range(start_idx + 1, len(lines)):
-        stripped = lines[j].strip()
-        if stripped.startswith("## ") and stripped != ARCH_HEADING:
+    in_fence = False
+    for j in range(start_idx + 1):
+        if lines[j].strip().startswith("```"):
+            in_fence = not in_fence
+
+    end_idx = n
+    for j in range(start_idx + 1, n):
+        if lines[j].strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        s = lines[j].strip()
+        if _is_h1_line(s) and s not in (ARCH_HEADING, LEGACY_ARCH_HEADING):
             end_idx = j
             break
 
     prefix = "\n".join(lines[:start_idx]).rstrip()
     suffix = ""
-    if end_idx < len(lines):
+    if end_idx < n:
         suffix = "\n" + "\n".join(lines[end_idx:])
     middle = new_section
     if prefix:
@@ -112,10 +136,10 @@ def make_epic_architect_node(
         description = (existing.get("description") or "").strip()
         summary = (existing.get("summary") or "").strip()
 
-        if DISCOVERY_MARKER not in description:
+        if not epic_has_discovery_section(description):
             log_entry["message"] = (
-                f"epic_architect: epic {epic_id} has no Discovery marker "
-                f"({DISCOVERY_MARKER}). Run Discovery on this epic first."
+                f"epic_architect: epic {epic_id} has no Discovery section "
+                "(expected H1 `# Discovery` in the description). Run Discovery on this epic first."
             )
             return {"execution_log": [log_entry]}
 

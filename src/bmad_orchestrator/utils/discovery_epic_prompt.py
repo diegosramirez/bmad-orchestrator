@@ -47,36 +47,38 @@ DO NOT generate the Epic if there is not enough information.
 
 Rewrite and enrich the ticket using this structure.
 
-**Section titles (critical):** Each section below must start with a single line in this exact
-pattern: ``**emoji + title text**`` — for example ``**📖 Overview**`` on its own line.
-- Do **not** prefix section titles with numbers (no ``1.``, ``2.``, ``a.``).
-- Do **not** use ``#`` markdown headings for these sections; use **bold** only on that title line.
-- The first section line must be ``**🧩`` then a space then your full rewritten epic title,
-  ending with ``**`` (replace the placeholder text, keep the 🧩 emoji).
+**Headings (critical):**
+- The description MUST start with a single top-level markdown heading on its own line:
+  ``# Discovery`` (H1). That is the orchestrator step title for engineers reading the ticket.
+- Under that, use ``##`` subsections with emoji + title text, for example ``## 📖 Overview``,
+  ``## 🎯 Goals``, etc. Do **not** use manual tags or HTML comments to separate sections.
+- Do **not** prefix section titles with outline numbers (no ``1.``, ``2.``, ``a.``).
+- The first subsection after ``# Discovery`` must be ``## 🧩`` then a space then your full
+  rewritten epic title (replace the placeholder text, keep the 🧩 emoji).
 
 ---
 
-**🧩 Epic Title**
-Rewrite the title to be clear and outcome-focused (this line becomes ``**🧩 Your Title Here**``).
+## 🧩 Epic Title
+Rewrite the title to be clear and outcome-focused.
 
 ---
 
-**📖 Overview**
+## 📖 Overview
 Explain what we are building and why.
 
 ---
 
-**🎯 Goals**
+## 🎯 Goals
 List the main objectives.
 
 ---
 
-**👤 User Value**
+## 👤 User Value
 Explain what problem this solves.
 
 ---
 
-**📦 Scope (High-Level Features)**
+## 📦 Scope (High-Level Features)
 List complete features (NOT technical tasks).
 
 GOOD:
@@ -88,19 +90,19 @@ BAD:
 
 ---
 
-**⚙️ Functional Requirements**
+## ⚙️ Functional Requirements
 Use simple sentences:
 - User can...
 - System should...
 
 ---
 
-**✅ Acceptance Criteria**
+## ✅ Acceptance Criteria
 Define success conditions.
 
 ---
 
-**🚫 Out of Scope (Optional)**
+## 🚫 Out of Scope (Optional)
 (Optional but recommended)
 
 ---
@@ -111,7 +113,7 @@ Define success conditions.
 - No code
 - No low-level technical details
 - Focus on outcomes, not implementation
-- Section headers: one line each, bold as above — never numbered list items for headers
+- Section headers: one ``##`` line each — never numbered list items for headers
 
 ---
 

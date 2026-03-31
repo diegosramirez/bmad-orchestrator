@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bmad_orchestrator.services.jira_service import JiraService, _issue_to_dict
+from bmad_orchestrator.utils.jira_adf import description_for_jira_api
 
 
 def _make_mock_issue(
@@ -61,6 +62,19 @@ def test_issue_to_dict_includes_parent_key():
     issue = _make_mock_issue(key="PUG-5", parent_key="PUG-1")
     result = _issue_to_dict(issue)
     assert result["parent_key"] == "PUG-1"
+
+
+def test_issue_to_dict_converts_adf_description_to_markdown():
+    issue = _make_mock_issue()
+    issue.fields.description = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "From ADF"}]},
+        ],
+    }
+    result = _issue_to_dict(issue)
+    assert result["description"] == "From ADF"
 
 
 # ── find_epic_by_team ─────────────────────────────────────────────────────────
@@ -180,7 +194,9 @@ def test_update_story_description(jira_svc):
     issue = _make_mock_issue()
     client.issue.return_value = issue
     svc.update_story_description("PUG-5", "New description")
-    issue.update.assert_called_once_with(fields={"description": "New description"})
+    issue.update.assert_called_once_with(
+        fields={"description": description_for_jira_api("New description")},
+    )
 
 
 def test_update_story_summary(jira_svc):
@@ -196,7 +212,9 @@ def test_set_story_branch_field(jira_svc):
     issue = _make_mock_issue()
     client.issue.return_value = issue
     svc.set_story_branch_field("SAM1-61", "bmad/sam1/SAM1-61-add-signup")
-    issue.update.assert_called_once_with(fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"})
+    issue.update.assert_called_once_with(
+        fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"},
+    )
 
 
 # ── get_subtasks ───────────────────────────────────────────────────────────────

@@ -8,13 +8,16 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from bmad_orchestrator.config import Settings
-from bmad_orchestrator.nodes.epic_architect import DISCOVERY_MARKER
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
-from bmad_orchestrator.utils.jira_template import load_template, normalise_jira_headings
+from bmad_orchestrator.utils.jira_template import (
+    epic_has_discovery_section,
+    load_template,
+    normalise_jira_headings,
+)
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -163,10 +166,11 @@ def make_create_story_tasks_node(
             return {"execution_log": [log_entry]}
 
         description = (epic.get("description") or "").strip()
-        if DISCOVERY_MARKER not in description:
+        if not epic_has_discovery_section(description):
             log_entry["message"] = (
-                f"stories_breakdown: epic {epic_id} has no Discovery marker "
-                f"({DISCOVERY_MARKER}). Run Discovery on this epic first."
+                f"stories_breakdown: epic {epic_id} has no Discovery section "
+                "(expected H1 `# Discovery` in the epic description). "
+                "Run Discovery on this epic first."
             )
             return {"execution_log": [log_entry]}
 

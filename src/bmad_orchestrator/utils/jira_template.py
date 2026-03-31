@@ -23,6 +23,11 @@ JIRA_TEMPLATE_SECTIONS = [
 # We prepend a zero-width space (\u200B) to each title so Jira does not treat
 # these lines as part of a numbered/outline list (1., a., i.), while keeping
 # the visual appearance of a normal bold heading for users.
+# Legacy HTML comment (pre–# Discovery marker); still accepted by epic_has_discovery_section.
+LEGACY_DISCOVERY_HTML_COMMENT = "<!-- bmad:discovery -->"
+
+_DISCOVERY_H1_RE = re.compile(r"^#\s+Discovery\s*$", re.MULTILINE)
+
 _SECTION_HEADING_MAP = {
     "description": "\u200B**Description**",
     "hypothesis": "\u200B**Hypothesis**",
@@ -57,6 +62,30 @@ def load_template(app_root: Path | None = None) -> str:
         return path.read_text(encoding="utf-8")
     except OSError:
         return ""
+
+
+def epic_has_discovery_section(description: str) -> bool:
+    """
+    True if the epic has completed Discovery: H1 ``# Discovery``, or legacy HTML comment.
+
+    Downstream steps (Epic Architect, story breakdown) require this.
+    """
+    if not (description or "").strip():
+        return False
+    if LEGACY_DISCOVERY_HTML_COMMENT in description:
+        return True
+    return bool(_DISCOVERY_H1_RE.search(description))
+
+
+def ensure_discovery_h1(markdown: str) -> str:
+    """Ensure the description starts with H1 ``# Discovery`` (orchestrator step heading)."""
+    text = (markdown or "").strip()
+    if not text:
+        return "# Discovery\n"
+    first = text.splitlines()[0].strip()
+    if re.match(r"^#\s+Discovery\s*$", first):
+        return text
+    return f"# Discovery\n\n{text}"
 
 
 def matches_template(content: str) -> bool:
@@ -199,10 +228,9 @@ def _is_discovery_section_title(inner: str) -> bool:
 
 def normalise_discovery_epic_headings(content: str) -> str:
     """
-    Rewrite Discovery epic section lines into Jira-friendly bold headings.
+    Rewrite Discovery subsection lines into markdown ``##`` headings (Jira-friendly).
 
-    Strips accidental ``1.`` / ``#`` prefixes and wraps matching emoji section titles with
-    a U+200B prefix plus ``**...**`` so Jira does not render them as ordered-list items.
+    Strips accidental ``1.`` / ``#`` prefixes. Preserves the top-level ``# Discovery`` H1.
     """
     if not content:
         return content
@@ -214,14 +242,23 @@ def normalise_discovery_epic_headings(content: str) -> str:
         if not stripped:
             out.append(line)
             continue
+        if re.match(r"^#\s+Discovery\s*$", stripped):
+            out.append(line)
+            continue
+        if stripped.startswith("## "):
+            inner_h2 = stripped[3:].strip()
+            if _is_discovery_section_title(_strip_discovery_heading_artifacts(inner_h2)):
+                out.append(line)
+                continue
         if stripped.startswith("\u200B**") and stripped.endswith("**"):
             inner_check = stripped[3:-2]
             if _is_discovery_section_title(_strip_discovery_heading_artifacts(inner_check)):
-                out.append(line)
+                inner = _strip_discovery_heading_artifacts(inner_check)
+                out.append(f"## {inner}")
                 continue
         inner = _strip_discovery_heading_artifacts(stripped)
         if _is_discovery_section_title(inner):
-            out.append(f"\u200B**{inner}**")
+            out.append(f"## {inner}")
         else:
             out.append(line)
 
@@ -243,19 +280,17 @@ def _is_epic_architect_section_title(inner: str) -> bool:
     return any(p.match(inner) for p in _EPIC_ARCHITECT_TITLE_PATTERNS)
 
 
+_ARCH_MERGE_HEADINGS = ("# Architecture", "## Epic Architect")
+
+
 def normalise_epic_architect_headings(content: str) -> str:
     """
-    Rewrite Epic Architect subsection lines into Jira-friendly bold headings.
+    Rewrite Epic Architect subsection lines into markdown ``##`` headings.
 
-    Strips accidental ``1.`` / ``a.`` / ``i.`` / ``#`` prefixes and wraps known
-    architecture section titles with a U+200B prefix plus ``**...**``.
-
-    The canonical markdown heading ``## Epic Architect`` (merge delimiter) is left unchanged.
+    Preserves merge delimiters ``# Architecture`` and legacy ``## Epic Architect``.
     """
     if not content:
         return content
-
-    _arch_merge_heading = "## Epic Architect"
 
     lines = content.splitlines()
     out: list[str] = []
@@ -264,17 +299,23 @@ def normalise_epic_architect_headings(content: str) -> str:
         if not stripped:
             out.append(line)
             continue
-        if stripped == _arch_merge_heading:
+        if stripped in _ARCH_MERGE_HEADINGS:
             out.append(line)
             continue
+        if stripped.startswith("## "):
+            inner_h2 = stripped[3:].strip()
+            if _is_epic_architect_section_title(_strip_discovery_heading_artifacts(inner_h2)):
+                out.append(line)
+                continue
         if stripped.startswith("\u200B**") and stripped.endswith("**"):
             inner_check = stripped[3:-2]
             if _is_epic_architect_section_title(_strip_discovery_heading_artifacts(inner_check)):
-                out.append(line)
+                inner = _strip_discovery_heading_artifacts(inner_check)
+                out.append(f"## {inner}")
                 continue
         inner = _strip_discovery_heading_artifacts(stripped)
         if _is_epic_architect_section_title(inner):
-            out.append(f"\u200B**{inner}**")
+            out.append(f"## {inner}")
         else:
             out.append(line)
 

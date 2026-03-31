@@ -9,7 +9,6 @@ from bmad_orchestrator.nodes.create_story_tasks import (
     TaskItem,
     make_create_story_tasks_node,
 )
-from bmad_orchestrator.nodes.epic_architect import DISCOVERY_MARKER
 from tests.conftest import make_state
 
 
@@ -113,7 +112,7 @@ def _epic_with_discovery() -> dict:
     return {
         "key": "TEST-1",
         "summary": "Epic",
-        "description": f"{DISCOVERY_MARKER}\n\nSome discovery text.",
+        "description": "# Discovery\n\nSome discovery text.",
     }
 
 

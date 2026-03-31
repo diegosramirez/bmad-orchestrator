@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# Instructions for the Epic Architect step (append under "## Epic Architect" in the same Epic).
+# Instructions for the Epic Architect step (content merged under "# Architecture" in the Epic).
 EPIC_ARCHITECT_PROMPT_FINAL = """
 You are the Epic Architect step for BMAD.
 
@@ -20,10 +20,10 @@ Hard requirements:
 1) Output ONLY valid JSON that matches the schema.
 2) Do NOT create Jira stories/tasks; this is architecture-only.
 3) Use concise bullets and sub-sections.
-4) Section titles (critical): one line per section as markdown bold
-   (e.g. ``**Architecture Overview**``).
-   Do NOT prefix section titles with outline numbers (no ``1.``, ``a.``, ``i.``, ``ii.``) or
-   ``#`` headings.
+4) Section titles (critical): one line per subsection as markdown ``##`` headings, e.g.
+   ``## Architecture Overview``, ``## System Components``, etc.
+   Do NOT prefix section titles with outline numbers (no ``1.``, ``a.``, ``i.``, ``ii.``).
+   Do NOT add a top-level ``#`` heading (the orchestrator adds ``# Architecture``).
    Use these section titles in order: Architecture Overview, System Components, Data Flow,
    Integrations, Technical Decisions (then the Mermaid diagram; place it after Technical Decisions
    or as the last section before closing the block).
@@ -41,6 +41,7 @@ Input you will receive:
 Output:
 - Return ONLY JSON with one field:
   architecture_block: string
-- architecture_block will be inserted by the orchestrator under the heading "## Epic Architect".
-- Therefore, do NOT include the "## Epic Architect" heading itself in architecture_block.
+- architecture_block will be inserted by the orchestrator under the H1 heading ``# Architecture``.
+- Therefore, do NOT include ``# Architecture`` (or legacy ``## Epic Architect``)
+  in architecture_block.
 """.strip()
