@@ -79,6 +79,56 @@ def test_markdown_to_adf_bullet_list() -> None:
     assert len(items) == 2
 
 
+def test_markdown_to_adf_gfm_table() -> None:
+    md = (
+        "| Col A | Col B |\n"
+        "|-------|-------|\n"
+        "| one   | two   |\n"
+    )
+    doc = markdown_to_adf(md)
+    assert doc["content"][0]["type"] == "table"
+    tbl = doc["content"][0]
+    assert tbl["type"] == "table"
+    rows = tbl["content"]
+    assert len(rows) == 2
+    assert rows[0]["type"] == "tableRow"
+    hdr = rows[0]["content"]
+    assert hdr[0]["type"] == "tableHeader"
+    assert hdr[1]["type"] == "tableHeader"
+    body = rows[1]["content"]
+    assert body[0]["type"] == "tableCell"
+    assert body[0]["content"][0]["content"][0]["text"] == "one"
+
+
+def test_markdown_to_adf_tracking_style_table() -> None:
+    """GFM table with **Tracking** heading + event rows (Jira ADF table nodes)."""
+    md = """**Tracking**
+
+| When it Fires (Trigger) | Event Name (ID) | Required Properties (Meta) |
+|--------------------------|-----------------|----------------------------|
+| Notification displayed | `notification_shown` | type, message, timestamp, source_action |
+| Notification dismissed | `notification_dismissed` | type, dismiss_method, display_duration |
+| Auto-dismiss timer expires | `notification_auto_dismissed` | type, display_duration |
+| Error notification action clicked | `notification_action_clicked` | error_type, action_taken |
+"""
+    doc = markdown_to_adf(md)
+    assert doc["content"][0]["type"] == "paragraph"
+    assert doc["content"][1]["type"] == "table"
+    tbl = doc["content"][1]
+    assert len(tbl["content"]) == 5
+    first_body = tbl["content"][1]["content"][1]["content"][0]["content"][0]["text"]
+    assert "notification_shown" in first_body
+
+
+def test_adf_table_round_trip() -> None:
+    md = "| A | B |\n|---|---|\n| c | d |\n"
+    doc = markdown_to_adf(md)
+    back = adf_to_markdown(doc)
+    assert "| A | B |" in back
+    assert "|---|" in back or "| --- |" in back
+    assert "c" in back and "d" in back
+
+
 def test_adf_round_trip_partial() -> None:
     md = "# Title\n\nPara *x* and **y**."
     back = adf_to_markdown(markdown_to_adf(md))

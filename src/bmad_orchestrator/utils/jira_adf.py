@@ -95,11 +95,134 @@ def _code_block(code: str, language: str | None) -> dict[str, Any]:
     }
 
 
+def _split_table_row(line: str) -> list[str]:
+    """Split a pipe table row into cell strings (trimmed)."""
+    raw = line.strip()
+    if not raw or "|" not in raw:
+        return []
+    if raw.startswith("|"):
+        raw = raw[1:]
+    if raw.endswith("|"):
+        raw = raw[:-1]
+    return [c.strip() for c in raw.split("|")]
+
+
+def _is_gfm_separator_row(line: str) -> bool:
+    """True if ``line`` is a GFM table alignment row (``| --- | --- |``)."""
+    cells = _split_table_row(line)
+    if len(cells) < 2:
+        return False
+    for c in cells:
+        if not re.match(r"^:?-{3,}:?$", c.strip()):
+            return False
+    return True
+
+
+def _adf_table_cell(cell_type: str, cell_text: str) -> dict[str, Any]:
+    return {
+        "type": cell_type,
+        "attrs": {},
+        "content": [_paragraph_from_text(cell_text)],
+    }
+
+
+def _adf_gfm_table(header_cells: list[str], body_rows: list[list[str]]) -> dict[str, Any]:
+    """Build ADF ``table`` from parsed GFM header + body (Jira Cloud table node schema)."""
+    header_row: list[dict[str, Any]] = [
+        _adf_table_cell("tableHeader", h) for h in header_cells
+    ]
+    rows: list[dict[str, Any]] = [{"type": "tableRow", "content": header_row}]
+    for body in body_rows:
+        cells = [_adf_table_cell("tableCell", c) for c in body]
+        rows.append({"type": "tableRow", "content": cells})
+    return {
+        "type": "table",
+        "attrs": {
+            "isNumberColumnEnabled": False,
+            "layout": "center",
+            "width": 760,
+            "displayMode": "default",
+        },
+        "content": rows,
+    }
+
+
+def _try_parse_gfm_table(lines: list[str], i: int) -> tuple[dict[str, Any] | None, int]:
+    """
+    If ``lines[i:]`` begins a GFM pipe table (header + separator + optional body), return
+    ``(table_node, next_index)``. Otherwise ``(None, i)``.
+    """
+    if i + 1 >= len(lines):
+        return None, i
+    row0 = lines[i].strip()
+    row1 = lines[i + 1].strip()
+    if "|" not in row0 or not row1:
+        return None, i
+    if not _is_gfm_separator_row(row1):
+        return None, i
+    header_cells = _split_table_row(row0)
+    sep_cells = _split_table_row(row1)
+    if len(header_cells) < 2 or len(header_cells) != len(sep_cells):
+        return None, i
+    ncols = len(header_cells)
+    body_rows: list[list[str]] = []
+    j = i + 2
+    while j < len(lines):
+        ln = lines[j].strip()
+        if not ln:
+            break
+        if "|" not in ln:
+            break
+        cells = _split_table_row(ln)
+        if len(cells) == 1 and ncols > 1:
+            break
+        if len(cells) < ncols:
+            while len(cells) < ncols:
+                cells.append("")
+        elif len(cells) > ncols:
+            cells = cells[:ncols]
+        body_rows.append(cells)
+        j += 1
+    return _adf_gfm_table(header_cells, body_rows), j
+
+
+def _table_row_to_markdown(row: dict[str, Any]) -> str:
+    cells: list[str] = []
+    for cell in row.get("content") or []:
+        if not isinstance(cell, dict):
+            continue
+        if cell.get("type") not in ("tableCell", "tableHeader"):
+            continue
+        text = ""
+        for inner in cell.get("content") or []:
+            if not isinstance(inner, dict):
+                continue
+            if inner.get("type") == "paragraph":
+                text = _inline_from_adf(inner.get("content") or [])
+                break
+        cells.append(text.replace("\n", " ").strip())
+    return "| " + " | ".join(cells) + " |"
+
+
+def _table_to_markdown(block: dict[str, Any]) -> str:
+    lines_out: list[str] = []
+    for row in block.get("content") or []:
+        if row.get("type") != "tableRow":
+            continue
+        lines_out.append(_table_row_to_markdown(row))
+    if len(lines_out) < 2:
+        return "\n".join(lines_out)
+    ncols = len(_split_table_row(lines_out[0]))
+    sep = "| " + " | ".join(["---"] * ncols) + " |"
+    return lines_out[0] + "\n" + sep + "\n" + "\n".join(lines_out[1:])
+
+
 def markdown_to_adf(markdown: str) -> dict[str, Any]:
     """
     Convert a subset of Markdown to Jira ADF ``{"type": "doc", ...}``.
 
-    Supports: ATX headings, paragraphs, bullet lists, fenced code blocks, ** / * bold.
+    Supports: ATX headings, paragraphs, bullet lists, fenced code blocks, ** / * bold,
+    GFM pipe tables (header row + ``---`` separator + body rows).
     """
     text = (markdown or "").replace("\r\n", "\n")
     lines = text.split("\n")
@@ -112,6 +235,12 @@ def markdown_to_adf(markdown: str) -> dict[str, Any]:
         stripped = line.strip()
         if not stripped:
             i += 1
+            continue
+
+        tbl, j = _try_parse_gfm_table(lines, i)
+        if tbl is not None:
+            content.append(tbl)
+            i = j
             continue
 
         if stripped.startswith("```"):
@@ -349,6 +478,8 @@ def _block_to_markdown_impl(block: dict[str, Any], *, use_plain_fallback: bool) 
         return _ordered_list_to_markdown(block, "")
     if btype == "blockquote":
         return _blockquote_to_markdown(block)
+    if btype == "table":
+        return _table_to_markdown(block)
     if btype == "rule":
         return "---"
     if btype in ("panel", "extension", "expand", "nestedExpand"):
