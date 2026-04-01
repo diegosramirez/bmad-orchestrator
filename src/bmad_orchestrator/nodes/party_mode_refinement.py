@@ -65,7 +65,7 @@ class _SubtaskItem(BaseModel):
 
 
 class _SubtaskList(BaseModel):
-    """List of subtasks to create when story has none (webhook only)."""
+    """List of subtasks to create when story has none (webhook or stories_breakdown)."""
 
     tasks: list[_SubtaskItem] = Field(min_length=1)
 
@@ -93,6 +93,11 @@ def make_party_mode_node(
 
         now = datetime.now(UTC).isoformat()
         is_webhook = "create_story_tasks" in settings.skip_nodes
+        # Jira automation skips create_story_tasks (is_webhook). Epic Generate stories runs it
+        # but should still get subtasks from refined output like the Story automation path.
+        create_subtasks_after_refinement = (
+            is_webhook or settings.execution_mode == "stories_breakdown"
+        )
 
         if settings.execution_mode == "stories_breakdown":
             id_list = [x for x in (state.get("created_story_ids") or []) if x and x != "UNKNOWN"]
@@ -341,8 +346,8 @@ def make_party_mode_node(
                 "dry_run": settings.dry_run,
             })
 
-            # ── Webhook only: create subtasks if story has none ───────────────────
-            if is_webhook and story_id != "UNKNOWN":
+            # ── Webhook / stories_breakdown: create subtasks if story has none ─────
+            if create_subtasks_after_refinement and story_id != "UNKNOWN":
                 subtasks = jira.get_subtasks(story_id)
                 if not subtasks:
                     aggregator_prompt_tasks = build_system_prompt(

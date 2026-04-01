@@ -135,7 +135,7 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
 
 
 def test_stories_breakdown_refines_each_created_story(settings):
-    """stories_breakdown: party runs refinement for every key in created_story_ids."""
+    """stories_breakdown: party refines each story and creates subtasks when none exist."""
     mock_claude = MagicMock()
     mock_jira = MagicMock()
     refined = RefinedStory(
@@ -145,7 +145,15 @@ def test_stories_breakdown_refines_each_created_story(settings):
         implementation_notes="Notes",
     )
     mock_claude.complete.return_value = "feedback"
-    mock_claude.complete_structured.return_value = refined
+    _subtasks = type("SubtaskList", (), {
+        "tasks": [type("T", (), {"summary": "Sub A", "description": "Do A"})()],
+    })()
+    mock_claude.complete_structured.side_effect = [
+        refined,
+        _subtasks,
+        refined,
+        _subtasks,
+    ]
 
     def _story_body(k: str) -> dict:
         return {
@@ -155,6 +163,7 @@ def test_stories_breakdown_refines_each_created_story(settings):
         }
 
     mock_jira.get_story.side_effect = lambda key: _story_body(key)
+    mock_jira.get_subtasks.return_value = []
 
     sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
     node = make_party_mode_node(mock_claude, mock_jira, sb)
@@ -167,6 +176,8 @@ def test_stories_breakdown_refines_each_created_story(settings):
 
     assert mock_jira.get_story.call_count >= 2
     assert mock_jira.update_story_description.call_count == 2
+    assert mock_jira.get_subtasks.call_count == 2
+    assert mock_jira.create_task.call_count == 2
     assert result["execution_log"]
     assert result["story_content"]
 
