@@ -65,7 +65,7 @@ def test_epic_architect_updates_jira(settings, mock_jira, mock_claude):
         "description": "# Discovery\n\n## Goals\nx",
     }
     mock_claude.complete_structured.return_value = ArchitectureBlockResult(
-        architecture_block="## Architecture Overview\n- One",
+        architecture_block="## 📖 Overview\n- One",
     )
     arch = settings.model_copy(update={"execution_mode": "epic_architect"})
     node = make_epic_architect_node(mock_claude, mock_jira, arch)
@@ -76,7 +76,7 @@ def test_epic_architect_updates_jira(settings, mock_jira, mock_claude):
     assert call[0][0] == "EP-2"
     desc = call[0][1]["description"]
     assert ARCH_HEADING in desc
-    assert "Architecture Overview" in desc
+    assert "📖 Overview" in desc
     assert result.get("architect_output")
 
 

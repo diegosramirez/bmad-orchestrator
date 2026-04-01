@@ -85,7 +85,7 @@ def test_discovery_updates_epic_when_valid(settings, mock_jira, mock_claude):
     }
     mock_claude.complete_structured.return_value = DiscoveryEpicResult(
         input_valid=True,
-        updated_description="# 🧩 Epic Title\n\n# 📖 Overview\nDone.",
+        updated_description="# Discovery\n\n## 📖 Overview\nDone.",
         updated_summary="Better login epic",
     )
     disc_settings = settings.model_copy(update={"execution_mode": "discovery"})

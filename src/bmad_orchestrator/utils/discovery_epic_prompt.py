@@ -53,13 +53,8 @@ Rewrite and enrich the ticket using this structure.
 - Under that, use ``##`` subsections with emoji + title text, for example ``## 📖 Overview``,
   ``## 🎯 Goals``, etc. Do **not** use manual tags or HTML comments to separate sections.
 - Do **not** prefix section titles with outline numbers (no ``1.``, ``2.``, ``a.``).
-- The first subsection after ``# Discovery`` must be ``## 🧩`` then a space then your full
-  rewritten epic title (replace the placeholder text, keep the 🧩 emoji).
-
----
-
-## 🧩 Epic Title
-Rewrite the title to be clear and outcome-focused.
+- The first subsection after ``# Discovery`` must be ``## 📖 Overview``. Do not add a separate
+  subsection that repeats the epic title under Discovery; the Jira summary field is the title.
 
 ---
 

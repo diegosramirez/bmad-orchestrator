@@ -195,6 +195,13 @@ def test_normalise_epic_architect_strips_roman_outline():
     assert "Body." in result
 
 
+def test_normalise_epic_architect_strips_roman_emoji_overview():
+    raw = "i. 📖 Overview\n\nBody."
+    result = normalise_epic_architect_headings(raw)
+    assert result.splitlines()[0] == "## 📖 Overview"
+    assert "Body." in result
+
+
 def test_normalise_epic_architect_strips_letter_outline():
     raw = "a. Epic Architect\n\nNote"
     result = normalise_epic_architect_headings(raw)
@@ -205,6 +212,12 @@ def test_normalise_epic_architect_hash_heading():
     raw = "### System Components\n- A"
     result = normalise_epic_architect_headings(raw)
     assert result.splitlines()[0] == "## System Components"
+
+
+def test_normalise_epic_architect_hash_heading_emoji():
+    raw = "### 🏗️ System Components\n- A"
+    result = normalise_epic_architect_headings(raw)
+    assert result.splitlines()[0] == "## 🏗️ System Components"
 
 
 def test_normalise_epic_architect_idempotent_h2():

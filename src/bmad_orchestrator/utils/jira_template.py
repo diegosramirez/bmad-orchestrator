@@ -265,12 +265,17 @@ def normalise_discovery_epic_headings(content: str) -> str:
     return "\n".join(out)
 
 
-# Epic Architect block: plain section titles (see EPIC_ARCHITECT_PROMPT_FINAL).
+# Epic Architect block: emoji-led titles + legacy plain titles (see EPIC_ARCHITECT_PROMPT_FINAL).
 _EPIC_ARCHITECT_TITLE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^📖\s+Overview\b", re.IGNORECASE),
     re.compile(r"^Architecture\s+Overview\b", re.IGNORECASE),
+    re.compile(r"^🏗️\s+System\s+Components\b", re.IGNORECASE),
     re.compile(r"^System\s+Components\b", re.IGNORECASE),
+    re.compile(r"^🔀\s+Data\s+Flow\b", re.IGNORECASE),
     re.compile(r"^Data\s+Flow\b", re.IGNORECASE),
+    re.compile(r"^🔌\s+Integrations\b", re.IGNORECASE),
     re.compile(r"^Integrations\b", re.IGNORECASE),
+    re.compile(r"^🧠\s+Technical\s+Decisions\b", re.IGNORECASE),
     re.compile(r"^Technical\s+Decisions\b", re.IGNORECASE),
     re.compile(r"^Epic\s+Architect\b", re.IGNORECASE),
 )
