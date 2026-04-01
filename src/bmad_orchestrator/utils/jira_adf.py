@@ -139,7 +139,7 @@ def _adf_gfm_table(header_cells: list[str], body_rows: list[list[str]]) -> dict[
         "type": "table",
         "attrs": {
             "isNumberColumnEnabled": False,
-            "layout": "center",
+            "layout": "align-start",
             "width": 760,
             "displayMode": "default",
         },

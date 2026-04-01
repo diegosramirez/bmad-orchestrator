@@ -89,6 +89,7 @@ def test_markdown_to_adf_gfm_table() -> None:
     assert doc["content"][0]["type"] == "table"
     tbl = doc["content"][0]
     assert tbl["type"] == "table"
+    assert tbl["attrs"]["layout"] == "align-start"
     rows = tbl["content"]
     assert len(rows) == 2
     assert rows[0]["type"] == "tableRow"
