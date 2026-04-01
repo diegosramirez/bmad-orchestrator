@@ -1,4 +1,7 @@
 permissions:
+  # Read issue fields (customfield_10112 → target_repo for BMAD webhook).
+  scopes:
+    - read:jira-work
   external:
     fetch:
       backend:

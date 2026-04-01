@@ -21,14 +21,15 @@ On the machine running `webhook_server.py`, set:
 | `BMAD_GITHUB_REPO` | Repo that contains `.github/workflows/bmad-start-run.yml` |
 | `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch workflows) |
 | `BMAD_GITHUB_BASE_BRANCH` | Branch of **bmad-orchestrator** used as `workflow_dispatch` `ref` |
-| `DEFAULT_TARGET_REPO` | Default `owner/repo` to clone for the run (if Forge does not send `target_repo`) |
+| `DEFAULT_TARGET_REPO` | Fallback `owner/repo` when the issue has no **Target repo** custom field (`customfield_10112`) or the Forge resolver cannot read it |
 | `BMAD_FORGE_WEBHOOK_SECRET` | Shared secret for Forge (preferred) |
 | `BMAD_DISCOVERY_WEBHOOK_SECRET` | Legacy fallback if `BMAD_FORGE_WEBHOOK_SECRET` is unset |
 
 Endpoints:
 
-- Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123"}`
-- Epic Architect: `POST /bmad/architect-run` — same body
+- Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123","target_repo":"optional"}` (the Forge resolver reads `customfield_10112` and sends `target_repo` when set)
+- Epic Architect: `POST /bmad/architect-run` — same shape
+- Stories: `POST /bmad/stories-run` — same shape
 
 Header (both endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
 
@@ -43,6 +44,8 @@ Redeploy after any change:
 ```bash
 forge deploy --non-interactive --environment development
 ```
+
+The app declares `read:jira-work` so the resolver can read `customfield_10112` on the current issue. After adding or changing scopes, run **`forge install --upgrade`** (see below) so Jira prompts for the new permission.
 
 ### 2. Environment variables (resolver)
 

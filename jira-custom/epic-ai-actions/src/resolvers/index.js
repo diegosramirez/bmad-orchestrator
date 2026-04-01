@@ -1,4 +1,5 @@
 import Resolver from '@forge/resolver';
+import { fetchTargetRepoSlugFromIssue } from './jiraTargetRepo';
 
 const resolver = new Resolver();
 
@@ -15,150 +16,81 @@ function forgeWebhookConfig() {
 }
 
 /**
- * Dispatches BMAD Discovery (epic-only) via the FastAPI webhook.
+ * JSON body for /bmad/*-run: always issue_key; target_repo from customfield_10112 when set.
  */
+async function buildForgePanelPayload(issueKey) {
+  const slug = await fetchTargetRepoSlugFromIssue(issueKey);
+  const payload = { issue_key: issueKey };
+  if (slug) {
+    payload.target_repo = slug;
+  }
+  return payload;
+}
+
+async function postBmadEndpoint(path, issueKey, failureLabel) {
+  const { baseUrl, secret } = forgeWebhookConfig();
+  if (!baseUrl || !secret) {
+    return {
+      ok: false,
+      message:
+        'BMAD_FORGE_WEBHOOK_URL (or BMAD_DISCOVERY_WEBHOOK_URL) and BMAD_FORGE_WEBHOOK_SECRET (or BMAD_DISCOVERY_WEBHOOK_SECRET) must be set for this Forge app.',
+    };
+  }
+
+  const trimmed = baseUrl.replace(/\/$/, '');
+  const url = `${trimmed}${path}`;
+  const body = await buildForgePanelPayload(issueKey);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-BMAD-Forge-Secret': secret,
+    },
+    body: JSON.stringify(body),
+  });
+
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (_e) {
+    data = {};
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      message: data.message || res.statusText || failureLabel,
+      ...data,
+    };
+  }
+
+  return { ok: true, ...data };
+}
+
 resolver.define('runDiscovery', async (req) => {
   const issueKey = req.payload?.issueKey;
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
   }
-
-  const { baseUrl, secret } = forgeWebhookConfig();
-  if (!baseUrl || !secret) {
-    return {
-      ok: false,
-      message:
-        'BMAD_FORGE_WEBHOOK_URL (or BMAD_DISCOVERY_WEBHOOK_URL) and BMAD_FORGE_WEBHOOK_SECRET (or BMAD_DISCOVERY_WEBHOOK_SECRET) must be set for this Forge app.',
-    };
-  }
-
-  const trimmed = baseUrl.replace(/\/$/, '');
-  const url = `${trimmed}/bmad/discovery-run`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-BMAD-Forge-Secret': secret,
-    },
-    body: JSON.stringify({ issue_key: issueKey }),
-  });
-
-  let data = {};
-  try {
-    data = await res.json();
-  } catch (_e) {
-    data = {};
-  }
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      message: data.message || res.statusText || 'Discovery request failed',
-      ...data,
-    };
-  }
-
-  return { ok: true, ...data };
+  return postBmadEndpoint('/bmad/discovery-run', issueKey, 'Discovery request failed');
 });
 
-/**
- * Dispatches Epic Architect (Design Architect) via POST /bmad/architect-run.
- */
 resolver.define('runArchitect', async (req) => {
   const issueKey = req.payload?.issueKey;
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
   }
-
-  const { baseUrl, secret } = forgeWebhookConfig();
-  if (!baseUrl || !secret) {
-    return {
-      ok: false,
-      message:
-        'BMAD_FORGE_WEBHOOK_URL (or BMAD_DISCOVERY_WEBHOOK_URL) and BMAD_FORGE_WEBHOOK_SECRET (or BMAD_DISCOVERY_WEBHOOK_SECRET) must be set for this Forge app.',
-    };
-  }
-
-  const trimmed = baseUrl.replace(/\/$/, '');
-  const url = `${trimmed}/bmad/architect-run`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-BMAD-Forge-Secret': secret,
-    },
-    body: JSON.stringify({ issue_key: issueKey }),
-  });
-
-  let data = {};
-  try {
-    data = await res.json();
-  } catch (_e) {
-    data = {};
-  }
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      message: data.message || res.statusText || 'Architect request failed',
-      ...data,
-    };
-  }
-
-  return { ok: true, ...data };
+  return postBmadEndpoint('/bmad/architect-run', issueKey, 'Architect request failed');
 });
 
-/**
- * Dispatches epic story breakdown (N stories + party mode) via POST /bmad/stories-run.
- */
 resolver.define('runStories', async (req) => {
   const issueKey = req.payload?.issueKey;
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
   }
-
-  const { baseUrl, secret } = forgeWebhookConfig();
-  if (!baseUrl || !secret) {
-    return {
-      ok: false,
-      message:
-        'BMAD_FORGE_WEBHOOK_URL (or BMAD_DISCOVERY_WEBHOOK_URL) and BMAD_FORGE_WEBHOOK_SECRET (or BMAD_DISCOVERY_WEBHOOK_SECRET) must be set for this Forge app.',
-    };
-  }
-
-  const trimmed = baseUrl.replace(/\/$/, '');
-  const url = `${trimmed}/bmad/stories-run`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-BMAD-Forge-Secret': secret,
-    },
-    body: JSON.stringify({ issue_key: issueKey }),
-  });
-
-  let data = {};
-  try {
-    data = await res.json();
-  } catch (_e) {
-    data = {};
-  }
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      message: data.message || res.statusText || 'Stories request failed',
-      ...data,
-    };
-  }
-
-  return { ok: true, ...data };
+  return postBmadEndpoint('/bmad/stories-run', issueKey, 'Stories request failed');
 });
 
 export const handler = resolver.getDefinitions();
