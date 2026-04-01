@@ -216,11 +216,14 @@ def _wrap_with_slack_notifications(
         except Exception as exc:
             # Node crashed — post failure to Slack, then re-raise
             error_text = f":x: *{label}* — crashed\n>{str(exc)[:200]}"
-            if thread_ts is None:
-                header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
-                slack.post_message(f"{header}\n{error_text}")
-            else:
-                slack.post_thread_reply(thread_ts, error_text)
+            try:
+                if thread_ts is None:
+                    header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
+                    slack.post_message(f"{header}\n{error_text}")
+                else:
+                    slack.post_thread_reply(thread_ts, error_text)
+            except Exception:  # noqa: BLE001
+                logger.warning("slack_crash_notification_failed", node=node_name)
             raise
 
         failure = out.get("failure_state") or out.get("failure_diagnostic")
