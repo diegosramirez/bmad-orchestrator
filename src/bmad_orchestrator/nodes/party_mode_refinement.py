@@ -330,7 +330,7 @@ def make_party_mode_node(
             # Description field to avoid extra headings/numbered lists.
             enriched_description = (
                 f"{refined.updated_description}\n\n"
-                f"---\n## Implementation Notes\n{refined.implementation_notes}"
+                f"## Implementation Notes\n{refined.implementation_notes}"
             )
             final_description = normalise_jira_headings(enriched_description)
             jira.update_story_description(story_id, final_description)
