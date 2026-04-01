@@ -81,7 +81,7 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
             "message": "Skipped (--skip-nodes)",
             "dry_run": False,
         }
-        return {"execution_log": [log_entry]}
+        return {"execution_log": [log_entry], "_skipped": True}
 
     return _skip
 
@@ -95,9 +95,11 @@ def _step_status_suffix(node_name: str) -> str:
     return "⏩ Process continuing..."
 
 
-def _format_step_completed_line(label: str) -> str:
+def _format_step_completed_line(label: str, *, skipped: bool = False) -> str:
     """Return a 'Step completed' line with a UTC timestamp in '[DD Mon YYYY - HH:MM]' format."""
     ts = datetime.now(UTC).strftime("%d %b %Y - %H:%M")
+    if skipped:
+        return f"[{ts}] ⏭️ Step skipped: {label}"
     return f"[{ts}] ✅ Step completed: {label}"
 
 
@@ -150,7 +152,8 @@ def _wrap_with_step_notifications(
             if new_comment_id is None:
                 return node_fn(state)
             out = node_fn(state)
-            step_line = _format_step_completed_line(label)
+            skipped = out.get("_skipped", False)
+            step_line = _format_step_completed_line(label, skipped=skipped)
             body = (
                 body_init + "\n\n" + step_line + "\n\n" + status
             )
@@ -171,8 +174,9 @@ def _wrap_with_step_notifications(
 
         # Later steps: strip previous status, append step + new status
         out = node_fn(state)
+        skipped = out.get("_skipped", False)
         base = _strip_trailing_status(current_body)
-        step_line = _format_step_completed_line(label)
+        step_line = _format_step_completed_line(label, skipped=skipped)
         body = base + "\n" + step_line + "\n\n" + status
         try:
             jira.update_comment(notify_key, comment_id, body)
@@ -284,6 +288,8 @@ def _wrap_with_slack_notifications(
                         }],
                     },
                 ]
+        elif out.get("_skipped"):
+            text = f":fast_forward: *{label}* skipped"
         else:
             text = f":white_check_mark: *{label}* completed"
 
