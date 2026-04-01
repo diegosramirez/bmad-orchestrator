@@ -180,6 +180,19 @@ class DummyJiraService:
         logger.info("jira_epic_updated", epic_key=epic_key)
         return issue
 
+    def get_epic_customfield_10112_value(self, epic_key: str) -> Any | None:
+        issue = self._read_issue("epics", epic_key)
+        if not issue or issue.get("issue_type") != "Epic":
+            return None
+        val = issue.get("customfield_10112")
+        if val is None:
+            return None
+        if isinstance(val, str) and not val.strip():
+            return None
+        if val == {}:
+            return None
+        return val
+
     def create_story(
         self,
         epic_key: str,
@@ -187,6 +200,8 @@ class DummyJiraService:
         description: str,
         acceptance_criteria: list[str],
         team_id: str,
+        *,
+        extra_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         key = self._next_key()
         ac_text = "\n".join(f"- {ac}" for ac in acceptance_criteria)
@@ -196,6 +211,8 @@ class DummyJiraService:
             issue = self._make_issue_dict(
                 key, summary, inter, "Story", [team_id], parent_key=epic_key
             )
+            if extra_fields:
+                issue.update({k: v for k, v in extra_fields.items() if v is not None})
             self._write_issue("stories", issue)
             final_adf = self._finalize_mermaid_description(key, full_description)
             issue["description"] = self._normalize_stored_description(final_adf)
@@ -204,6 +221,8 @@ class DummyJiraService:
             issue = self._make_issue_dict(
                 key, summary, full_description, "Story", [team_id], parent_key=epic_key
             )
+            if extra_fields:
+                issue.update({k: v for k, v in extra_fields.items() if v is not None})
             self._write_issue("stories", issue)
         logger.info("dummy_story_created", key=issue["key"], epic=epic_key)
         return issue

@@ -161,6 +161,36 @@ def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_cl
     assert mock_jira.create_task.call_count == 2
 
 
+def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    mock_jira.get_epic.return_value = _epic_with_discovery()
+    mock_jira.list_stories_under_epic.return_value = []
+    mock_jira.get_epic_customfield_10112_value.return_value = {"value": "shared-repo"}
+    breakdown = EpicStoryBreakdown(
+        stories=[
+            PlannedStoryItem(
+                summary="As a user I want one story so that it works",
+                description="**Hypothesis**\nH\n\n**Intervention**\nI",
+                acceptance_criteria=["AC 1", "AC 2"],
+                tasks=[],
+            ),
+        ]
+    )
+    mock_claude.complete_structured.return_value = breakdown
+    mock_jira.create_story.return_value = {"key": "TEST-10", "summary": breakdown.stories[0].summary}
+    mock_jira.get_story.return_value = {
+        "key": "TEST-10",
+        "description": "**Acceptance Criteria:**\n- AC 1\n- AC 2\n",
+    }
+
+    node = make_create_story_tasks_node(mock_jira, mock_claude, sb)
+    node(make_state(current_epic_id="TEST-1", team_id="growth"))
+
+    assert mock_jira.create_story.call_count == 1
+    _args, kwargs = mock_jira.create_story.call_args
+    assert kwargs.get("extra_fields") == {"customfield_10112": {"value": "shared-repo"}}
+
+
 def test_stories_breakdown_skips_duplicate_against_existing(settings, mock_jira, mock_claude):
     sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
     mock_jira.get_epic.return_value = _epic_with_discovery()

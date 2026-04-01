@@ -40,6 +40,27 @@ _DRY_EPIC: dict[str, Any] = {"key": "DRY-001", "id": "dry-epic-001", "summary": 
 _DRY_STORY: dict[str, Any] = {"key": "DRY-002", "id": "dry-story-002", "summary": "Dry-run Story"}
 _DRY_TASK: dict[str, Any] = {"key": "DRY-003", "id": "dry-task-003", "summary": "Dry-run Task"}
 
+# Target app repo (same id on Epic and Story when the field is on both issue types).
+TARGET_REPO_CUSTOM_FIELD_ID = "customfield_10112"
+
+
+def _customfield_10112_from_raw_issue(issue: Any) -> Any | None:
+    """Return raw Jira REST value for the target-repo custom field, or None if unset."""
+    raw_issue = getattr(issue, "raw", None)
+    if not isinstance(raw_issue, dict):
+        return None
+    fields_json = raw_issue.get("fields")
+    if not isinstance(fields_json, dict):
+        return None
+    val = fields_json.get(TARGET_REPO_CUSTOM_FIELD_ID)
+    if val is None:
+        return None
+    if isinstance(val, str) and not val.strip():
+        return None
+    if val == {}:
+        return None
+    return val
+
 
 def _issue_description_payload(issue: Any) -> Any:
     """Return ``fields.description`` in a form suitable for ``description_from_jira_api``.
@@ -170,6 +191,17 @@ class JiraService:
         logger.info("jira_epic_updated", epic_key=epic_key)
         return _issue_to_dict(self._client.issue(epic_key))
 
+    def get_epic_customfield_10112_value(self, epic_key: str) -> Any | None:
+        """Return raw API payload for customfield_10112 from the Epic (to copy onto new Stories)."""
+        try:
+            issue = self._client.issue(epic_key)
+            it = getattr(issue.fields, "issuetype", None)
+            if not it or getattr(it, "name", None) != "Epic":
+                return None
+            return _customfield_10112_from_raw_issue(issue)
+        except Exception:
+            return None
+
     @skip_if_dry_run(fake_return=_DRY_STORY)
     def create_story(
         self,
@@ -178,10 +210,12 @@ class JiraService:
         description: str,
         acceptance_criteria: list[str],
         team_id: str,
+        *,
+        extra_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         ac_text = "\n".join(f"- {ac}" for ac in acceptance_criteria)
         full_description = f"{description}\n\n**Acceptance Criteria:**\n{ac_text}"
-        fields = {
+        fields: dict[str, Any] = {
             "project": {"key": self.settings.jira_project_key},
             "issuetype": {"name": "Story"},
             "summary": summary,
@@ -189,6 +223,10 @@ class JiraService:
             "labels": [team_id],
             "parent": {"key": epic_key},
         }
+        if extra_fields:
+            for key, val in extra_fields.items():
+                if val is not None:
+                    fields[key] = val
         if mermaid_pipeline_enabled(self.settings, full_description):
             fields["description"] = markdown_intermediate_without_mermaid_images(full_description)
             issue = self._client.create_issue(fields=_fields_with_adf_description(fields))

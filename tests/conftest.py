@@ -91,6 +91,7 @@ def dummy_settings(tmp_path: Any) -> Settings:
 def mock_jira() -> MagicMock:
     m = MagicMock()
     m.settings = MagicMock(dry_run=False)
+    m.get_epic_customfield_10112_value.return_value = None
     return m
 
 

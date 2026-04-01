@@ -267,6 +267,37 @@ def test_create_story_calls_jira(jira_svc):
     client.create_issue.assert_called_once()
 
 
+def test_create_story_merges_extra_fields(jira_svc):
+    svc, client = jira_svc
+    client.create_issue.return_value = _make_mock_issue(key="PUG-20", summary="Story")
+    svc.create_story(
+        "PUG-10",
+        "Story",
+        "Desc",
+        ["AC1"],
+        "pug",
+        extra_fields={"customfield_10112": {"value": "my-app"}},
+    )
+    fields = client.create_issue.call_args.kwargs["fields"]
+    assert fields["customfield_10112"] == {"value": "my-app"}
+
+
+def test_get_epic_customfield_10112_value_reads_raw(jira_svc):
+    svc, client = jira_svc
+    issue = _make_mock_issue(key="PUG-10", issuetype_name="Epic")
+    issue.raw = {"fields": {"customfield_10112": {"value": "slug-only"}}}
+    client.issue.return_value = issue
+    assert svc.get_epic_customfield_10112_value("PUG-10") == {"value": "slug-only"}
+
+
+def test_get_epic_customfield_10112_value_non_epic_returns_none(jira_svc):
+    svc, client = jira_svc
+    issue = _make_mock_issue(issuetype_name="Story")
+    issue.raw = {"fields": {"customfield_10112": {"value": "x"}}}
+    client.issue.return_value = issue
+    assert svc.get_epic_customfield_10112_value("PUG-5") is None
+
+
 # ── create_task ───────────────────────────────────────────────────────────────
 
 def test_create_task_calls_jira(jira_svc):

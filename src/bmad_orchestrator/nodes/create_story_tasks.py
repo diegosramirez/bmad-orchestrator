@@ -11,6 +11,7 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
+from bmad_orchestrator.services.jira_service import TARGET_REPO_CUSTOM_FIELD_ID
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.jira_template import (
@@ -24,6 +25,14 @@ from bmad_orchestrator.utils.logger import get_logger
 logger = get_logger(__name__)
 
 NODE_NAME = "create_story_tasks"
+
+
+def _story_extra_fields_from_epic(jira: JiraServiceProtocol, epic_key: str) -> dict[str, Any] | None:
+    """Copy Epic customfield_10112 onto new Stories when the Epic has a value."""
+    cf = jira.get_epic_customfield_10112_value(epic_key)
+    if cf is None:
+        return None
+    return {TARGET_REPO_CUSTOM_FIELD_ID: cf}
 
 
 def _parse_acceptance_criteria(description: str) -> list[str]:
@@ -174,6 +183,8 @@ def make_create_story_tasks_node(
             )
             return {"execution_log": [log_entry]}
 
+        story_extra = _story_extra_fields_from_epic(jira, epic_id)
+
         existing_issues = jira.list_stories_under_epic(epic_id)
         existing_keys = {
             _normalize_story_summary(str(x.get("summary") or "")) for x in existing_issues
@@ -250,6 +261,7 @@ def make_create_story_tasks_node(
                 description=body,
                 acceptance_criteria=planned.acceptance_criteria,
                 team_id=team_id,
+                extra_fields=story_extra,
             )
             key = str(story["key"])
             created_keys.append(key)
@@ -448,12 +460,18 @@ def make_create_story_tasks_node(
                 on_event=on_event,
             )
 
+        single_story_extra = (
+            _story_extra_fields_from_epic(jira, epic_id)
+            if epic_id != "UNKNOWN"
+            else None
+        )
         story = jira.create_story(
             epic_key=epic_id,
             summary=draft.summary[:_JIRA_SUMMARY_MAX],
             description=draft.description,
             acceptance_criteria=draft.acceptance_criteria,
             team_id=team_id,
+            extra_fields=single_story_extra,
         )
 
         for task in draft.tasks:
