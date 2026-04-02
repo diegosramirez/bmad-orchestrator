@@ -50,10 +50,10 @@ def test_dry_run_does_not_track_usage(agent_service):
 def test_model_for_uses_agent_models_override(settings):
     """Per-agent model overrides should be respected."""
     settings_with_overrides = settings.model_copy(
-        update={"agent_models": {"developer": "claude-opus-4"}}
+        update={"agent_models": {"developer": "claude-sonnet-4-20250514"}}
     )
     service = ClaudeAgentService(settings_with_overrides)
-    assert service._model_for("developer") == "claude-opus-4"
+    assert service._model_for("developer") == "claude-sonnet-4-20250514"
     assert service._model_for("qa") == settings.model_name
 
 
@@ -81,7 +81,7 @@ async def test_run_async_captures_write_paths(settings):
             ToolUseBlock(id="3", name="Read", input={"file_path": "/tmp/test/baz.ts"}),
             ToolUseBlock(id="4", name="Write", input={"file_path": "/tmp/test/foo.ts"}),
         ],
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-4-20250514",
     )
     result_msg = ResultMessage(
         subtype="success",

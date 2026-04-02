@@ -1,0 +1,41 @@
+permissions:
+  # Read issue fields (customfield_10112); write comments for /bmad helper.
+  scopes:
+    - read:jira-work
+    - write:jira-work
+  external:
+    fetch:
+      backend:
+        # Replace with the public HTTPS origin of your BMAD FastAPI webhook (no path). Redeploy after editing.
+        - 'https://discernably-bastionary-amelia.ngrok-free.dev/'
+
+modules:
+  jira:issuePanel:
+    - key: bmad-epic-panel
+      resource: epic-main
+      resolver:
+        function: resolver
+      render: native
+      title: BMAD Epic
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+    - key: bmad-ai-comments-panel
+      resource: comment-apps-main
+      resolver:
+        function: resolver
+      render: native
+      title: AI Comments
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: epic-main
+    path: src/frontend/epic-panel-index.jsx
+  - key: comment-apps-main
+    path: src/frontend/comment-apps-index.jsx
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/a89bf36f-39f5-4369-91fd-282f788edba0

@@ -72,6 +72,10 @@ src = ["src"]
 select = ["E", "W", "F", "I", "UP", "B", "C4", "PIE"]
 ignore = ["B008"]
 
+[tool.ruff.lint.per-file-ignores]
+# Nested party-mode strings; keep readability over aggressive wrapping.
+"src/bmad_orchestrator/nodes/party_mode_refinement.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

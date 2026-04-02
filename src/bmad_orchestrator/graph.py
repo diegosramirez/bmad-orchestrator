@@ -28,6 +28,7 @@ from bmad_orchestrator.nodes.dev_story import make_dev_story_node
 from bmad_orchestrator.nodes.dev_story_fix_loop import make_fix_loop_node
 from bmad_orchestrator.nodes.e2e_automation import make_e2e_automation_node, make_e2e_router
 from bmad_orchestrator.nodes.e2e_fix_loop import make_e2e_fix_loop_node
+from bmad_orchestrator.nodes.epic_architect import make_epic_architect_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
 from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
@@ -68,7 +69,17 @@ NODE_LABELS: dict[str, str] = {
     "commit_and_push": "Commit and push",
     "update_jira_branch": "Update Jira branch field",
     "create_pull_request": "Create pull request",
+    "epic_architect": "Epic architect",
 }
+
+
+def _route_after_create_or_correct_epic(settings: Settings) -> str:
+    """Target after ``create_or_correct_epic``: Forge discovery ends at END (no story tasks)."""
+    if settings.execution_mode == "epic_architect":
+        return "epic_architect"
+    if settings.execution_mode == "discovery":
+        return "discovery_epic_end"
+    return "create_story_tasks"
 
 
 def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
@@ -86,12 +97,18 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
     return _skip
 
 
-def _step_status_suffix(node_name: str) -> str:
-    """Return the status line to show once at the end."""
-    if node_name == "create_pull_request":
+def _step_status_suffix(node_name: str, settings: Settings | None = None) -> str:
+    """Return trailing status (Process continuing / completed / finished)."""
+    if node_name in ("create_pull_request", "epic_architect"):
         return "🎉 Process completed successfully"
     if node_name == "fail_with_state":
         return "Process finished."
+    if (
+        settings is not None
+        and settings.execution_mode == "discovery"
+        and node_name == "create_or_correct_epic"
+    ):
+        return "🎉 Process completed successfully"
     return "⏩ Process continuing..."
 
 
@@ -101,6 +118,14 @@ def _format_step_completed_line(label: str, *, skipped: bool = False) -> str:
     if skipped:
         return f"[{ts}] ⏭️ Step skipped: {label}"
     return f"[{ts}] ✅ Step completed: {label}"
+
+
+def _execution_log_indicates_skip(out: dict[str, Any]) -> bool:
+    """True when the node's output is only a ``--skip-nodes`` skip (omit Step completed in Jira)."""
+    for entry in out.get("execution_log") or []:
+        if isinstance(entry, dict) and "Skipped (--skip-nodes)" in (entry.get("message") or ""):
+            return True
+    return False
 
 
 def _strip_trailing_status(body: str) -> str:
@@ -124,14 +149,14 @@ def _wrap_with_step_notifications(
     node_name: str,
     node_fn: Callable[[OrchestratorState], dict[str, Any]],
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
-    """Wrap a node with Jira step notifications (step-completed lines + status)."""
+    """Wrap a node with Jira step notifications (step lines + status; supports skip)."""
 
     def _wrapped(state: OrchestratorState) -> dict[str, Any]:
         notify_key = state.get("notify_jira_story_key")
         comment_id = state.get("step_notification_comment_id")
         current_body = state.get("step_notification_comment_body") or ""
         label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
-        status = _step_status_suffix(node_name)
+        status = _step_status_suffix(node_name, settings)
 
         if not notify_key or settings.dry_run:
             return node_fn(state)
@@ -152,15 +177,11 @@ def _wrap_with_step_notifications(
             if new_comment_id is None:
                 return node_fn(state)
             out = node_fn(state)
-            skipped = out.get("_skipped", False)
+            skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
             step_line = _format_step_completed_line(label, skipped=skipped)
-            body = (
-                body_init + "\n\n" + step_line + "\n\n" + status
-            )
+            body = body_init + "\n\n" + step_line + "\n\n" + status
             try:
-                jira.update_comment(
-                    notify_key, new_comment_id, body,
-                )
+                jira.update_comment(notify_key, new_comment_id, body)
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "step_notification_failed",
@@ -174,7 +195,7 @@ def _wrap_with_step_notifications(
 
         # Later steps: strip previous status, append step + new status
         out = node_fn(state)
-        skipped = out.get("_skipped", False)
+        skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
         base = _strip_trailing_status(current_body)
         step_line = _format_step_completed_line(label, skipped=skipped)
         body = base + "\n" + step_line + "\n\n" + status
@@ -239,13 +260,15 @@ def _wrap_with_slack_notifications(
             # Retry button only makes sense when a branch exists (code was committed)
             branch = out.get("branch_name") or state.get("branch_name") or ""
             if branch:
-                retry_meta = json.dumps({
-                    "branch": branch,
-                    "team_id": team_id,
-                    "target_repo": settings.github_repo or "",
-                    "story_key": state.get("current_story_id") or "",
-                    "thread_ts": thread_ts or "",
-                })
+                retry_meta = json.dumps(
+                    {
+                        "branch": branch,
+                        "team_id": team_id,
+                        "target_repo": settings.github_repo or "",
+                        "story_key": state.get("current_story_id") or "",
+                        "thread_ts": thread_ts or "",
+                    }
+                )
                 blocks = [
                     {
                         "type": "section",
@@ -253,26 +276,30 @@ def _wrap_with_slack_notifications(
                     },
                     {
                         "type": "actions",
-                        "elements": [{
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Retry"},
-                            "style": "primary",
-                            "action_id": "bmad_retry",
-                            "value": retry_meta,
-                        }],
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Retry"},
+                                "style": "primary",
+                                "action_id": "bmad_retry",
+                                "value": retry_meta,
+                            }
+                        ],
                     },
                 ]
         elif pr_url:
             text = f":tada: *PR created:* {pr_url}"
             branch = out.get("branch_name") or state.get("branch_name") or ""
             if branch:
-                refine_meta = json.dumps({
-                    "branch": branch,
-                    "team_id": team_id,
-                    "target_repo": settings.github_repo or "",
-                    "story_key": state.get("current_story_id") or "",
-                    "thread_ts": thread_ts or "",
-                })
+                refine_meta = json.dumps(
+                    {
+                        "branch": branch,
+                        "team_id": team_id,
+                        "target_repo": settings.github_repo or "",
+                        "story_key": state.get("current_story_id") or "",
+                        "thread_ts": thread_ts or "",
+                    }
+                )
                 blocks = [
                     {
                         "type": "section",
@@ -280,12 +307,14 @@ def _wrap_with_slack_notifications(
                     },
                     {
                         "type": "actions",
-                        "elements": [{
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Refine"},
-                            "action_id": "bmad_refine",
-                            "value": refine_meta,
-                        }],
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Refine"},
+                                "action_id": "bmad_refine",
+                                "value": refine_meta,
+                            }
+                        ],
                     },
                 ]
         elif out.get("_skipped"):
@@ -351,9 +380,7 @@ def build_graph(
     claude_agent = ClaudeAgentService(settings, usage_tracker=claude._usage)
 
     # When jira_only, force Git/GitHub into dry-run regardless of global flag
-    git_settings = (
-        settings.model_copy(update={"dry_run": True}) if settings.jira_only else settings
-    )
+    git_settings = settings.model_copy(update={"dry_run": True}) if settings.jira_only else settings
     git = GitService(git_settings)
     github = create_github_service(git_settings)
     slack = create_slack_service(settings)
@@ -374,7 +401,11 @@ def build_graph(
         raw = _make_skip_node(name) if name in skip else factory_fn
         wrapped = _wrap_with_step_notifications(jira, settings, name, raw)
         wrapped = _wrap_with_slack_notifications(
-            slack, settings, name, wrapped, thread_ts_holder,
+            slack,
+            settings,
+            name,
+            wrapped,
+            thread_ts_holder,
         )
         builder.add_node(name, wrapped)
 
@@ -385,6 +416,10 @@ def build_graph(
     _node(
         "create_or_correct_epic",
         make_create_or_correct_epic_node(jira, claude, settings, bmad_runner, on_event=on_event),
+    )
+    _node(
+        "epic_architect",
+        make_epic_architect_node(claude, jira, settings, on_event=on_event),
     )
     _node(
         "create_story_tasks",
@@ -410,14 +445,42 @@ def build_graph(
     # ── Linear edges ──────────────────────────────────────────────────────────
     builder.add_edge(START, "check_epic_state")
     builder.add_edge("check_epic_state", "create_or_correct_epic")
-    builder.add_edge("create_or_correct_epic", "create_story_tasks")
-    builder.add_edge("create_story_tasks", "party_mode_refinement")
-    builder.add_edge("party_mode_refinement", "detect_commands")
 
-    # ── Execution mode routing: inline (default) or github-agent ─────────────
+    def _after_create_epic_router(_state: OrchestratorState) -> str:
+        return _route_after_create_or_correct_epic(settings)
+
+    builder.add_conditional_edges(
+        "create_or_correct_epic",
+        _after_create_epic_router,
+        {
+            "epic_architect": "epic_architect",
+            "discovery_epic_end": END,
+            "create_story_tasks": "create_story_tasks",
+        },
+    )
+    builder.add_edge("epic_architect", END)
+    builder.add_edge("create_story_tasks", "party_mode_refinement")
+
+    def _after_party_mode_router(_state: OrchestratorState) -> str:
+        if settings.execution_mode == "stories_breakdown":
+            return "stories_breakdown_end"
+        return "detect_commands"
+
+    builder.add_conditional_edges(
+        "party_mode_refinement",
+        _after_party_mode_router,
+        {
+            "stories_breakdown_end": END,
+            "detect_commands": "detect_commands",
+        },
+    )
+
+    # ── Execution mode routing: inline | github-agent | discovery ───────────
     def _execution_mode_router(_state: OrchestratorState) -> str:
         if settings.execution_mode == "github-agent":
             return "create_github_issue"
+        if settings.execution_mode == "discovery":
+            return "discovery_end"
         return "dev_story"
 
     builder.add_conditional_edges(
@@ -426,6 +489,7 @@ def build_graph(
         {
             "dev_story": "dev_story",
             "create_github_issue": "create_github_issue",
+            "discovery_end": END,
         },
     )
     builder.add_edge("create_github_issue", END)
@@ -492,6 +556,7 @@ def make_initial_state(
         project_context=gather_project_context(cwd) or None,
         current_epic_id=epic_key,
         current_story_id=story_key,
+        created_story_ids=None,
         notify_jira_story_key=story_key,
         step_notification_comment_id=None,
         step_notification_comment_body=None,

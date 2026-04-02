@@ -10,6 +10,7 @@ from bmad_orchestrator.services.jira_service import (
     _issue_to_dict,
     _retry_jira,
 )
+from bmad_orchestrator.utils.jira_adf import description_for_jira_api
 
 
 def _make_mock_issue(
@@ -48,6 +49,17 @@ def jira_svc(settings):
         yield svc, mock_client
 
 
+def test_jira_client_uses_rest_api_v3_for_adf_descriptions(settings):
+    """ADF issue descriptions require /rest/api/3; v2 expects a string and rejects dicts."""
+    with patch("bmad_orchestrator.services.jira_service.JIRA") as MockJIRA:
+        MockJIRA.return_value = MagicMock()
+        non_dry = settings.model_copy(update={"dry_run": False})
+        svc = JiraService(non_dry)
+        _ = svc._client
+        MockJIRA.assert_called_once()
+        assert MockJIRA.call_args.kwargs["options"]["rest_api_version"] == "3"
+
+
 # ── _issue_to_dict ────────────────────────────────────────────────────────────
 
 def test_issue_to_dict_maps_all_fields():
@@ -66,6 +78,45 @@ def test_issue_to_dict_includes_parent_key():
     issue = _make_mock_issue(key="PUG-5", parent_key="PUG-1")
     result = _issue_to_dict(issue)
     assert result["parent_key"] == "PUG-1"
+
+
+def test_issue_to_dict_converts_adf_description_to_markdown():
+    issue = _make_mock_issue()
+    issue.fields.description = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "From ADF"}]},
+        ],
+    }
+    result = _issue_to_dict(issue)
+    assert result["description"] == "From ADF"
+
+
+def test_issue_to_dict_prefers_raw_json_description_over_property_holder():
+    """Use issue.raw fields.description dict so we do not rely on python-jira PropertyHolder."""
+    from jira.resources import dict2resource
+
+    issue = MagicMock()
+    issue.key = "TEST-275"
+    issue.id = "11457"
+    issue.fields.summary = "Epic title"
+    adf = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "From raw JSON fields"}]},
+        ],
+    }
+    issue.fields.description = dict2resource(adf)
+    issue.fields.status.name = "Open"
+    issue.fields.issuetype.name = "Epic"
+    issue.fields.labels = []
+    issue.fields.parent = None
+    issue.raw = {"fields": {"description": adf}}
+
+    result = _issue_to_dict(issue)
+    assert result["description"] == "From raw JSON fields"
 
 
 # ── find_epic_by_team ─────────────────────────────────────────────────────────
@@ -131,6 +182,34 @@ def test_create_epic_dry_run_skips(settings):
     assert result["key"] == "DRY-001"
 
 
+def test_create_epic_mermaid_pipeline_two_phase(jira_svc):
+    """With mermaid renderer on: attach PNGs, description ADF with placeholder (no inline media)."""
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    created = MagicMock()
+    created.key = "PUG-99"
+    created.update = MagicMock()
+    client.create_issue.return_value = created
+    client.add_attachment.return_value = MagicMock()
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.create_epic("E", "```mermaid\nflowchart LR\n  A-->B\n```", "pug")
+    client.create_issue.assert_called_once()
+    created.update.assert_called_once()
+    final_desc = created.update.call_args.kwargs["fields"]["description"]
+    assert final_desc["type"] == "doc"
+    assert not any(
+        b.get("type") == "mediaSingle" for b in final_desc.get("content", [])
+    )
+    assert "review it in the Attachments section" in str(final_desc)
+    client.add_attachment.assert_called_once()
+
+
 # ── update_epic ───────────────────────────────────────────────────────────────
 
 def test_update_epic_calls_jira(jira_svc):
@@ -142,6 +221,47 @@ def test_update_epic_calls_jira(jira_svc):
     issue.update.assert_called_once()
 
 
+def test_update_epic_mermaid_pipeline(jira_svc):
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    issue = _make_mock_issue(key="PUG-5")
+    client.issue.return_value = issue
+    mock_att = MagicMock()
+    mock_att.id = "att-9"
+    client.add_attachment.return_value = mock_att
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.update_epic("PUG-5", {"description": "```mermaid\nflowchart LR\n  A-->B\n```"})
+    issue.update.assert_called_once()
+    call_kw = issue.update.call_args.kwargs["fields"]
+    assert call_kw["description"]["type"] == "doc"
+
+
+def test_update_story_description_mermaid(jira_svc):
+    import base64
+
+    svc, client = jira_svc
+    svc.settings = svc.settings.model_copy(update={"mermaid_renderer": "kroki"})
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    issue = _make_mock_issue()
+    client.issue.return_value = issue
+    mock_att = MagicMock()
+    mock_att.id = "a1"
+    client.add_attachment.return_value = mock_att
+    with patch("bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png") as mock_render:
+        mock_render.return_value = (png, None)
+        svc.update_story_description("PUG-5", "```mermaid\nflowchart LR\n  A-->B\n```")
+    issue.update.assert_called_once()
+    assert issue.update.call_args.kwargs["fields"]["description"]["type"] == "doc"
+
+
 # ── create_story ──────────────────────────────────────────────────────────────
 
 def test_create_story_calls_jira(jira_svc):
@@ -150,6 +270,37 @@ def test_create_story_calls_jira(jira_svc):
     result = svc.create_story("PUG-10", "Story", "Desc", ["AC1", "AC2"], "pug")
     assert result["key"] == "PUG-20"
     client.create_issue.assert_called_once()
+
+
+def test_create_story_merges_extra_fields(jira_svc):
+    svc, client = jira_svc
+    client.create_issue.return_value = _make_mock_issue(key="PUG-20", summary="Story")
+    svc.create_story(
+        "PUG-10",
+        "Story",
+        "Desc",
+        ["AC1"],
+        "pug",
+        extra_fields={"customfield_10112": {"value": "my-app"}},
+    )
+    fields = client.create_issue.call_args.kwargs["fields"]
+    assert fields["customfield_10112"] == {"value": "my-app"}
+
+
+def test_get_epic_customfield_10112_value_reads_raw(jira_svc):
+    svc, client = jira_svc
+    issue = _make_mock_issue(key="PUG-10", issuetype_name="Epic")
+    issue.raw = {"fields": {"customfield_10112": {"value": "slug-only"}}}
+    client.issue.return_value = issue
+    assert svc.get_epic_customfield_10112_value("PUG-10") == {"value": "slug-only"}
+
+
+def test_get_epic_customfield_10112_value_non_epic_returns_none(jira_svc):
+    svc, client = jira_svc
+    issue = _make_mock_issue(issuetype_name="Story")
+    issue.raw = {"fields": {"customfield_10112": {"value": "x"}}}
+    client.issue.return_value = issue
+    assert svc.get_epic_customfield_10112_value("PUG-5") is None
 
 
 # ── create_task ───────────────────────────────────────────────────────────────
@@ -180,12 +331,38 @@ def test_get_story_returns_none_on_error(jira_svc):
 
 # ── update_story_description ──────────────────────────────────────────────────
 
+def test_add_comment_converts_body_to_adf(jira_svc):
+    """REST API v3 requires ADF for comment body (same as issue description)."""
+    svc, client = jira_svc
+    mock_comment = MagicMock()
+    mock_comment.id = "c42"
+    client.add_comment.return_value = mock_comment
+    result = svc.add_comment("PUG-5", "Hello **bold**")
+    assert result == "c42"
+    client.add_comment.assert_called_once_with(
+        "PUG-5",
+        description_for_jira_api("Hello **bold**"),
+    )
+
+
+def test_update_comment_converts_body_to_adf(jira_svc):
+    svc, client = jira_svc
+    mock_comment = MagicMock()
+    client.comment.return_value = mock_comment
+    svc.update_comment("PUG-5", "99", "Line one")
+    mock_comment.update.assert_called_once_with(
+        body=description_for_jira_api("Line one"),
+    )
+
+
 def test_update_story_description(jira_svc):
     svc, client = jira_svc
     issue = _make_mock_issue()
     client.issue.return_value = issue
     svc.update_story_description("PUG-5", "New description")
-    issue.update.assert_called_once_with(fields={"description": "New description"})
+    issue.update.assert_called_once_with(
+        fields={"description": description_for_jira_api("New description")},
+    )
 
 
 def test_update_story_summary(jira_svc):
@@ -204,6 +381,25 @@ def test_set_story_branch_field(jira_svc):
     issue.update.assert_called_once_with(
         fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"},
     )
+
+
+# ── list_stories_under_epic ─────────────────────────────────────────────────────
+
+
+def test_list_stories_under_epic_returns_mapped_list(jira_svc):
+    svc, client = jira_svc
+    client.search_issues.return_value = [
+        _make_mock_issue(key="PUG-10", summary="S1"),
+        _make_mock_issue(key="PUG-11", summary="S2"),
+    ]
+    result = svc.list_stories_under_epic("PUG-1")
+    assert [r["key"] for r in result] == ["PUG-10", "PUG-11"]
+
+
+def test_list_stories_under_epic_returns_empty_on_exception(jira_svc):
+    svc, client = jira_svc
+    client.search_issues.side_effect = RuntimeError("jql error")
+    assert svc.list_stories_under_epic("PUG-1") == []
 
 
 # ── get_subtasks ───────────────────────────────────────────────────────────────

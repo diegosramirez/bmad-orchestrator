@@ -134,6 +134,69 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
     assert result["execution_log"]
 
 
+def test_stories_breakdown_refines_each_created_story(settings):
+    """stories_breakdown: party refines each story and creates subtasks when none exist."""
+    mock_claude = MagicMock()
+    mock_jira = MagicMock()
+    refined = RefinedStory(
+        updated_summary="Refined",
+        updated_description="**Hypothesis**\nH\n\n**Intervention**\nI",
+        acceptance_criteria=["AC 1"],
+        implementation_notes="Notes",
+    )
+    mock_claude.complete.return_value = "feedback"
+    _subtasks = type("SubtaskList", (), {
+        "tasks": [type("T", (), {"summary": "Sub A", "description": "Do A"})()],
+    })()
+    mock_claude.complete_structured.side_effect = [
+        refined,
+        _subtasks,
+        refined,
+        _subtasks,
+    ]
+
+    def _story_body(k: str) -> dict:
+        return {
+            "key": k,
+            "summary": "As a user I want x so that y",
+            "description": "**Acceptance Criteria:**\n- AC 1\n",
+        }
+
+    mock_jira.get_story.side_effect = lambda key: _story_body(key)
+    mock_jira.get_subtasks.return_value = []
+
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    node = make_party_mode_node(mock_claude, mock_jira, sb)
+    result = node(
+        make_state(
+            created_story_ids=["PUG-10", "PUG-11"],
+            current_story_id="PUG-10",
+        ),
+    )
+
+    assert mock_jira.get_story.call_count >= 2
+    assert mock_jira.update_story_description.call_count == 2
+    assert mock_jira.get_subtasks.call_count == 2
+    assert mock_jira.create_task.call_count == 2
+    assert result["execution_log"]
+    assert result["story_content"]
+
+
+def test_stories_breakdown_does_not_refine_epic_fallback(settings):
+    """When current_story_id equals current_epic_id, skip refinement without created ids."""
+    mock_claude = MagicMock()
+    mock_jira = MagicMock()
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    node = make_party_mode_node(mock_claude, mock_jira, sb)
+
+    result = node(make_state(current_epic_id="PUG-1", current_story_id="PUG-1"))
+
+    mock_jira.get_story.assert_not_called()
+    mock_jira.update_story_description.assert_not_called()
+    assert result["execution_log"]
+    assert "no story keys to refine" in result["execution_log"][0]["message"]
+
+
 def test_non_webhook_does_not_call_summary_or_subtasks(settings):
     """When not webhook (skip_nodes does not include create_story_tasks), skip webhook logic."""
     mock_claude = MagicMock()

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.services.dummy_jira_service import DummyJiraService
+
+_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+)
 
 
 @pytest.fixture
@@ -162,3 +167,109 @@ class TestTransitionIssue:
         fetched = svc.get_epic(epic["key"])
         assert fetched is not None
         assert fetched["status"] == "In Progress"
+
+
+class TestListStoriesUnderEpic:
+    def test_returns_only_stories_for_parent_epic(self, svc: DummyJiraService) -> None:
+        e1 = svc.create_epic("Epic one", "d", "growth")
+        e2 = svc.create_epic("Epic two", "d", "growth")
+        s1 = svc.create_story(e1["key"], "Story A", "body", ["AC"], "growth")
+        s2 = svc.create_story(e1["key"], "Story B", "body", ["AC"], "growth")
+        _ = svc.create_story(e2["key"], "Other epic story", "body", ["AC"], "growth")
+
+        under = svc.list_stories_under_epic(e1["key"])
+        assert {x["key"] for x in under} == {s1["key"], s2["key"]}
+
+    def test_empty_when_no_stories(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("Empty", "d", "growth")
+        assert svc.list_stories_under_epic(epic["key"]) == []
+
+
+class TestDummyMermaidPipeline:
+    """Dummy Jira mirrors real service: render mermaid → attachment dir + ADF placeholder."""
+
+    @pytest.fixture
+    def svc_m(self, tmp_path: Path) -> DummyJiraService:
+        settings = Settings(
+            anthropic_api_key="test-key",  # type: ignore[arg-type]
+            dummy_jira=True,
+            dummy_github=True,
+            dummy_data_dir=str(tmp_path),
+            dry_run=False,
+            mermaid_renderer="kroki",
+        )
+        return DummyJiraService(settings, base_dir=tmp_path / "jira")
+
+    def test_create_epic_mermaid_stores_diagram_placeholder(
+        self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png",
+            lambda _s, _src: (_PNG_1X1, None),
+        )
+        r = svc_m.create_epic("E", "```mermaid\nflowchart LR\n  A-->B\n```", "g")
+        assert "review it in the Attachments section" in r["description"]
+
+    def test_update_epic_mermaid(
+        self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png",
+            lambda _s, _src: (_PNG_1X1, None),
+        )
+        created = svc_m.create_epic("E", "plain", "g")
+        out = svc_m.update_epic(
+            created["key"],
+            {"description": "```mermaid\nflowchart LR\n  A-->B\n```"},
+        )
+        assert "review it in the Attachments section" in out["description"]
+
+    def test_create_story_mermaid(
+        self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png",
+            lambda _s, _src: (_PNG_1X1, None),
+        )
+        epic = svc_m.create_epic("P", "d", "g")
+        story = svc_m.create_story(
+            epic["key"],
+            "S",
+            "```mermaid\nflowchart LR\n  A-->B\n```",
+            ["AC"],
+            "g",
+        )
+        assert "review it in the Attachments section" in story["description"]
+
+    def test_create_task_mermaid(
+        self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png",
+            lambda _s, _src: (_PNG_1X1, None),
+        )
+        epic = svc_m.create_epic("P", "d", "g")
+        story = svc_m.create_story(epic["key"], "S", "body", ["AC"], "g")
+        task = svc_m.create_task(
+            story["key"],
+            "T",
+            "```mermaid\nflowchart LR\n  A-->B\n```",
+        )
+        assert "review it in the Attachments section" in task["description"]
+
+    def test_update_story_description_mermaid(
+        self, svc_m: DummyJiraService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "bmad_orchestrator.utils.jira_mermaid.render_mermaid_to_png",
+            lambda _s, _src: (_PNG_1X1, None),
+        )
+        epic = svc_m.create_epic("P", "d", "g")
+        story = svc_m.create_story(epic["key"], "S", "old", ["AC"], "g")
+        svc_m.update_story_description(
+            story["key"],
+            "```mermaid\nflowchart LR\n  A-->B\n```",
+        )
+        fetched = svc_m.get_story(story["key"])
+        assert fetched is not None
+        assert "review it in the Attachments section" in fetched["description"]

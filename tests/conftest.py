@@ -19,6 +19,7 @@ def settings() -> Settings:
         jira_api_token="test-token",  # type: ignore[arg-type]
         jira_project_key="TEST",
         github_repo="org/repo",
+        github_base_branch="main",
         dry_run=True,
     )
 
@@ -31,6 +32,7 @@ def base_state() -> OrchestratorState:
         project_context=None,
         current_epic_id=None,
         current_story_id=None,
+        created_story_ids=None,
         notify_jira_story_key=None,
         step_notification_comment_id=None,
         step_notification_comment_body=None,
@@ -89,6 +91,7 @@ def dummy_settings(tmp_path: Any) -> Settings:
 def mock_jira() -> MagicMock:
     m = MagicMock()
     m.settings = MagicMock(dry_run=False)
+    m.get_epic_customfield_10112_value.return_value = None
     return m
 
 
@@ -127,6 +130,7 @@ def make_state(**overrides: Any) -> OrchestratorState:
         project_context=None,
         current_epic_id=None,
         current_story_id=None,
+        created_story_ids=None,
         notify_jira_story_key=None,
         step_notification_comment_id=None,
         step_notification_comment_body=None,

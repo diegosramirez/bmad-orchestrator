@@ -8,13 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # the BMAD_AGENT_MODELS env var (JSON dict).
 _DEFAULT_AGENT_MODELS: dict[str, str] = {
     # All agents use Opus for testing — revert to tiered models after evaluation
-    "pm": "claude-opus-4-6",
-    "designer": "claude-opus-4-6",
-    "architect_party": "claude-opus-4-6",
-    "developer_party": "claude-opus-4-6",
-    "scrum_master": "claude-opus-4-6",
-    "build-expert": "claude-opus-4-6",
-    "e2e_tester": "claude-opus-4-6",
+    "pm": "claude-sonnet-4-20250514",
+    "designer": "claude-sonnet-4-20250514",
+    "architect_party": "claude-sonnet-4-20250514",
+    "developer_party": "claude-sonnet-4-20250514",
+    "scrum_master": "claude-sonnet-4-20250514",
+    "build-expert": "claude-sonnet-4-20250514",
+    "e2e_tester": "claude-sonnet-4-20250514",
 }
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # ── Anthropic ──────────────────────────────────────────────────────────────
     anthropic_api_key: SecretStr
-    model_name: str = "claude-opus-4-6"
+    model_name: str = "claude-sonnet-4-20250514"
     temperature: float = 0.0
     # Per-agent model overrides. JSON dict mapping agent_id → model name.
     # E.g. BMAD_AGENT_MODELS='{"developer":"claude-opus-4","qa":"claude-haiku-4-5-20251001"}'
@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     jira_username: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str = "DUMMY"
+    # Reserved for future Jira ADF inline media; Mermaid diagrams are attached as PNG only.
+    jira_media_collection: str = ""
+    # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
+    mermaid_renderer: str = "kroki"
+    kroki_url: str = "https://kroki.io"
+    mermaid_kroki_timeout_seconds: float = 30.0
+    mmdc_path: str = "mmdc"
+    mermaid_mmdc_timeout_seconds: float = 60.0
+    mermaid_max_source_chars: int = 500_000
 
     # ── GitHub (optional when dummy_github=True) ──────────────────────────────
     github_repo: str | None = None
@@ -62,6 +71,9 @@ class Settings(BaseSettings):
     draft_pr: bool = False
     # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
     # "github-agent" creates a GitHub Issue and terminates (external agent takes over).
+    # "discovery" ends after planning nodes (Forge /bmad/discovery-run; no Issue, no dev/QA/PR).
+    # "epic_architect": only epic_architect after create_or_correct_epic (Forge architect-run).
+    # "stories_breakdown": N stories + party from epic description; ends before detect_commands.
     execution_mode: str = "inline"
     # When True in github-agent mode, the create_github_issue node adds a
     # "bmad-execute" label that triggers immediate code generation via the
