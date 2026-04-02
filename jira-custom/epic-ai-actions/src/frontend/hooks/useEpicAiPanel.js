@@ -25,7 +25,7 @@ export function useEpicAiPanel() {
     const config = AGENT_INVOKE_CONFIG[action];
     if (!config) {
       setBanner({
-        appearance: 'information',
+        appearance: 'info',
         title: 'Not available yet',
         body: `${ACTION_LABELS[action] ?? action} is not wired in this version.`,
       });
@@ -44,7 +44,7 @@ export function useEpicAiPanel() {
     const result = await invoke(config.invoke, { issueKey });
     if (result?.ok) {
       setBanner({
-        appearance: 'success',
+        appearance: 'confirmation',
         title: config.successTitle,
         body: result.message || DEFAULT_SUCCESS_BODY,
       });

@@ -1,9 +1,9 @@
 import React from 'react';
 import ForgeReconciler from '@forge/react';
-import { App } from './App';
+import { CommentApps } from './CommentApps';
 
 ForgeReconciler.render(
   <React.StrictMode>
-    <App />
+    <CommentApps />
   </React.StrictMode>,
 );

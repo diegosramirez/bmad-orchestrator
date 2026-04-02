@@ -1,7 +1,8 @@
 permissions:
-  # Read issue fields (customfield_10112 → target_repo for BMAD webhook).
+  # Read issue fields (customfield_10112); write comments for /bmad helper.
   scopes:
     - read:jira-work
+    - write:jira-work
   external:
     fetch:
       backend:
@@ -10,19 +11,28 @@ permissions:
 
 modules:
   jira:issuePanel:
-    - key: epic-ai-actions-hello-world-issue-panel
-      resource: main
+    - key: bmad-epic-panel
+      resource: epic-main
       resolver:
         function: resolver
       render: native
-      title: epic-ai-actions
+      title: BMAD Epic
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+    - key: bmad-ai-comments-panel
+      resource: comment-apps-main
+      resolver:
+        function: resolver
+      render: native
+      title: AI Comments
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
   function:
     - key: resolver
       handler: index.handler
 resources:
-  - key: main
-    path: src/frontend/index.jsx
+  - key: epic-main
+    path: src/frontend/epic-panel-index.jsx
+  - key: comment-apps-main
+    path: src/frontend/comment-apps-index.jsx
 app:
   runtime:
     name: nodejs24.x

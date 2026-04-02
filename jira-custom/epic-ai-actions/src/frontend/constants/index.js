@@ -49,3 +49,16 @@ export const SELECTED_AGENT_XCSS = xcss({
     backgroundColor: '#0069d9',
   },
 });
+
+/** Full panel width so Send matches the text field above. */
+export const BMAD_SEND_ROW_XCSS = xcss({
+  width: '100%',
+  maxWidth: '100%',
+});
+
+/**
+ * Stretch primary Button / LoadingButton to panel width (Forge theme blue via appearance).
+ */
+export const BMAD_SEND_BUTTON_STRETCH_XCSS = xcss({
+  width: '100%',
+});
