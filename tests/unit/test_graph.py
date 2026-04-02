@@ -136,6 +136,34 @@ def test_build_graph_discovery_execution_mode(settings, tmp_path):
     assert graph is not None
 
 
+def test_step_status_suffix_discovery_create_epic_completed(settings):
+    """Forge Discovery: last real node shows process completed (Jira step comment)."""
+    from bmad_orchestrator.graph import _step_status_suffix
+
+    disc = settings.model_copy(update={"execution_mode": "discovery"})
+    assert "completed successfully" in _step_status_suffix("create_or_correct_epic", disc)
+    assert _step_status_suffix("create_or_correct_epic", settings) == "⏩ Process continuing..."
+
+
+def test_route_after_create_or_correct_epic(settings):
+    """After create_or_correct_epic: architect, discovery→END, or default story tasks."""
+    from bmad_orchestrator.graph import _route_after_create_or_correct_epic
+
+    assert (
+        _route_after_create_or_correct_epic(
+            settings.model_copy(update={"execution_mode": "discovery"}),
+        )
+        == "discovery_epic_end"
+    )
+    assert (
+        _route_after_create_or_correct_epic(
+            settings.model_copy(update={"execution_mode": "epic_architect"}),
+        )
+        == "epic_architect"
+    )
+    assert _route_after_create_or_correct_epic(settings) == "create_story_tasks"
+
+
 def test_build_graph_epic_architect_execution_mode(settings, tmp_path):
     """Smoke test: epic_architect execution mode compiles (Forge /bmad/architect-run)."""
     from bmad_orchestrator.graph import build_graph

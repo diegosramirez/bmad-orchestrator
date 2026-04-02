@@ -70,6 +70,15 @@ NODE_LABELS: dict[str, str] = {
 }
 
 
+def _route_after_create_or_correct_epic(settings: Settings) -> str:
+    """Target after ``create_or_correct_epic``: Forge discovery ends at END (no story tasks)."""
+    if settings.execution_mode == "epic_architect":
+        return "epic_architect"
+    if settings.execution_mode == "discovery":
+        return "discovery_epic_end"
+    return "create_story_tasks"
+
+
 def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
     """Return a no-op node that logs a skip entry and passes through."""
 
@@ -85,12 +94,18 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
     return _skip
 
 
-def _step_status_suffix(node_name: str) -> str:
+def _step_status_suffix(node_name: str, settings: Settings | None = None) -> str:
     """Return trailing status (Process continuing / completed / finished)."""
     if node_name in ("create_pull_request", "epic_architect"):
         return "🎉 Process completed successfully"
     if node_name == "fail_with_state":
         return "Process finished."
+    if (
+        settings is not None
+        and settings.execution_mode == "discovery"
+        and node_name == "create_or_correct_epic"
+    ):
+        return "🎉 Process completed successfully"
     return "⏩ Process continuing..."
 
 
@@ -136,7 +151,7 @@ def _wrap_with_step_notifications(
         comment_id = state.get("step_notification_comment_id")
         current_body = state.get("step_notification_comment_body") or ""
         label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
-        status = _step_status_suffix(node_name)
+        status = _step_status_suffix(node_name, settings)
 
         if not notify_key or settings.dry_run:
             return node_fn(state)
@@ -405,15 +420,14 @@ def build_graph(
     builder.add_edge("check_epic_state", "create_or_correct_epic")
 
     def _after_create_epic_router(_state: OrchestratorState) -> str:
-        if settings.execution_mode == "epic_architect":
-            return "epic_architect"
-        return "create_story_tasks"
+        return _route_after_create_or_correct_epic(settings)
 
     builder.add_conditional_edges(
         "create_or_correct_epic",
         _after_create_epic_router,
         {
             "epic_architect": "epic_architect",
+            "discovery_epic_end": END,
             "create_story_tasks": "create_story_tasks",
         },
     )
