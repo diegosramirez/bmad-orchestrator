@@ -6,7 +6,6 @@ from typing import get_type_hints
 from bmad_orchestrator.state import (
     CodeReviewIssue,
     ExecutionLogEntry,
-    FileOperation,
     OrchestratorState,
     QAResult,
 )
@@ -52,13 +51,6 @@ def test_code_review_issue_typeddict_fields() -> None:
     assert "severity" in hints
     assert "file" in hints
     assert "description" in hints
-
-
-def test_file_operation_typeddict_fields() -> None:
-    hints = get_type_hints(FileOperation, include_extras=False)
-    assert "action" in hints
-    assert "path" in hints
-    assert "content" in hints
 
 
 def test_qa_result_typeddict_fields() -> None:

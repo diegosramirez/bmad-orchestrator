@@ -43,10 +43,13 @@ from bmad_orchestrator.services.service_factory import (
     create_slack_service,
 )
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import (
     gather_project_context,
     read_dev_guidelines,
 )
+
+logger = get_logger(__name__)
 
 # Human-readable labels for step-level Jira notifications (node name -> label).
 NODE_LABELS: dict[str, str] = {
@@ -89,7 +92,7 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
             "message": "Skipped (--skip-nodes)",
             "dry_run": False,
         }
-        return {"execution_log": [log_entry]}
+        return {"execution_log": [log_entry], "_skipped": True}
 
     return _skip
 
@@ -109,9 +112,11 @@ def _step_status_suffix(node_name: str, settings: Settings | None = None) -> str
     return "⏩ Process continuing..."
 
 
-def _format_step_completed_line(label: str) -> str:
+def _format_step_completed_line(label: str, *, skipped: bool = False) -> str:
     """Return a 'Step completed' line with a UTC timestamp in '[DD Mon YYYY - HH:MM]' format."""
     ts = datetime.now(UTC).strftime("%d %b %Y - %H:%M")
+    if skipped:
+        return f"[{ts}] ⏭️ Step skipped: {label}"
     return f"[{ts}] ✅ Step completed: {label}"
 
 
@@ -144,7 +149,7 @@ def _wrap_with_step_notifications(
     node_name: str,
     node_fn: Callable[[OrchestratorState], dict[str, Any]],
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
-    """Wrap a node: one Jira comment; Step completed lines for real work, not for --skip-nodes."""
+    """Wrap a node with Jira step notifications (step lines + status; supports skip)."""
 
     def _wrapped(state: OrchestratorState) -> dict[str, Any]:
         notify_key = state.get("notify_jira_story_key")
@@ -159,31 +164,48 @@ def _wrap_with_step_notifications(
         if comment_id is None:
             # First step: create comment with "Process started"
             body_init = "🚀 Process started"
-            new_comment_id = jira.add_comment(notify_key, body_init)
+            try:
+                new_comment_id = jira.add_comment(
+                    notify_key, body_init,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "step_notification_failed",
+                    story_key=notify_key,
+                )
+                return node_fn(state)
             if new_comment_id is None:
                 return node_fn(state)
             out = node_fn(state)
-            if _execution_log_indicates_skip(out):
-                body = body_init + "\n\n" + status
-            else:
-                step_line = _format_step_completed_line(label)
-                body = body_init + "\n\n" + step_line + "\n\n" + status
-            jira.update_comment(notify_key, new_comment_id, body)
+            skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
+            step_line = _format_step_completed_line(label, skipped=skipped)
+            body = body_init + "\n\n" + step_line + "\n\n" + status
+            try:
+                jira.update_comment(notify_key, new_comment_id, body)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "step_notification_failed",
+                    story_key=notify_key,
+                )
             return {
                 **out,
                 "step_notification_comment_id": new_comment_id,
                 "step_notification_comment_body": body,
             }
 
-        # Later steps: strip previous status, append step (unless skipped) and new status
+        # Later steps: strip previous status, append step + new status
         out = node_fn(state)
+        skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
         base = _strip_trailing_status(current_body)
-        if _execution_log_indicates_skip(out):
-            body = base + "\n\n" + status
-        else:
-            step_line = _format_step_completed_line(label)
-            body = base + "\n" + step_line + "\n\n" + status
-        jira.update_comment(notify_key, comment_id, body)
+        step_line = _format_step_completed_line(label, skipped=skipped)
+        body = base + "\n" + step_line + "\n\n" + status
+        try:
+            jira.update_comment(notify_key, comment_id, body)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "step_notification_failed",
+                story_key=notify_key,
+            )
         return {**out, "step_notification_comment_body": body}
 
     return _wrapped
@@ -219,11 +241,14 @@ def _wrap_with_slack_notifications(
         except Exception as exc:
             # Node crashed — post failure to Slack, then re-raise
             error_text = f":x: *{label}* — crashed\n>{str(exc)[:200]}"
-            if thread_ts is None:
-                header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
-                slack.post_message(f"{header}\n{error_text}")
-            else:
-                slack.post_thread_reply(thread_ts, error_text)
+            try:
+                if thread_ts is None:
+                    header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
+                    slack.post_message(f"{header}\n{error_text}")
+                else:
+                    slack.post_thread_reply(thread_ts, error_text)
+            except Exception:  # noqa: BLE001
+                logger.warning("slack_crash_notification_failed", node=node_name)
             raise
 
         failure = out.get("failure_state") or out.get("failure_diagnostic")
@@ -292,6 +317,8 @@ def _wrap_with_slack_notifications(
                         ],
                     },
                 ]
+        elif out.get("_skipped"):
+            text = f":fast_forward: *{label}* skipped"
         else:
             text = f":white_check_mark: *{label}* completed"
 

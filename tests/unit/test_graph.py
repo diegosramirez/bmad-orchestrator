@@ -145,6 +145,34 @@ def test_step_status_suffix_discovery_create_epic_completed(settings):
     assert _step_status_suffix("create_or_correct_epic", settings) == "⏩ Process continuing..."
 
 
+def test_step_status_suffix_terminal_and_continuing():
+    """PR / epic_architect / fail_with_state / default dev node suffixes."""
+    from bmad_orchestrator.graph import _step_status_suffix
+
+    assert "completed successfully" in _step_status_suffix("create_pull_request")
+    assert "completed successfully" in _step_status_suffix("epic_architect")
+    assert _step_status_suffix("fail_with_state") == "Process finished."
+    assert _step_status_suffix("dev_story") == "⏩ Process continuing..."
+
+
+def test_execution_log_indicates_skip_and_strip_trailing_status():
+    from bmad_orchestrator.graph import _execution_log_indicates_skip, _strip_trailing_status
+
+    assert _execution_log_indicates_skip(
+        {"execution_log": [{"message": "Skipped (--skip-nodes)"}]},
+    )
+    assert not _execution_log_indicates_skip({"execution_log": [{"message": "done"}]})
+    base = (
+        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: X\n\n"
+        "⏩ Process continuing..."
+    )
+    assert _strip_trailing_status(base).endswith("Step completed: X")
+    assert _strip_trailing_status("x\n⏩ Process continuing...") == "x"
+    assert _strip_trailing_status("no status suffix") == "no status suffix"
+    assert _strip_trailing_status("z\n\nProcess finished.") == "z"
+    assert _strip_trailing_status("w\n\n⏭️ Process continuing...") == "w"
+
+
 def test_route_after_create_or_correct_epic(settings):
     """After create_or_correct_epic: architect, discovery→END, or default story tasks."""
     from bmad_orchestrator.graph import _route_after_create_or_correct_epic
@@ -258,6 +286,60 @@ def test_make_initial_state_sets_notify_jira_story_key(settings, monkeypatch, tm
 # ── Step notification wrapper (Jira comment per step) ─────────────────────────
 
 
+def test_wrap_step_notifications_add_comment_raises_skips_jira_updates(settings):
+    """If add_comment fails, run the node but omit step-notification state updates."""
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    jira = MagicMock()
+    jira.add_comment.side_effect = RuntimeError("jira unavailable")
+
+    def fake_node(state):
+        return {"execution_log": [], "ok": True}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, settings.model_copy(update={"dry_run": False}),
+        "dev_story", fake_node,
+    )
+    state = make_state(notify_jira_story_key="SAM1-51")
+    result = wrapped(state)
+    assert result.get("ok") is True
+    assert "step_notification_comment_id" not in result
+    jira.update_comment.assert_not_called()
+
+
+def test_wrap_step_notifications_update_comment_raises_still_returns_state(settings):
+    """If update_comment fails after add_comment, state still includes comment id and body."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 3, 10, 14, 32, tzinfo=UTC)
+
+    jira = MagicMock()
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+    jira.add_comment.return_value = "comment-99"
+    jira.update_comment.side_effect = RuntimeError("update failed")
+
+    def fake_node(state):
+        return {"execution_log": []}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, settings.model_copy(update={"dry_run": False}),
+        "dev_story", fake_node,
+    )
+    state = make_state(notify_jira_story_key="SAM1-51")
+    result = wrapped(state)
+    assert result["step_notification_comment_id"] == "comment-99"
+    assert "Step completed: Dev story" in (result.get("step_notification_comment_body") or "")
+
+
 def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings):
     """First node: add_comment with 'Process started', then update_comment with Step completed."""
     from datetime import UTC, datetime
@@ -294,7 +376,8 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
     jira.add_comment.assert_called_once_with("SAM1-51", "🚀 Process started")
     assert jira.update_comment.call_count == 1
     expected_body = (
-        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n"
+        "🚀 Process started\n\n"
+        "[10 Mar 2026 - 14:32] ✅ Step completed: Dev story\n\n"
         "⏩ Process continuing..."
     )
     jira.update_comment.assert_called_with("SAM1-51", "comment-123", expected_body)
@@ -341,7 +424,7 @@ def test_wrap_step_notifications_later_step_only_updates_comment(settings):
 
 
 def test_wrap_step_notifications_first_step_skipped_omits_step_completed(settings):
-    """Skip nodes do not append a Step completed line (only Process started + status)."""
+    """Skip nodes append ⏭️ Step skipped (not ✅ Step completed) plus status."""
     from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
@@ -377,16 +460,19 @@ def test_wrap_step_notifications_first_step_skipped_omits_step_completed(setting
     body = result["step_notification_comment_body"]
     assert "🚀 Process started" in body
     assert "Step completed" not in body
+    assert "⏭️ Step skipped: Create story tasks" in body
     assert "⏩ Process continuing..." in body
     jira.update_comment.assert_called_with(
         "SAM1-51",
         "comment-skip",
-        "🚀 Process started\n\n⏩ Process continuing...",
+        "🚀 Process started\n\n"
+        "[10 Mar 2026 - 14:32] ⏭️ Step skipped: Create story tasks\n\n"
+        "⏩ Process continuing...",
     )
 
 
 def test_wrap_step_notifications_later_step_skipped_omits_step_completed(settings):
-    """Later skip nodes update comment without a new Step completed line."""
+    """Later skip nodes append ⏭️ Step skipped (not a new ✅ Step completed line)."""
     from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
@@ -428,6 +514,7 @@ def test_wrap_step_notifications_later_step_skipped_omits_step_completed(setting
     body = result["step_notification_comment_body"]
     assert "Step completed: Check epic state" in body
     assert "Step completed: Party mode refinement" not in body
+    assert "⏭️ Step skipped: Party mode refinement" in body
     assert body.endswith("⏩ Process continuing...")
     jira.update_comment.assert_called_once()
 
@@ -471,3 +558,52 @@ def test_wrap_step_notifications_dry_run_skips_jira(settings):
     jira.add_comment.assert_not_called()
     jira.update_comment.assert_not_called()
     assert "step_notification_comment_id" not in result
+
+
+def test_wrap_step_notifications_survives_jira_add_comment_exception(settings):
+    """If add_comment raises, node still executes without crashing."""
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    jira = MagicMock()
+    jira.add_comment.side_effect = RuntimeError("Jira API down")
+    run_settings = settings.model_copy(update={"dry_run": False})
+
+    def fake_node(state):
+        return {"execution_log": [], "touched_files": ["a.py"]}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, run_settings, "dev_story", fake_node,
+    )
+    state = make_state(notify_jira_story_key="SAM1-51")
+    result = wrapped(state)
+
+    # Node still executed despite Jira failure
+    assert result["touched_files"] == ["a.py"]
+
+
+def test_wrap_step_notifications_survives_jira_update_exception(settings):
+    """If update_comment raises, node result is still returned."""
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    jira = MagicMock()
+    jira.update_comment.side_effect = RuntimeError("Jira API down")
+    run_settings = settings.model_copy(update={"dry_run": False})
+
+    def fake_node(state):
+        return {"execution_log": []}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, run_settings, "qa_automation", fake_node,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body="🚀 Process started",
+    )
+    # Should not raise
+    result = wrapped(state)
+    assert "step_notification_comment_body" in result

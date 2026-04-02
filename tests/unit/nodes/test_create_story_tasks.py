@@ -177,7 +177,10 @@ def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jir
         ]
     )
     mock_claude.complete_structured.return_value = breakdown
-    mock_jira.create_story.return_value = {"key": "TEST-10", "summary": breakdown.stories[0].summary}
+    mock_jira.create_story.return_value = {
+        "key": "TEST-10",
+        "summary": breakdown.stories[0].summary,
+    }
     mock_jira.get_story.return_value = {
         "key": "TEST-10",
         "description": "**Acceptance Criteria:**\n- AC 1\n- AC 2\n",

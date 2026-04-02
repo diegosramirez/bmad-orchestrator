@@ -227,23 +227,25 @@ jobs:
           BMAD_BMAD_INSTALL_DIR: ${{ github.workspace }}/.claude
           BMAD_BMAD_ROOT: ${{ github.workspace }}/_bmad
           BMAD_GUIDANCE: ${{ inputs.guidance }}
+          BMAD_PROMPT: ${{ inputs.prompt }}
+          BMAD_TEAM_ID: ${{ inputs.team_id }}
         run: |
           echo "::group::Run Configuration"
           echo "Target repo:  ${{ inputs.target_repo }}"
           echo "Base branch:  ${{ inputs.base_branch }}"
-          echo "Team ID:      ${{ inputs.team_id }}"
+          echo "Team ID:      $BMAD_TEAM_ID"
           echo "Run ID:       ${{ steps.run-id.outputs.id }}"
-          echo "Prompt:       ${{ inputs.prompt }}"
+          echo "Prompt:       $BMAD_PROMPT"
           echo "Skip nodes:   ${{ steps.skip.outputs.flag }}"
           echo "Extra flags:  ${{ inputs.extra_flags }}"
-          echo "Guidance:     ${{ inputs.guidance }}"
+          echo "Guidance:     $BMAD_GUIDANCE"
           echo "::endgroup::"
 
           echo "::group::Running bmad-orchestrator"
           uv run --project "${{ github.workspace }}" \
             bmad-orchestrator run \
-            --team-id "${{ inputs.team_id }}" \
-            --prompt "${{ inputs.prompt }}" \
+            --team-id "$BMAD_TEAM_ID" \
+            --prompt "$BMAD_PROMPT" \
             --non-interactive \
             ${{ steps.skip.outputs.flag }} \
             ${{ inputs.extra_flags }} \

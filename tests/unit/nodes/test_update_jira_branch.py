@@ -36,3 +36,20 @@ def test_skips_when_missing_branch_name(settings, mock_jira):
     mock_jira.set_story_branch_field.assert_not_called()
     assert len(result["execution_log"]) == 1
     assert "Missing" in result["execution_log"][0]["message"]
+
+
+def test_jira_failure_is_non_blocking(settings, mock_jira):
+    """Jira branch field update failure should not crash the node."""
+    mock_jira.set_story_branch_field.side_effect = RuntimeError(
+        "Jira API error",
+    )
+
+    node = make_update_jira_branch_node(mock_jira, settings)
+    result = node(make_state(
+        current_story_id="SAM1-61",
+        branch_name="bmad/sam1/SAM1-61-add-signup",
+    ))
+
+    assert len(result["execution_log"]) == 1
+    assert "non-blocking" in result["execution_log"][0]["message"].lower()
+    assert "failure_state" not in result

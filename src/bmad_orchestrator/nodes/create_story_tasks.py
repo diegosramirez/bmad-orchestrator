@@ -27,7 +27,9 @@ logger = get_logger(__name__)
 NODE_NAME = "create_story_tasks"
 
 
-def _story_extra_fields_from_epic(jira: JiraServiceProtocol, epic_key: str) -> dict[str, Any] | None:
+def _story_extra_fields_from_epic(
+    jira: JiraServiceProtocol, epic_key: str,
+) -> dict[str, Any] | None:
     """Copy Epic customfield_10112 onto new Stories when the Epic has a value."""
     cf = jira.get_epic_customfield_10112_value(epic_key)
     if cf is None:
@@ -349,15 +351,15 @@ def make_create_story_tasks_node(
             )
 
         # Primary BMAD `/bmad-create-story`: use workflow runner if available, else inline prompt.
+        ctx_block = (
+            f"Target project context:\n{project_context}\n\n" if project_context else ""
+        )
         if bmad_runner:
             draft = bmad_runner.run_create_story(
                 epic_id, team_id, prompt, project_context, StoryDraft,
                 jira_template=jira_template or "",
             )
         else:
-            ctx_block = (
-                f"Target project context:\n{project_context}\n\n" if project_context else ""
-            )
             user_msg = (
                 f"{ctx_block}"
                 "You are executing the BMAD `/bmad-create-story` workflow for this team.\n"

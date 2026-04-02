@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bmad_orchestrator.services.jira_service import JiraService, _issue_to_dict
+from bmad_orchestrator.services.jira_service import (
+    JiraService,
+    _is_transient,
+    _issue_to_dict,
+    _retry_jira,
+)
 from bmad_orchestrator.utils.jira_adf import description_for_jira_api
 
 
@@ -378,6 +383,25 @@ def test_set_story_branch_field(jira_svc):
     )
 
 
+# ── list_stories_under_epic ─────────────────────────────────────────────────────
+
+
+def test_list_stories_under_epic_returns_mapped_list(jira_svc):
+    svc, client = jira_svc
+    client.search_issues.return_value = [
+        _make_mock_issue(key="PUG-10", summary="S1"),
+        _make_mock_issue(key="PUG-11", summary="S2"),
+    ]
+    result = svc.list_stories_under_epic("PUG-1")
+    assert [r["key"] for r in result] == ["PUG-10", "PUG-11"]
+
+
+def test_list_stories_under_epic_returns_empty_on_exception(jira_svc):
+    svc, client = jira_svc
+    client.search_issues.side_effect = RuntimeError("jql error")
+    assert svc.list_stories_under_epic("PUG-1") == []
+
+
 # ── get_subtasks ───────────────────────────────────────────────────────────────
 
 
@@ -416,3 +440,69 @@ def test_transition_issue_not_found_does_not_transition(jira_svc):
     client.transitions.return_value = [{"name": "Open", "id": "11"}]
     svc.transition_issue("PUG-5", "nonexistent")
     client.transition_issue.assert_not_called()
+
+
+# ── _is_transient ─────────────────────────────────────────────────────────────
+
+
+def test_is_transient_true_for_timeout():
+    assert _is_transient(Exception("Connection timed out")) is True
+
+
+def test_is_transient_true_for_502():
+    assert _is_transient(Exception("502 Bad Gateway")) is True
+
+
+def test_is_transient_true_for_rate_limit():
+    assert _is_transient(Exception("429 rate limit")) is True
+
+
+def test_is_transient_false_for_auth():
+    assert _is_transient(Exception("401 Unauthorized")) is False
+
+
+def test_is_transient_false_for_field_error():
+    assert _is_transient(Exception("Field 'foo' is required")) is False
+
+
+# ── _retry_jira ───────────────────────────────────────────────────────────────
+
+
+def test_retry_jira_succeeds_first_try():
+    assert _retry_jira(lambda: 42, label="test") == 42
+
+
+def test_retry_jira_retries_transient_then_succeeds():
+    calls: list[int] = []
+
+    def fn() -> str:
+        calls.append(1)
+        if len(calls) == 1:
+            raise Exception("connection timed out")  # noqa: TRY002
+        return "ok"
+
+    result = _retry_jira(fn, label="test", delay=0)
+    assert result == "ok"
+    assert len(calls) == 2
+
+
+def test_retry_jira_fails_fast_on_permanent():
+    calls: list[int] = []
+
+    def fn() -> str:
+        calls.append(1)
+        raise Exception("401 Unauthorized")  # noqa: TRY002
+
+    with pytest.raises(Exception, match="401"):
+        _retry_jira(fn, label="test", delay=0)
+    assert len(calls) == 1  # no retry
+
+
+# ── find_epic_by_team resilience ──────────────────────────────────────────────
+
+
+def test_find_epic_by_team_returns_empty_on_exception(jira_svc):
+    svc, client = jira_svc
+    client.search_issues.side_effect = Exception("API down")
+    result = svc.find_epic_by_team("growth")
+    assert result == []

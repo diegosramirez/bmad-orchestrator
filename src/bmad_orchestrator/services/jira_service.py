@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from functools import cached_property
 from io import BytesIO
-from typing import Any
+from typing import Any, TypeVar
 
 from jira import JIRA
 
@@ -26,19 +28,76 @@ def _finalize_description_with_mermaid(
     markdown: str,
 ) -> dict[str, Any]:
     """Upload Mermaid PNGs; description is ADF with mermaid fences replaced by a note."""
+
     def add_attachment(ik: str, fp: BytesIO, fname: str) -> Any:
         return client.add_attachment(ik, fp, filename=fname)
 
     upload_mermaid_png_attachments(markdown, settings, issue_key, add_attachment)
     return description_for_jira_api(markdown_intermediate_without_mermaid_images(markdown))
 
+
 # Jira Cloud expects Atlassian Document Format (ADF) for ``description``; that only works on
 # REST API v3. API v2 rejects ADF with: errors.description = "Operation value must be a string".
 _JIRA_REST_OPTIONS: dict[str, Any] = {"rest_api_version": "3"}
 
-_DRY_EPIC: dict[str, Any] = {"key": "DRY-001", "id": "dry-epic-001", "summary": "Dry-run Epic"}
-_DRY_STORY: dict[str, Any] = {"key": "DRY-002", "id": "dry-story-002", "summary": "Dry-run Story"}
-_DRY_TASK: dict[str, Any] = {"key": "DRY-003", "id": "dry-task-003", "summary": "Dry-run Task"}
+_DRY_EPIC: dict[str, Any] = {
+    "key": "DRY-001", "id": "dry-epic-001", "summary": "Dry-run Epic",
+}
+_DRY_STORY: dict[str, Any] = {
+    "key": "DRY-002", "id": "dry-story-002", "summary": "Dry-run Story",
+}
+_DRY_TASK: dict[str, Any] = {
+    "key": "DRY-003", "id": "dry-task-003", "summary": "Dry-run Task",
+}
+
+T = TypeVar("T")
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Return True if the Jira error looks transient (retryable)."""
+    msg = str(exc).lower()
+    return any(
+        kw in msg
+        for kw in (
+            "timeout",
+            "timed out",
+            "connection",
+            "502",
+            "503",
+            "504",
+            "429",
+            "rate limit",
+            "ssl",
+            "network",
+        )
+    )
+
+
+def _retry_jira(
+    fn: Callable[[], T],
+    *,
+    label: str = "",
+    max_attempts: int = 3,
+    delay: float = 2.0,
+) -> T:
+    """Retry *fn* on transient Jira errors. Re-raise permanent errors."""
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if _is_transient(exc) and attempt < max_attempts:
+                logger.warning(
+                    "jira_retry",
+                    label=label,
+                    attempt=attempt,
+                    error=str(exc)[:200],
+                )
+                time.sleep(delay)
+            else:
+                raise
+    raise last_exc  # type: ignore[misc]  # unreachable
 
 # Target app repo (same id on Epic and Story when the field is on both issue types).
 TARGET_REPO_CUSTOM_FIELD_ID = "customfield_10112"
@@ -78,7 +137,7 @@ def _issue_description_payload(issue: Any) -> Any:
 
 
 def _issue_to_dict(issue: Any) -> dict[str, Any]:
-    """Convert a jira.Issue resource to a plain dict safe for checkpointing."""
+    """Convert a jira.Issue resource to a plain dict."""
     fields = issue.fields
     raw_desc = _issue_description_payload(issue)
     desc_str = description_from_jira_api(raw_desc) if raw_desc is not None else ""
@@ -90,7 +149,11 @@ def _issue_to_dict(issue: Any) -> dict[str, Any]:
         "status": fields.status.name if fields.status else None,
         "issue_type": fields.issuetype.name if fields.issuetype else None,
         "labels": list(fields.labels) if fields.labels else [],
-        "parent_key": fields.parent.key if getattr(fields, "parent", None) else None,
+        "parent_key": (
+            fields.parent.key
+            if getattr(fields, "parent", None)
+            else None
+        ),
     }
 
 
@@ -122,16 +185,28 @@ class JiraService:
             ),
         )
 
-    def find_epic_by_team(self, team_id: str) -> list[dict[str, Any]]:
-        """Return all open Epics in the project (by project key, not label)."""
+    def find_epic_by_team(
+        self, team_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return all open Epics in the project."""
         jql = (
             f'project = "{self.settings.jira_project_key}" '
-            f'AND issuetype = Epic '
-            f'AND status != Done '
-            f'ORDER BY created DESC'
+            f"AND issuetype = Epic "
+            f"AND status != Done "
+            f"ORDER BY created DESC"
         )
-        issues = self._client.search_issues(jql, maxResults=10)
-        return [_issue_to_dict(i) for i in issues]
+        try:
+            issues = self._client.search_issues(
+                jql, maxResults=10,
+            )
+            return [_issue_to_dict(i) for i in issues]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_query_failed",
+                method="find_epic_by_team",
+                error=str(exc)[:200],
+            )
+            return []
 
     @skip_if_dry_run(fake_return=_DRY_EPIC)
     def create_epic(
@@ -149,19 +224,28 @@ class JiraService:
         }
         if mermaid_pipeline_enabled(self.settings, description):
             fields["description"] = markdown_intermediate_without_mermaid_images(description)
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
-            issue.update(
-                fields={
-                    "description": _finalize_description_with_mermaid(
-                        self._client,
-                        self.settings,
-                        issue.key,
-                        description,
-                    ),
-                },
-            )
+
+            def _do_epic() -> Any:
+                iss = self._client.create_issue(fields=_fields_with_adf_description(fields))
+                iss.update(
+                    fields={
+                        "description": _finalize_description_with_mermaid(
+                            self._client,
+                            self.settings,
+                            iss.key,
+                            description,
+                        ),
+                    },
+                )
+                return iss
+
+            issue = _retry_jira(_do_epic, label="create_epic")
         else:
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            def _do_epic_plain() -> Any:
+                return self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            issue = _retry_jira(_do_epic_plain, label="create_epic")
         logger.info("epic_created", key=issue.key)
         return _issue_to_dict(issue)
 
@@ -186,10 +270,15 @@ class JiraService:
             field_keys=list(fields.keys()),
             description_chars=desc_len,
         )
-        issue = self._client.issue(epic_key)
-        issue.update(fields=fields)
+
+        def _do() -> Any:
+            issue = self._client.issue(epic_key)
+            issue.update(fields=fields)
+            return self._client.issue(epic_key)
+
+        issue = _retry_jira(_do, label="update_epic")
         logger.info("jira_epic_updated", epic_key=epic_key)
-        return _issue_to_dict(self._client.issue(epic_key))
+        return _issue_to_dict(issue)
 
     def get_epic_customfield_10112_value(self, epic_key: str) -> Any | None:
         """Return raw API payload for customfield_10112 from the Epic (to copy onto new Stories)."""
@@ -229,19 +318,28 @@ class JiraService:
                     fields[key] = val
         if mermaid_pipeline_enabled(self.settings, full_description):
             fields["description"] = markdown_intermediate_without_mermaid_images(full_description)
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
-            issue.update(
-                fields={
-                    "description": _finalize_description_with_mermaid(
-                        self._client,
-                        self.settings,
-                        issue.key,
-                        full_description,
-                    ),
-                },
-            )
+
+            def _do_story() -> Any:
+                iss = self._client.create_issue(fields=_fields_with_adf_description(fields))
+                iss.update(
+                    fields={
+                        "description": _finalize_description_with_mermaid(
+                            self._client,
+                            self.settings,
+                            iss.key,
+                            full_description,
+                        ),
+                    },
+                )
+                return iss
+
+            issue = _retry_jira(_do_story, label="create_story")
         else:
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            def _do_story_plain() -> Any:
+                return self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            issue = _retry_jira(_do_story_plain, label="create_story")
         logger.info("story_created", key=issue.key, epic=epic_key)
         return _issue_to_dict(issue)
 
@@ -261,38 +359,65 @@ class JiraService:
         }
         if mermaid_pipeline_enabled(self.settings, description):
             fields["description"] = markdown_intermediate_without_mermaid_images(description)
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
-            issue.update(
-                fields={
-                    "description": _finalize_description_with_mermaid(
-                        self._client,
-                        self.settings,
-                        issue.key,
-                        description,
-                    ),
-                },
-            )
+
+            def _do_task() -> Any:
+                iss = self._client.create_issue(fields=_fields_with_adf_description(fields))
+                iss.update(
+                    fields={
+                        "description": _finalize_description_with_mermaid(
+                            self._client,
+                            self.settings,
+                            iss.key,
+                            description,
+                        ),
+                    },
+                )
+                return iss
+
+            issue = _retry_jira(_do_task, label="create_task")
         else:
-            issue = self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            def _do_task_plain() -> Any:
+                return self._client.create_issue(fields=_fields_with_adf_description(fields))
+
+            issue = _retry_jira(_do_task_plain, label="create_task")
         logger.info("task_created", key=issue.key, story=story_key)
         return _issue_to_dict(issue)
 
     def get_epic(self, epic_key: str) -> dict[str, Any] | None:
-        """Fetch a single epic by key. Returns None if not found or not an Epic."""
+        """Fetch a single epic by key. Returns None on error."""
         try:
             issue = self._client.issue(epic_key)
             result = _issue_to_dict(issue)
             if result.get("issue_type") != "Epic":
-                logger.warning("not_an_epic", key=epic_key, actual_type=result.get("issue_type"))
+                logger.warning(
+                    "not_an_epic",
+                    key=epic_key,
+                    actual_type=result.get("issue_type"),
+                )
                 return None
             return result
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_query_failed",
+                method="get_epic",
+                key=epic_key,
+                error=str(exc)[:200],
+            )
             return None
 
     def get_story(self, story_key: str) -> dict[str, Any] | None:
         try:
-            return _issue_to_dict(self._client.issue(story_key))
-        except Exception:
+            return _issue_to_dict(
+                self._client.issue(story_key),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_query_failed",
+                method="get_story",
+                key=story_key,
+                error=str(exc)[:200],
+            )
             return None
 
     def list_stories_under_epic(self, epic_key: str) -> list[dict[str, Any]]:
@@ -314,11 +439,19 @@ class JiraService:
             jql = (
                 f'project = "{self.settings.jira_project_key}" '
                 f'AND parent = "{story_key}" '
-                f'AND issuetype = Subtask'
+                f"AND issuetype = Subtask"
             )
-            issues = self._client.search_issues(jql, maxResults=50)
+            issues = self._client.search_issues(
+                jql, maxResults=50,
+            )
             return [_issue_to_dict(i) for i in issues]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_query_failed",
+                method="get_subtasks",
+                key=story_key,
+                error=str(exc)[:200],
+            )
             return []
 
     @skip_if_dry_run(fake_return=None)
@@ -330,22 +463,43 @@ class JiraService:
                 story_key,
                 description,
             )
-            self._client.issue(story_key).update(fields={"description": adf})
+
+            def _do() -> None:
+                self._client.issue(story_key).update(fields={"description": adf})
+
+            _retry_jira(_do, label="update_story_description")
         else:
-            self._client.issue(story_key).update(
-                fields=_fields_with_adf_description({"description": description}),
-            )
+
+            def _do_plain() -> None:
+                self._client.issue(story_key).update(
+                    fields=_fields_with_adf_description({"description": description}),
+                )
+
+            _retry_jira(_do_plain, label="update_story_description")
 
     @skip_if_dry_run(fake_return=None)
-    def update_story_summary(self, story_key: str, summary: str) -> None:
-        self._client.issue(story_key).update(fields={"summary": summary})
+    def update_story_summary(
+        self, story_key: str, summary: str,
+    ) -> None:
+        _retry_jira(
+            lambda: self._client.issue(story_key).update(
+                fields={"summary": summary},
+            ),
+            label="update_story_summary",
+        )
 
     @skip_if_dry_run(fake_return=None)
-    def transition_issue(self, issue_key: str, transition_name: str) -> None:
+    def transition_issue(
+        self, issue_key: str, transition_name: str,
+    ) -> None:
         issue = self._client.issue(issue_key)
         transitions = self._client.transitions(issue)
         match = next(
-            (t for t in transitions if t["name"].lower() == transition_name.lower()),
+            (
+                t
+                for t in transitions
+                if t["name"].lower() == transition_name.lower()
+            ),
             None,
         )
         if match:
@@ -362,19 +516,41 @@ class JiraService:
     def add_comment(self, issue_key: str, body: str) -> str | None:
         """Add a comment to the given Jira issue. Returns the comment id for later updates."""
         # python-jira types body as str; v3 requires ADF dict (see _comment_body_for_jira_api).
-        comment = self._client.add_comment(issue_key, _comment_body_for_jira_api(body))
+        comment = _retry_jira(
+            lambda: self._client.add_comment(issue_key, _comment_body_for_jira_api(body)),
+            label="add_comment",
+        )
         logger.info("comment_added", issue_key=issue_key)
         return str(comment.id) if comment else None
 
     @skip_if_dry_run(fake_return=None)
     def update_comment(self, issue_key: str, comment_id: str, body: str) -> None:
         """Update an existing comment's body (e.g. append step notifications)."""
-        comment = self._client.comment(issue_key, comment_id)
-        comment.update(body=_comment_body_for_jira_api(body))
-        logger.info("comment_updated", issue_key=issue_key, comment_id=comment_id)
+
+        def _do() -> None:
+            c = self._client.comment(issue_key, comment_id)
+            c.update(body=_comment_body_for_jira_api(body))
+
+        _retry_jira(_do, label="update_comment")
+        logger.info(
+            "comment_updated",
+            issue_key=issue_key,
+            comment_id=comment_id,
+        )
 
     @skip_if_dry_run(fake_return=None)
-    def set_story_branch_field(self, story_key: str, branch: str) -> None:
-        """Store the BMAD git branch in customfield_10145 (BMAD Branch) on the story."""
-        self._client.issue(story_key).update(fields={"customfield_10145": branch})
-        logger.info("story_branch_field_updated", story_key=story_key, branch=branch)
+    def set_story_branch_field(
+        self, story_key: str, branch: str,
+    ) -> None:
+        """Store the BMAD git branch in customfield_10145."""
+        _retry_jira(
+            lambda: self._client.issue(story_key).update(
+                fields={"customfield_10145": branch},
+            ),
+            label="set_story_branch_field",
+        )
+        logger.info(
+            "story_branch_field_updated",
+            story_key=story_key,
+            branch=branch,
+        )
