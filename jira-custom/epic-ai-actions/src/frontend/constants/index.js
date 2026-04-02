@@ -39,17 +39,6 @@ export const AGENT_ACTIONS = [
   { id: 'stories', label: 'Generate Stories', iconGlyph: 'child-issues' },
 ];
 
-/** Selected agent: custom blue (Forge Button primary does not match this hex). */
-export const SELECTED_AGENT_XCSS = xcss({
-  backgroundColor: '#0d6efd',
-  borderRadius: 'border.radius',
-  paddingBlock: 'space.050',
-  paddingInline: 'space.150',
-  ':hover': {
-    backgroundColor: '#0069d9',
-  },
-});
-
 /** Full panel width so Send matches the text field above. */
 export const BMAD_SEND_ROW_XCSS = xcss({
   width: '100%',

@@ -6,7 +6,13 @@ import {
   SectionMessage,
   Stack,
   Text,
+  xcss,
 } from '@forge/react';
+
+/** Top spacing for panel header (~24px; closest ADS token to 25px). */
+const HEADER_BOX_STYLES = xcss({
+  marginBlockStart: 'space.300',
+});
 import { AgentActionButton } from './components/AgentActionButton';
 import { ConfirmActionModal } from './components/ConfirmActionModal';
 import { AGENT_ACTIONS } from './constants';
@@ -28,6 +34,7 @@ export function App() {
     <Fragment>
       <Stack space="space.200">
         <Box
+          xcss={HEADER_BOX_STYLES}
           borderBlockEndWidth="border.width"
           borderBlockEndColor="color.border"
           paddingBlockEnd="space.100"

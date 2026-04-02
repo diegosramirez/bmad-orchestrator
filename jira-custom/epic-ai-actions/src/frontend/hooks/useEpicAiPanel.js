@@ -44,7 +44,7 @@ export function useEpicAiPanel() {
     const result = await invoke(config.invoke, { issueKey });
     if (result?.ok) {
       setBanner({
-        appearance: 'confirmation',
+        appearance: 'success',
         title: config.successTitle,
         body: result.message || DEFAULT_SUCCESS_BODY,
       });
