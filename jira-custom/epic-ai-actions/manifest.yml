@@ -25,6 +25,13 @@ modules:
       render: native
       title: AI Comments
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+    - key: bmad-story-dev-panel
+      resource: story-dev-main
+      resolver:
+        function: resolver
+      render: native
+      title: BMAD Story
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
   function:
     - key: resolver
       handler: index.handler
@@ -33,6 +40,8 @@ resources:
     path: src/frontend/epic-panel-index.jsx
   - key: comment-apps-main
     path: src/frontend/comment-apps-index.jsx
+  - key: story-dev-main
+    path: src/frontend/story-dev-panel-index.jsx
 app:
   runtime:
     name: nodejs24.x

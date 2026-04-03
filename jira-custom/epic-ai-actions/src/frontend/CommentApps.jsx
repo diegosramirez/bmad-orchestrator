@@ -51,7 +51,8 @@ export function CommentApps() {
           </Text>
           <Text>
             For <Text as="strong">Epic</Text> issues, use the <Text as="strong">BMAD Epic</Text>{' '}
-            panel (Discovery, Design Architect, Generate Stories).
+            panel (Discovery, Design Architect, Generate Stories). For a full automated dev run on a
+            Story, use <Text as="strong">BMAD Story</Text>.
           </Text>
         </SectionMessage>
       </Stack>
