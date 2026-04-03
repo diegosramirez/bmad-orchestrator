@@ -114,6 +114,21 @@ def test_test_failure_output_included_in_prompt(settings, mock_agent_service):
     assert "snippet-list.component.spec.ts" in prompt
 
 
+def test_env_issue_classified_in_prompt(settings, mock_agent_service):
+    """Missing type definitions should trigger the environment issue header."""
+    node = make_fix_loop_node(mock_agent_service, settings)
+    node(make_state(
+        test_failure_output="error TS2304: Cannot find name 'spyOn'",
+        code_review_issues=[
+            {"severity": "medium", "file": "x.spec.ts", "line": 1,
+             "description": "Test issue", "fix_required": True},
+        ],
+    ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "ENVIRONMENT/DEPENDENCY ISSUE" in prompt
+    assert "Cannot find name" in prompt
+
+
 def test_fix_loop_runs_independent_tests(
     settings, mock_agent_service, tmp_path, monkeypatch,
 ):

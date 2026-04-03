@@ -66,6 +66,28 @@ def test_skips_staging_nonexistent_paths(settings, mock_git, tmp_path, monkeypat
     mock_git.stage_path.assert_called_once_with("real.py")
 
 
+def test_skips_staging_paths_outside_repo(settings, mock_git, tmp_path, monkeypatch):
+    """Files outside the repo root (e.g. ~/.claude/plans/) must not be staged."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "real.py").write_text("x = 1")
+
+    mock_git.get_current_branch.return_value = "main"
+    mock_git.make_branch_name.return_value = "bmad/team-alpha/TEST-10-add-auth"
+    mock_git.commit.return_value = "abc123def456"
+
+    node = make_commit_and_push_node(mock_git, settings)
+    node(make_state(
+        current_story_id="TEST-10",
+        touched_files=[
+            "real.py",
+            "/home/runner/.claude/plans/some-plan.md",
+            "/tmp/outside/file.ts",
+        ],
+    ))
+
+    mock_git.stage_path.assert_called_once_with("real.py")
+
+
 def test_skips_when_already_committed(settings, mock_git):
     node = make_commit_and_push_node(mock_git, settings)
     result = node(make_state(commit_sha="existing-sha"))

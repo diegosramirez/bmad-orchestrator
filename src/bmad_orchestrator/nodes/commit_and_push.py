@@ -151,12 +151,21 @@ def make_commit_and_push_node(
                     "execution_log": [log_entry],
                 }
 
+        repo_root = Path.cwd().resolve()
         seen: set[str] = set()
         for path in state.get("touched_files") or []:
             if path in seen:
                 continue
             seen.add(path)
-            if Path(path).exists():
+            try:
+                resolved = Path(path).resolve()
+                if not resolved.is_relative_to(repo_root):
+                    logger.warning("skip_stage_outside_repo", path=path)
+                    continue
+            except (ValueError, OSError):
+                logger.warning("skip_stage_invalid_path", path=path)
+                continue
+            if resolved.exists():
                 git.stage_path(path)
             else:
                 logger.info("skip_stage_missing_path", path=path)

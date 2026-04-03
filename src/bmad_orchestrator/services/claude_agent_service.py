@@ -28,7 +28,7 @@ _DEFAULT_EFFORT = "low"
 _DEFAULT_MAX_BUDGET_USD = 2.0
 _DEFAULT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
 _DEFAULT_DISALLOWED_TOOLS = [
-    "Task", "Agent", "TodoWrite", "WebSearch", "WebFetch",
+    "Task", "Agent", "TodoWrite", "WebSearch", "WebFetch", "Plan",
 ]
 
 
@@ -89,21 +89,34 @@ class ClaudeAgentService:
         if self.settings.dry_run:
             return self._dry_run_result(output_format_schema, agent_id)
 
-        return self._loop.run_until_complete(
-            self._run_async(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                agent_id=agent_id,
-                cwd=cwd,
-                allowed_tools=allowed_tools,
-                disallowed_tools=disallowed_tools,
-                output_format_schema=output_format_schema,
-                max_turns=max_turns,
-                effort=effort,
-                max_budget_usd=max_budget_usd,
-                on_event=on_event,
+        def _call() -> AgentResult:
+            return self._loop.run_until_complete(
+                self._run_async(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    agent_id=agent_id,
+                    cwd=cwd,
+                    allowed_tools=allowed_tools,
+                    disallowed_tools=disallowed_tools,
+                    output_format_schema=output_format_schema,
+                    max_turns=max_turns,
+                    effort=effort,
+                    max_budget_usd=max_budget_usd,
+                    on_event=on_event,
+                )
             )
-        )
+
+        result = _call()
+
+        # Retry once on transient content-filtering errors
+        if result.is_error and "content filtering" in (result.result_text or "").lower():
+            logger.warning(
+                "retrying_after_content_filter",
+                agent=agent_id,
+            )
+            result = _call()
+
+        return result
 
     async def _run_async(
         self,
@@ -123,6 +136,7 @@ class ClaudeAgentService:
         agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
         _emit = on_event or (lambda _: None)
         touched: list[str] = []
+        resolved_cwd = Path(cwd).resolve() if cwd else Path.cwd().resolve()
 
         output_format = None
         if output_format_schema is not None:
@@ -178,7 +192,18 @@ class ClaudeAgentService:
                         if block.name in ("Write", "Edit"):
                             fp = block.input.get("file_path", "")
                             if fp and fp not in touched:
-                                touched.append(fp)
+                                try:
+                                    rp = Path(fp).resolve()
+                                    if rp.is_relative_to(resolved_cwd):
+                                        touched.append(fp)
+                                    else:
+                                        logger.warning(
+                                            "agent_file_outside_cwd",
+                                            agent=agent_name,
+                                            path=fp,
+                                        )
+                                except (ValueError, OSError):
+                                    pass
 
                         detail = ""
                         if block.name in (

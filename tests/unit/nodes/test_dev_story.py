@@ -129,6 +129,33 @@ def test_run_all_checks_no_commands_returns_none(mock_compile, tmp_path):
     assert _run_all_checks([], [], [], tmp_path) is None
 
 
+@patch("bmad_orchestrator.nodes.dev_story.run_compile_check", return_value=[])
+@patch("bmad_orchestrator.nodes.dev_story.run_project_command", return_value=(True, "ok"))
+def test_run_all_checks_runs_npm_install_when_node_modules_missing(
+    mock_cmd, mock_compile, tmp_path
+):
+    """npm install is run as a preflight when package.json exists but node_modules doesn't."""
+    (tmp_path / "package.json").write_text('{"name": "test"}')
+    _run_all_checks(["npm run build"], [], [], tmp_path)
+    # First call should be npm install, second is npm run build
+    assert mock_cmd.call_count == 2
+    assert mock_cmd.call_args_list[0][0] == ("npm install", tmp_path)
+
+
+@patch("bmad_orchestrator.nodes.dev_story.run_compile_check", return_value=[])
+@patch("bmad_orchestrator.nodes.dev_story.run_project_command", return_value=(True, "ok"))
+def test_run_all_checks_skips_npm_install_when_node_modules_exist(
+    mock_cmd, mock_compile, tmp_path
+):
+    """npm install is NOT run when node_modules already exists."""
+    (tmp_path / "package.json").write_text('{"name": "test"}')
+    (tmp_path / "node_modules").mkdir()
+    _run_all_checks(["npm run build"], [], [], tmp_path)
+    # Only the build command should be called, no npm install
+    assert mock_cmd.call_count == 1
+    assert mock_cmd.call_args_list[0][0] == ("npm run build", tmp_path)
+
+
 # ── dev_story node with Agent SDK ─────────────────────────────────────────────
 
 def test_dev_story_returns_touched_files(settings, mock_agent_service):

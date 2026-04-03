@@ -104,11 +104,29 @@ def make_fix_loop_node(
 
         test_failure = state.get("test_failure_output") or ""
         if test_failure:
-            _MAX_FAILURE = 2000
-            prompt += (
-                f"\n\n## TEST FAILURES — MUST FIX BEFORE ANYTHING ELSE:\n"
-                f"{test_failure[:_MAX_FAILURE]}\n"
+            _MAX_FAILURE = 4000
+            _ENV_PATTERNS = (
+                "Cannot find name",
+                "Cannot find namespace",
+                "Cannot find type definition",
+                "Cannot find module",
+                "Module not found",
+                "command not found",
+                "not found",
+                "ENOENT",
             )
+            is_env_issue = any(p in test_failure for p in _ENV_PATTERNS)
+            if is_env_issue:
+                header = (
+                    "## ENVIRONMENT/DEPENDENCY ISSUE — fix config before code:\n"
+                    "The errors below suggest missing dependencies or type "
+                    "definitions. Check package.json dependencies, "
+                    "tsconfig.json type roots, and run `npm install` before "
+                    "attempting code-level fixes.\n"
+                )
+            else:
+                header = "## TEST FAILURES — MUST FIX BEFORE ANYTHING ELSE:\n"
+            prompt += f"\n\n{header}{test_failure[:_MAX_FAILURE]}\n"
 
         result = agent.run_agent(
             prompt,

@@ -117,6 +117,11 @@ def _run_all_checks(
     Returns None if everything passes, or a human-readable error string on first failure.
     The developer calls this after writing files to self-verify before handing off.
     """
+    # Ensure node_modules exist before running JS/TS checks
+    if (cwd / "package.json").exists() and not (cwd / "node_modules").exists():
+        logger.info("npm_install_preflight", cwd=str(cwd))
+        run_project_command("npm install", cwd)
+
     compile_errors = run_compile_check(cwd)
     if compile_errors:
         return "TypeScript compile errors:\n" + "\n".join(compile_errors[:5])
@@ -210,9 +215,11 @@ def make_dev_story_node(
             f"in a single response. This avoids output token limits.\n"
             f"2. Use production-ready code with identical class names, selectors, "
             f"and identifiers across files.\n"
-            f"3. After writing all files, run the verification commands above.\n"
-            f"4. If any command fails, fix the issues and re-run until all pass.\n"
-            f"5. Keep your final summary brief (under 500 words)."
+            f"3. If you modify package.json (add/remove dependencies), run "
+            f"`npm install` before running verification commands.\n"
+            f"4. After writing all files, run the verification commands above.\n"
+            f"5. If any command fails, fix the issues and re-run until all pass.\n"
+            f"6. Keep your final summary brief (under 500 words)."
         )
 
         result = agent.run_agent(
