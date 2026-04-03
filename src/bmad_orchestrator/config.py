@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     bmad_root: str = "_bmad"
     max_review_loops: int = 2
     max_e2e_loops: int = 1
+    max_pipeline_cost_usd: float = 10.0
     draft_pr: bool = False
     # Execution mode: "inline" runs dev/QA/review inside the graph via Claude Agent SDK.
     # "github-agent" creates a GitHub Issue and terminates (external agent takes over).

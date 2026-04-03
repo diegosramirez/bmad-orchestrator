@@ -12,6 +12,7 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import run_compile_check, run_project_command
@@ -111,16 +112,19 @@ def _run_all_checks(
     test_commands: list[str],
     lint_commands: list[str],
     cwd: Path,
+    *,
+    setup_commands: list[str] | None = None,
 ) -> str | None:
-    """Run TypeScript compile check then build/test/lint commands.
+    """Run setup, TypeScript compile check, then build/test/lint commands.
 
     Returns None if everything passes, or a human-readable error string on first failure.
     The developer calls this after writing files to self-verify before handing off.
     """
-    # Ensure node_modules exist before running JS/TS checks
-    if (cwd / "package.json").exists() and not (cwd / "node_modules").exists():
-        logger.info("npm_install_preflight", cwd=str(cwd))
-        run_project_command("npm install", cwd)
+    for cmd in setup_commands or []:
+        logger.info("setup_preflight", cmd=cmd, cwd=str(cwd))
+        success, output = run_project_command(cmd, cwd)
+        if not success:
+            return f"Setup failed (`{cmd}`):\n{output}"
 
     compile_errors = run_compile_check(cwd)
     if compile_errors:
@@ -232,6 +236,9 @@ def make_dev_story_node(
         )
 
         touched = result.touched_files
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
+
         log_entry: ExecutionLogEntry = {
             "timestamp": now,
             "node": NODE_NAME,
@@ -249,9 +256,18 @@ def make_dev_story_node(
             return {
                 "failure_state": result.result_text,
                 "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry, fail_log],
             }
 
-        return {"execution_log": [log_entry], "touched_files": touched}
+        if budget_msg:
+            return {
+                "failure_state": budget_msg,
+                "touched_files": touched,
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+            }
+
+        return {"execution_log": [log_entry], "touched_files": touched, "total_cost_usd": new_cost}
 
     return dev_story

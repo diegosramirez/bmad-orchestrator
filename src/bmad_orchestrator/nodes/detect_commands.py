@@ -22,6 +22,14 @@ NODE_NAME = "detect_commands"
 class ProjectCommands(BaseModel):
     """AI-detected build/test/lint commands for the target project."""
 
+    setup: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Shell commands to install dependencies / bootstrap the project "
+            "(e.g. 'npm install', 'dotnet restore', 'pip install -e .', "
+            "'go mod download', 'cargo fetch'). Run BEFORE build/test/lint."
+        ),
+    )
     build: list[str] = Field(
         default_factory=list,
         description="Shell commands to compile/build the project (e.g. 'npm run build')",
@@ -94,6 +102,12 @@ def make_detect_commands_node(
                 f"## Development guidelines\n{dev_guidelines}"
                 f"{scripts_block}\n\n"
                 "Based on the above, determine the correct shell commands for:\n"
+                "0. **setup** — install dependencies / restore packages. Examples: "
+                "`npm install`, `yarn install`, `pnpm install`, `dotnet restore`, "
+                "`pip install -e .`, `uv sync`, `go mod download`, `cargo fetch`, "
+                "`./gradlew dependencies`, `composer install`, `bundle install`. "
+                "Return the single command appropriate for this project's package "
+                "manager. If unsure, return an empty list.\n"
                 "1. **build** — compile or bundle the project\n"
                 "2. **test** — run the unit/integration test suite in non-interactive/CI "
                 "mode (no --watch, no interactive prompts)\n"
@@ -105,16 +119,15 @@ def make_detect_commands_node(
                 "Rules:\n"
                 "- Only return commands the project actually supports based on the "
                 "manifest scripts and config files shown above.\n"
+                "- Return setup commands SEPARATELY from build commands. Setup = "
+                "installing dependencies. Build = compiling / verifying code "
+                "correctness.\n"
                 "- ALWAYS use `npm run <script>` (or `yarn <script>`, `pnpm <script>`) "
                 "to invoke manifest scripts — NEVER use bare binary names like `ng`, "
                 "`tsc`, `jest`, `vitest` etc. directly. For example, if the manifest "
                 "has `\"build\": \"ng build\"`, return `npm run build`, NOT `ng build`. "
                 "If you need to add flags not in the manifest script, use "
                 "`npx <binary> <flags>` (e.g. `npx ng test --watch=false`).\n"
-                "- EXCLUDE environment setup or bootstrap commands (e.g. `make setup`, "
-                "`make install`, `composer install`, `npm install`, `docker-compose up`, "
-                "commands that start containers, install dependencies, or create .env "
-                "files). These are one-time setup — NOT build verification.\n"
                 "- Build commands should only verify code correctness AFTER the "
                 "environment is already set up (e.g. `npm run build`, "
                 "`tsc --noEmit`).\n"
@@ -131,6 +144,7 @@ def make_detect_commands_node(
 
         logger.info(
             "commands_detected",
+            setup=result.setup,
             build=result.build,
             test=result.test,
             lint=result.lint,
@@ -142,13 +156,15 @@ def make_detect_commands_node(
             "timestamp": now,
             "node": NODE_NAME,
             "message": (
-                f"Detected commands — build: {result.build}, "
+                f"Detected commands — setup: {result.setup}, "
+                f"build: {result.build}, "
                 f"test: {result.test}, lint: {result.lint}, e2e: {result.e2e}"
             ),
             "dry_run": False,
         }
 
         return {
+            "setup_commands": result.setup,
             "build_commands": result.build,
             "test_commands": result.test,
             "lint_commands": result.lint,

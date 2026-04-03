@@ -9,6 +9,7 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd, _run_all_checks
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState, QAResult
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +88,8 @@ def make_qa_automation_node(
         )
 
         touched = result.touched_files
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
 
         # The agent already runs test commands as part of its self-verification
         # loop (see prompt instructions above).  We record a summary result
@@ -108,6 +111,7 @@ def make_qa_automation_node(
                 test_commands=state.get("test_commands") or [],
                 lint_commands=[],
                 cwd=cwd,
+                setup_commands=state.get("setup_commands") or [],
             )
             if check_error:
                 logger.warning("qa_tests_failed", error=check_error[:300])
@@ -127,12 +131,16 @@ def make_qa_automation_node(
             "dry_run": settings.dry_run,
         }
 
-        return {
+        base = {
             "qa_results": qa_results,
             "tests_passing": tests_passing,
             "test_failure_output": check_error,
             "execution_log": [log_entry],
             "touched_files": touched,
+            "total_cost_usd": new_cost,
         }
+        if budget_msg:
+            base["failure_state"] = budget_msg
+        return base
 
     return qa_automation

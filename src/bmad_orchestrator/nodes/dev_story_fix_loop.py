@@ -10,6 +10,7 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd, _run_all_checks
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -137,6 +138,9 @@ def make_fix_loop_node(
             on_event=on_event,
         )
 
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
+
         touched = result.touched_files
         log_entry: ExecutionLogEntry = {
             "timestamp": now,
@@ -161,6 +165,7 @@ def make_fix_loop_node(
                 "review_loop_count": loop_count + 1,
                 "code_review_issues": [],
                 "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry, fail_log],
             }
 
@@ -173,6 +178,7 @@ def make_fix_loop_node(
                 test_commands=state.get("test_commands") or [],
                 lint_commands=state.get("lint_commands") or [],
                 cwd=cwd,
+                setup_commands=state.get("setup_commands") or [],
             )
             if check_error:
                 logger.warning("fix_loop_tests_failed", error=check_error[:300])
@@ -199,6 +205,19 @@ def make_fix_loop_node(
                     f"problem).\nError: {check_error[:500]}"
                 ),
                 "touched_files": [],
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+            }
+
+        if budget_msg:
+            return {
+                "review_loop_count": loop_count + 1,
+                "code_review_issues": [],
+                "tests_passing": check_error is None,
+                "test_failure_output": check_error,
+                "failure_state": budget_msg,
+                "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry],
             }
 
@@ -208,6 +227,7 @@ def make_fix_loop_node(
             "tests_passing": check_error is None,
             "test_failure_output": check_error,
             "touched_files": touched,
+            "total_cost_usd": new_cost,
             "execution_log": [log_entry],
         }
 

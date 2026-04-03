@@ -21,6 +21,7 @@ def test_detect_commands_calls_claude_and_sets_commands(settings, mock_claude):
     """Non-dry-run should call Claude and return detected commands."""
     non_dry = settings.model_copy(update={"dry_run": False})
     mock_claude.complete_structured.return_value = ProjectCommands(
+        setup=["npm install"],
         build=["npm run build"],
         test=["npx vitest run"],
         lint=["npm run lint"],
@@ -28,6 +29,7 @@ def test_detect_commands_calls_claude_and_sets_commands(settings, mock_claude):
     )
     node = make_detect_commands_node(mock_claude, non_dry)
     result = node(make_state(project_context="Angular (TypeScript)"))
+    assert result["setup_commands"] == ["npm install"]
     assert result["build_commands"] == ["npm run build"]
     assert result["test_commands"] == ["npx vitest run"]
     assert result["lint_commands"] == ["npm run lint"]
@@ -75,6 +77,7 @@ def test_detect_commands_empty_on_empty_dir(settings, mock_claude, tmp_path, mon
     )
     node = make_detect_commands_node(mock_claude, non_dry)
     result = node(make_state())
+    assert result["setup_commands"] == []
     assert result["build_commands"] == []
     assert result["test_commands"] == []
     assert result["lint_commands"] == []
@@ -84,6 +87,7 @@ def test_detect_commands_empty_on_empty_dir(settings, mock_claude, tmp_path, mon
 def test_project_commands_schema_defaults():
     """ProjectCommands should have sensible defaults."""
     cmd = ProjectCommands()
+    assert cmd.setup == []
     assert cmd.build == []
     assert cmd.test == []
     assert cmd.lint == []
@@ -106,8 +110,8 @@ def test_detect_commands_returns_e2e_commands(settings, mock_claude):
     assert result["e2e_commands"] == ["npx playwright test"]
 
 
-def test_detect_commands_prompt_excludes_setup_commands(settings, mock_claude):
-    """Prompt should tell Claude to exclude bootstrap/setup commands."""
+def test_detect_commands_prompt_includes_setup_category(settings, mock_claude):
+    """Prompt should ask Claude to detect setup commands separately."""
     non_dry = settings.model_copy(update={"dry_run": False})
     mock_claude.complete_structured.return_value = ProjectCommands(
         build=[], test=[], lint=[], reasoning="",
@@ -116,6 +120,6 @@ def test_detect_commands_prompt_excludes_setup_commands(settings, mock_claude):
     node(make_state())
     call_kwargs = mock_claude.complete_structured.call_args.kwargs
     prompt = call_kwargs["user_message"]
-    assert "EXCLUDE" in prompt
-    assert "setup" in prompt.lower()
-    assert "bootstrap" in prompt.lower() or "install" in prompt.lower()
+    assert "**setup**" in prompt
+    assert "npm install" in prompt
+    assert "dotnet restore" in prompt
