@@ -134,3 +134,21 @@ def test_qa_automation_agent_error_reported(
     result = node(make_state(test_commands=["npm test"]))
 
     assert result["qa_results"][0]["passed"] is False
+
+
+@patch("bmad_orchestrator.nodes.qa_automation._run_all_checks", return_value=None)
+@patch("bmad_orchestrator.nodes.qa_automation.find_example_test_file")
+def test_qa_automation_injects_example_test_file(
+    mock_find, mock_checks, settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """QA prompt should include an existing test file as a reference pattern."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+    mock_find.return_value = "### src/app.spec.ts\n```\nimport { vi } from 'vitest';\n```"
+    mock_agent_service.run_agent.return_value = AgentResult()
+    node = make_qa_automation_node(mock_agent_service, non_dry)
+    node(make_state(test_commands=["npm test"]))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Reference" in prompt
+    assert "vitest" in prompt
+    assert "EXACT same test framework" in prompt

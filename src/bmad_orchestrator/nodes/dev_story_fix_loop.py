@@ -13,6 +13,7 @@ from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.utils.project_context import find_example_test_file
 
 logger = get_logger(__name__)
 
@@ -108,11 +109,28 @@ def make_fix_loop_node(
             files_list = "\n".join(f"- {f}" for f in unique_files)
             files_block = f"## Files to read and fix:\n{files_list}"
 
+        # Inject existing test file reference when fixing test-related issues
+        example_block = ""
+        has_test_issues = any(
+            "spec" in i.get("file", "") or "test" in i.get("file", "")
+            for i in medium_plus
+        ) or "spec" in (state.get("test_failure_output") or "").lower()
+        if has_test_issues and not settings.dry_run:
+            example_test = find_example_test_file(cwd_for_read)
+            if example_test:
+                example_block = (
+                    f"## Reference — existing test file from this project:\n"
+                    f"When fixing test files, follow the EXACT same test "
+                    f"framework, imports, and patterns shown here.\n\n"
+                    f"{example_test}\n\n"
+                )
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
             f"{guidelines_block}"
             f"{obligations_block}"
+            f"{example_block}"
             f"Fix code review issues (loop {loop_count + 1}).\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"

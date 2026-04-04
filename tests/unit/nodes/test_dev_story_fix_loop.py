@@ -154,6 +154,34 @@ def test_file_contents_pre_injected_in_prompt(
     assert "Read the files listed above" not in prompt
 
 
+def test_fix_loop_injects_test_reference_for_spec_issues(
+    settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """When issues involve spec files, inject existing test file as reference."""
+    from unittest.mock import patch as _patch
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+
+    with _patch(
+        "bmad_orchestrator.nodes.dev_story_fix_loop.find_example_test_file",
+        return_value="### src/app.spec.ts\n```\nimport { vi } from 'vitest';\n```",
+    ), _patch(
+        "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
+        return_value=None,
+    ):
+        node = make_fix_loop_node(mock_agent_service, non_dry)
+        node(make_state(
+            code_review_issues=[
+                {"severity": "high", "file": "src/foo.spec.ts", "line": 1,
+                 "description": "Wrong test pattern", "fix_required": True},
+            ],
+        ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Reference" in prompt
+    assert "vitest" in prompt
+
+
 def test_fix_loop_runs_independent_tests(
     settings, mock_agent_service, tmp_path, monkeypatch,
 ):
