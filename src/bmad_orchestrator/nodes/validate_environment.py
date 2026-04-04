@@ -10,6 +10,21 @@ from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import run_project_command
 
+# Fallback setup commands when detect_commands was skipped.
+# Maps manifest file → install command (technology-agnostic).
+_MANIFEST_SETUP: list[tuple[str, str]] = [
+    ("package-lock.json", "npm install"),
+    ("yarn.lock", "yarn install"),
+    ("pnpm-lock.yaml", "pnpm install"),
+    ("package.json", "npm install"),
+    ("requirements.txt", "pip install -r requirements.txt"),
+    ("pyproject.toml", "pip install -e ."),
+    ("go.mod", "go mod download"),
+    ("Cargo.toml", "cargo fetch"),
+    ("Gemfile", "bundle install"),
+    ("composer.json", "composer install"),
+]
+
 logger = get_logger(__name__)
 
 NODE_NAME = "validate_environment"
@@ -43,6 +58,15 @@ def make_validate_environment_node(
         setup_commands = state.get("setup_commands") or []
         build_commands = state.get("build_commands") or []
         test_commands = state.get("test_commands") or []
+
+        # Fallback: if detect_commands was skipped, infer setup from manifest
+        if not setup_commands and not build_commands and not test_commands:
+            for manifest, cmd in _MANIFEST_SETUP:
+                if (cwd / manifest).exists():
+                    setup_commands = [cmd]
+                    logger.info("env_fallback_setup", manifest=manifest, cmd=cmd)
+                    _emit(f"Fallback setup detected from {manifest}: `{cmd}`")
+                    break
 
         phases: list[tuple[str, list[str]]] = [
             ("Setup", setup_commands),

@@ -132,3 +132,39 @@ def test_validate_env_runs_commands_in_order(mock_cmd, settings, tmp_path, monke
     ))
     calls = [c[0][0] for c in mock_cmd.call_args_list]
     assert calls == ["dotnet restore", "dotnet build", "dotnet test"]
+
+
+@patch(
+    "bmad_orchestrator.nodes.validate_environment.run_project_command",
+    return_value=(True, "ok"),
+)
+def test_validate_env_fallback_setup_from_package_json(
+    mock_cmd, settings, tmp_path, monkeypatch,
+):
+    """When all commands are empty, detect setup from package.json."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"name": "test"}')
+    node = make_validate_environment_node(non_dry)
+    result = node(make_state())
+    # Should have run npm install as fallback
+    assert mock_cmd.call_count == 1
+    assert mock_cmd.call_args_list[0][0][0] == "npm install"
+    assert "failure_state" not in result
+
+
+@patch(
+    "bmad_orchestrator.nodes.validate_environment.run_project_command",
+    return_value=(True, "ok"),
+)
+def test_validate_env_fallback_prefers_lockfile(
+    mock_cmd, settings, tmp_path, monkeypatch,
+):
+    """yarn.lock should trigger yarn install over npm install."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"name": "test"}')
+    (tmp_path / "yarn.lock").write_text("")
+    node = make_validate_environment_node(non_dry)
+    node(make_state())
+    assert mock_cmd.call_args_list[0][0][0] == "yarn install"

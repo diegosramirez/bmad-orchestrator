@@ -28,7 +28,8 @@ _DEFAULT_EFFORT = "low"
 _DEFAULT_MAX_BUDGET_USD = 2.0
 _DEFAULT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
 _DEFAULT_DISALLOWED_TOOLS = [
-    "Task", "Agent", "TodoWrite", "WebSearch", "WebFetch", "Plan",
+    "Task", "Agent", "TodoWrite", "WebSearch", "WebFetch",
+    "Plan", "EnterPlanMode", "ExitPlanMode",
 ]
 
 
