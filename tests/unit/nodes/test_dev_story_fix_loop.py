@@ -129,6 +129,31 @@ def test_env_issue_classified_in_prompt(settings, mock_agent_service):
     assert "Cannot find name" in prompt
 
 
+def test_file_contents_pre_injected_in_prompt(
+    settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """Touched files should have their contents pre-injected in the prompt."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.ts").write_text("export class App { count = 0; }")
+    (tmp_path / "src" / "app.spec.ts").write_text("describe('App', () => {});")
+
+    node = make_fix_loop_node(mock_agent_service, settings)
+    node(make_state(
+        touched_files=["src/app.ts", "src/app.spec.ts"],
+        code_review_issues=[
+            {"severity": "high", "file": "src/app.ts", "line": 1,
+             "description": "Bug", "fix_required": True},
+        ],
+    ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "pre-loaded" in prompt.lower()
+    assert "export class App" in prompt
+    assert "describe('App'" in prompt
+    # Should NOT tell agent to read files since they're pre-loaded
+    assert "Read the files listed above" not in prompt
+
+
 def test_fix_loop_runs_independent_tests(
     settings, mock_agent_service, tmp_path, monkeypatch,
 ):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from bmad_orchestrator.config import Settings
@@ -76,7 +77,36 @@ def make_fix_loop_node(
         ) if obligations_lines else ""
 
         touched_files = state.get("touched_files") or []
-        files_list = "\n".join(f"- {f}" for f in dict.fromkeys(touched_files))
+        unique_files = list(dict.fromkeys(touched_files))
+
+        # Pre-inject file contents so the agent doesn't burn turns reading
+        cwd_for_read = _resolve_cwd(settings, state)
+        _MAX_FILE_CHARS = 3000
+        _MAX_TOTAL_CHARS = 30000
+        file_contents_parts: list[str] = []
+        total_chars = 0
+        for fpath in unique_files:
+            full = cwd_for_read / fpath if not Path(fpath).is_absolute() else Path(fpath)
+            if not full.exists() or not full.is_file():
+                continue
+            try:
+                content = full.read_text(encoding="utf-8")[:_MAX_FILE_CHARS]
+                block = f"### {fpath}\n```\n{content}\n```"
+                if total_chars + len(block) > _MAX_TOTAL_CHARS:
+                    break
+                file_contents_parts.append(block)
+                total_chars += len(block)
+            except Exception:
+                continue
+
+        if file_contents_parts:
+            files_block = (
+                "## Current file contents (pre-loaded — do NOT re-read these):\n\n"
+                + "\n\n".join(file_contents_parts)
+            )
+        else:
+            files_list = "\n".join(f"- {f}" for f in unique_files)
+            files_block = f"## Files to read and fix:\n{files_list}"
 
         prompt = (
             f"{ctx_block}"
@@ -87,20 +117,19 @@ def make_fix_loop_node(
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
             f"- Use RELATIVE paths (e.g. src/app/foo.ts) for all file operations.\n"
-            f"- Do NOT re-read config files. Go straight to the listed files.\n\n"
+            f"- Do NOT re-read files already shown below.\n\n"
             f"Story context:\n{story_content}\n\n"
             f"Acceptance Criteria:\n{ac_text}\n\n"
             f"Issues to fix:\n{issues_text}\n\n"
-            f"## Files to read and fix:\n{files_list}\n\n"
+            f"{files_block}\n\n"
             f"Instructions:\n"
-            f"1. Read the files listed above to understand the current state.\n"
-            f"2. Fix ONLY the listed issues — do NOT rewrite unrelated files.\n"
-            f"3. If build/tests pass now, your fixes must NOT break them.\n"
-            f"4. Preserve all working logic — only change what is needed.\n"
-            f"5. Cross-check class names, imports, and identifiers across files.\n"
-            f"6. After fixing, run the verification commands above.\n"
-            f"7. If any command fails, fix the issues and re-run until all pass.\n"
-            f"8. Keep your final summary brief (under 500 words)."
+            f"1. Fix ONLY the listed issues — do NOT rewrite unrelated files.\n"
+            f"2. If build/tests pass now, your fixes must NOT break them.\n"
+            f"3. Preserve all working logic — only change what is needed.\n"
+            f"4. Cross-check class names, imports, and identifiers across files.\n"
+            f"5. After fixing, run the verification commands above.\n"
+            f"6. If any command fails, fix the issues and re-run until all pass.\n"
+            f"7. Keep your final summary brief (under 500 words)."
         )
 
         test_failure = state.get("test_failure_output") or ""
@@ -134,7 +163,7 @@ def make_fix_loop_node(
             system_prompt=system_prompt,
             agent_id="developer",
             cwd=_resolve_cwd(settings, state),
-            max_turns=10,
+            max_turns=20,
             on_event=on_event,
         )
 
