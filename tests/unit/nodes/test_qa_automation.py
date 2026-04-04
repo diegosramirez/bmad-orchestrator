@@ -152,3 +152,24 @@ def test_qa_automation_injects_example_test_file(
     assert "Reference" in prompt
     assert "vitest" in prompt
     assert "EXACT same test framework" in prompt
+
+
+@patch("bmad_orchestrator.nodes.qa_automation._run_all_checks", return_value=None)
+@patch("bmad_orchestrator.nodes.qa_automation.find_example_test_file")
+def test_qa_automation_prefers_project_test_over_dev_written(
+    mock_find, mock_checks, settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """QA should prefer the project's own test files over dev-written specs."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+    mock_find.return_value = "### src/app/app.spec.ts\n```\ndescribe('App', () => {});\n```"
+    mock_agent_service.run_agent.return_value = AgentResult()
+    node = make_qa_automation_node(mock_agent_service, non_dry)
+    node(make_state(
+        test_commands=["npm test"],
+        touched_files=["src/counter/counter.component.ts"],
+    ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Reference" in prompt
+    assert "app.spec.ts" in prompt
+    mock_find.assert_called_once()

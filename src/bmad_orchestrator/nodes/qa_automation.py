@@ -47,9 +47,18 @@ def make_qa_automation_node(
         impl_files_list = "\n".join(f"- {f}" for f in dict.fromkeys(touched_files))
         test_cmds_text = "\n".join(f"  {cmd}" for cmd in test_commands)
 
-        # Find an existing test file as a reference for the correct patterns
+        # Find an existing test file as a reference for the correct patterns.
+        # Prefer the project's OWN pre-existing test files (they use the correct
+        # framework globals/imports configured in the project) over dev-written
+        # specs (which may have guessed wrong).
         cwd = _resolve_cwd(settings, state)
-        example_test = find_example_test_file(cwd) if not settings.dry_run else ""
+        example_test = ""
+        if not settings.dry_run:
+            example_test = find_example_test_file(cwd)
+        if example_test:
+            logger.info("qa_reference_test_found", cwd=str(cwd), length=len(example_test))
+        else:
+            logger.warning("qa_reference_test_not_found", cwd=str(cwd))
         example_block = (
             f"## Reference — existing test file from this project:\n"
             f"Follow the EXACT same test framework, imports, and patterns "
@@ -70,6 +79,9 @@ def make_qa_automation_node(
             f"specific details not in the context.\n"
             f"- Use the EXACT test framework and patterns shown in the reference "
             f"test file above. Do NOT use a different test library or syntax.\n"
+            f"- Before writing mocks or spies, read the project's test config "
+            f"file (e.g. vitest.config.ts, jest.config.ts, karma.conf.js, "
+            f"conftest.py) to confirm which mocking API is available.\n"
             f"- Do NOT explore the project to discover the test framework.\n\n"
             f"Story:\n{story_content}\n\n"
             f"Acceptance Criteria:\n{ac_text}\n\n"

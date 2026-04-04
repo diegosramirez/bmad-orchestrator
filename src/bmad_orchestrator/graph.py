@@ -521,6 +521,7 @@ def build_graph(
         {
             "dev_story_fix_loop": "dev_story_fix_loop",
             "e2e_automation": "e2e_automation",
+            "e2e_skip": "commit_and_push",
             "fail_with_state": "fail_with_state",
         },
     )

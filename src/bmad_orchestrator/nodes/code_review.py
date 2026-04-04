@@ -263,6 +263,30 @@ def make_review_router(
             if loop_count < settings.max_review_loops:
                 return "dev_story_fix_loop"
             return "fail_with_state"
+        # Skip E2E if too much time has elapsed (Playwright install + test
+        # can easily consume 10+ minutes, causing 30m timeout).
+        _E2E_MIN_REMAINING_S = 900  # need at least 15 min for E2E + commit
+        execution_log = state.get("execution_log") or []
+        if execution_log and settings.execution_timeout_minutes > 0:
+            try:
+                first_ts = execution_log[0].get("timestamp", "") if isinstance(
+                    execution_log[0], dict
+                ) else ""
+                if first_ts:
+                    start = datetime.fromisoformat(first_ts)
+                    elapsed = (datetime.now(UTC) - start).total_seconds()
+                    budget = settings.execution_timeout_minutes * 60
+                    remaining = budget - elapsed
+                    if remaining < _E2E_MIN_REMAINING_S:
+                        logger.warning(
+                            "skipping_e2e_insufficient_time",
+                            remaining_s=remaining,
+                            min_required_s=_E2E_MIN_REMAINING_S,
+                        )
+                        return "e2e_skip"
+            except (ValueError, TypeError, KeyError):
+                pass
+
         return "e2e_automation"
 
     return route
