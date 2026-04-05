@@ -11,6 +11,7 @@ import {
   TextArea,
 } from '@forge/react';
 import { requestJira } from '@forge/bridge';
+import { useBmadBranch } from '../hooks/useBmadBranch';
 import {
   BMAD_COMMENT_ROW_XCSS,
   BMAD_COMMENT_SELECT_CELL_XCSS,
@@ -25,11 +26,18 @@ const MODE_OPTIONS = [
   { label: 'Retry', value: 'retry' },
 ];
 
+const NO_BRANCH_WARNING_TITLE = 'BMAD branch not available';
+const NO_BRANCH_WARNING_BODY =
+  'You cannot send a message because this issue has no BMAD branch set. ' +
+  'Run "Run development" from the BMAD Story panel first so the branch is saved; ' +
+  'then you can use Refine or Retry.';
+
 /**
  * Posts a Jira comment starting with /bmad (refine or retry) for Automation + webhook.
  * Guidance is plain text; buildBmadCommentLine wraps it in double quotes in the command.
  */
 export function BmadCommentPanel({ issueKey }) {
+  const { hasBranch, loading: branchLoading, error: branchError } = useBmadBranch(issueKey);
   const [mode, setMode] = useState('refine');
   /** Latest guidance without re-rendering on each keystroke (uncontrolled TextArea). */
   const guidanceRef = useRef('');
@@ -48,6 +56,8 @@ export function BmadCommentPanel({ issueKey }) {
     guidanceRef.current = value ?? '';
   };
 
+  const sendBlocked = branchLoading || !!branchError || !hasBranch;
+
   const postComment = async () => {
     setBanner(null);
     if (!issueKey) {
@@ -55,6 +65,15 @@ export function BmadCommentPanel({ issueKey }) {
         appearance: 'error',
         title: 'No issue',
         body: 'Open an issue to post a BMAD comment.',
+      });
+      return;
+    }
+
+    if (!hasBranch) {
+      setBanner({
+        appearance: 'warning',
+        title: NO_BRANCH_WARNING_TITLE,
+        body: NO_BRANCH_WARNING_BODY,
       });
       return;
     }
@@ -112,6 +131,18 @@ export function BmadCommentPanel({ issueKey }) {
     <Stack space="space.150">
       <Text>Action</Text>
 
+      {branchError && (
+        <SectionMessage appearance="error" title="Could not load BMAD branch">
+          <Text>{branchError}</Text>
+        </SectionMessage>
+      )}
+
+      {!branchLoading && !branchError && !hasBranch && (
+        <SectionMessage appearance="warning" title={NO_BRANCH_WARNING_TITLE}>
+          <Text>{NO_BRANCH_WARNING_BODY}</Text>
+        </SectionMessage>
+      )}
+
       <Box xcss={BMAD_COMMENT_ROW_XCSS}>
         <Inline space="space.100" alignBlock="stretch" grow="fill">
           <Box xcss={BMAD_COMMENT_SELECT_CELL_XCSS}>
@@ -146,6 +177,7 @@ export function BmadCommentPanel({ issueKey }) {
                 isLoading
                 spacing="default"
                 xcss={BMAD_COMMENT_SEND_BUTTON_XCSS}
+                isDisabled={sendBlocked}
               >
                 Sending…
               </LoadingButton>
@@ -155,6 +187,7 @@ export function BmadCommentPanel({ issueKey }) {
                 spacing="default"
                 onClick={postComment}
                 xcss={BMAD_COMMENT_SEND_BUTTON_XCSS}
+                isDisabled={sendBlocked}
               >
                 Send
               </Button>

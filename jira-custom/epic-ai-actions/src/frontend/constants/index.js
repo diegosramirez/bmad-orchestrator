@@ -1,5 +1,11 @@
 import { xcss } from '@forge/react';
 
+/**
+ * Jira issue field for BMAD git branch (same as orchestrator webhook + JiraService).
+ * Refine/retry need this value; it is usually set after a development run.
+ */
+export const BMAD_BRANCH_CUSTOM_FIELD = 'customfield_10145';
+
 /** Human-readable labels for modals and fallbacks. */
 export const ACTION_LABELS = {
   discovery: 'Run Discovery',
