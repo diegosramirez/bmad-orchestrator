@@ -19,6 +19,7 @@ from bmad_orchestrator.webhook.discovery import (
     team_id_from_issue_key,
 )
 from bmad_orchestrator.webhook.epic_architect import build_epic_architect_workflow_inputs
+from bmad_orchestrator.webhook.github_active_run import has_active_bmad_run_for_prompt
 from bmad_orchestrator.webhook.jira_payload import parse_jira_webhook
 from bmad_orchestrator.webhook.stories import build_stories_workflow_inputs
 
@@ -74,6 +75,26 @@ def _truncate_github_body(text: str | None) -> str:
     if len(text) <= _GITHUB_ERROR_BODY_MAX:
         return text
     return text[:_GITHUB_ERROR_BODY_MAX] + "…(truncated)"
+
+
+FORGE_RUN_IN_PROGRESS_MESSAGE = (
+    "A BMAD orchestrator run is already in progress for this issue. "
+    "Wait for it to finish before starting another."
+)
+
+
+def _forge_run_in_progress_response(issue_key: str) -> JSONResponse:
+    """409: active ``bmad-start-run.yml`` run already uses this Jira issue as ``prompt``."""
+    return JSONResponse(
+        content={
+            "ok": False,
+            "run_started": False,
+            "code": "run_in_progress",
+            "issue_key": issue_key,
+            "message": FORGE_RUN_IN_PROGRESS_MESSAGE,
+        },
+        status_code=409,
+    )
 
 
 async def _dispatch_bmad_workflow(inputs: dict[str, str]) -> tuple[bool, int | None, str | None]:
@@ -207,6 +228,9 @@ async def discovery_run(request: Request):
             status_code=400,
         )
 
+    if await has_active_bmad_run_for_prompt(issue_key):
+        return _forge_run_in_progress_response(issue_key)
+
     team_override = (body.get("team_id") or "").strip()
     team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)
 
@@ -309,6 +333,9 @@ async def architect_run(request: Request):
             status_code=400,
         )
 
+    if await has_active_bmad_run_for_prompt(issue_key):
+        return _forge_run_in_progress_response(issue_key)
+
     team_override = (body.get("team_id") or "").strip()
     team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)
 
@@ -409,6 +436,9 @@ async def stories_run(request: Request):
             status_code=400,
         )
 
+    if await has_active_bmad_run_for_prompt(issue_key):
+        return _forge_run_in_progress_response(issue_key)
+
     team_override = (body.get("team_id") or "").strip()
     team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)
 
@@ -508,6 +538,9 @@ async def dev_run(request: Request):
             },
             status_code=400,
         )
+
+    if await has_active_bmad_run_for_prompt(issue_key):
+        return _forge_run_in_progress_response(issue_key)
 
     team_override = (body.get("team_id") or "").strip()
     team_id = team_override or team_id_from_issue_key(issue_key, default_team_id=DEFAULT_TEAM_ID)

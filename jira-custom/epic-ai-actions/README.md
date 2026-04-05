@@ -26,7 +26,7 @@ On the machine running `webhook_server.py`, set:
 | Variable | Purpose |
 |----------|---------|
 | `BMAD_GITHUB_REPO` | Repo that contains `.github/workflows/bmad-start-run.yml` |
-| `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch workflows) |
+| `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch) and read access to Actions (list workflow runs; avoids duplicate dispatches for the same Jira issue from the Forge panel) |
 | `BMAD_GITHUB_BASE_BRANCH` | Branch of **bmad-orchestrator** used as `workflow_dispatch` `ref` |
 | `DEFAULT_TARGET_REPO` | Fallback `owner/repo` when the issue has no **Target repo** custom field (`customfield_10112`) or the Forge resolver cannot read it |
 | `BMAD_FORGE_WEBHOOK_SECRET` | Shared secret for Forge (preferred) |
@@ -40,6 +40,8 @@ Endpoints:
 - Story development: `POST /bmad/dev-run` — same shape (Story key as `issue_key`; `execution_mode` `inline` with epic/story-creation nodes skipped)
 
 Header (all endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
+
+**Duplicate run guard:** Before dispatching, the server checks GitHub for an active `bmad-start-run.yml` run whose workflow input `prompt` matches the current `issue_key`. If one exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
 
 ## Configure this Forge app
 

@@ -48,6 +48,14 @@ export function useEpicAiPanel() {
         title: config.successTitle,
         body: result.message || DEFAULT_SUCCESS_BODY,
       });
+    } else if (result?.code === 'run_in_progress') {
+      setBanner({
+        appearance: 'info',
+        title: 'Run in progress',
+        body:
+          result?.message ||
+          'A BMAD orchestrator run is already in progress for this issue. Wait for it to finish.',
+      });
     } else {
       setBanner({
         appearance: 'error',
