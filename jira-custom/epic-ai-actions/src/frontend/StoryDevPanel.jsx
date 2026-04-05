@@ -109,18 +109,20 @@ export function StoryDevPanel() {
   return (
     <Fragment>
       <Stack space="space.200">
-        <Box
+        {/* <Box
           xcss={HEADER_BOX_STYLES}
           borderBlockEndWidth="border.width"
           borderBlockEndColor="color.border"
           paddingBlockEnd="space.100"
         >
           <Heading as="h2">🚀 AI Actions Panel</Heading>
-        </Box>
+        </Box> */}
 
+      <Box xcss={xcss({ marginBlockStart: 'space.200' })}>
         <Text>
           <Text as="strong">Story:</Text> {issueKey}
         </Text>
+      </Box>
 
         {banner && (
           <SectionMessage appearance={banner.appearance} title={banner.title}>
@@ -138,6 +140,9 @@ export function StoryDevPanel() {
             onPress={() => setConfirmOpen(true)}
           />
         </Inline>
+
+
+
       </Stack>
 
       <ConfirmActionModal

@@ -33,19 +33,21 @@ export function App() {
   return (
     <Fragment>
       <Stack space="space.200">
-        <Box
+        {/* <Box
           xcss={HEADER_BOX_STYLES}
           borderBlockEndWidth="border.width"
           borderBlockEndColor="color.border"
           paddingBlockEnd="space.100"
         >
           <Heading as="h2">🚀 AI Actions Panel</Heading>
-        </Box>
+        </Box> */}
 
         {issueKey && (
-          <Text>
-            <Text as="strong">Epic:</Text> {issueKey}
-          </Text>
+          <Box xcss={xcss({ marginBlockStart: 'space.200' })}>
+            <Text paddingBlockEnd="space.100">
+              <Text as="strong">Epic:</Text> {issueKey}
+            </Text>
+          </Box>
         )}
 
         {banner && (
@@ -67,6 +69,11 @@ export function App() {
             />
           ))}
         </Inline>
+
+
+      
+
+        
       </Stack>
 
       <ConfirmActionModal
