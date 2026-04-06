@@ -93,4 +93,12 @@ resolver.define('runStories', async (req) => {
   return postBmadEndpoint('/bmad/stories-run', issueKey, 'Stories request failed');
 });
 
+resolver.define('runDevelopment', async (req) => {
+  const issueKey = req.payload?.issueKey;
+  if (!issueKey || typeof issueKey !== 'string') {
+    return { ok: false, message: 'Missing issueKey' };
+  }
+  return postBmadEndpoint('/bmad/dev-run', issueKey, 'Run development request failed');
+});
+
 export const handler = resolver.getDefinitions();

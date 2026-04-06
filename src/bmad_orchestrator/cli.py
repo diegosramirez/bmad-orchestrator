@@ -256,61 +256,54 @@ def _print_token_report(claude: object) -> None:
     console.print(table)
 
 
-def _token_report_as_text(claude: object) -> str:
-    """Return token usage report as plain text (for Jira comment). Empty string if no data."""
+def _md_table_cell(value: str | int | float) -> str:
+    """Sanitize cell text for GFM pipe tables (Jira ADF via ``markdown_to_adf``)."""
+    return str(value).replace("|", "·").replace("\n", " ").strip()
+
+
+def _token_report_as_jira_markdown(claude: object) -> str:
+    """Return token usage as Markdown with GFM table for Jira Cloud ADF comments."""
     report = claude.get_usage_report()  # type: ignore[attr-defined]
     if not report["rows"]:
         return ""
 
-    mixed = report["models_mixed"]
-    title = (
-        "Token Usage"
-        if mixed
-        else f"Token Usage  |  Model: {report['model']}"
-    )
-    col_step = "Step"
-    col_in = "Input"
-    col_out = "Output"
-    col_tot = "Total"
-    col_calls = "Calls"
-    col_time = "Time"
+    mixed: bool = report["models_mixed"]
+    lines: list[str] = ["## Token Usage", ""]
+    if not mixed:
+        lines.append(f"**Model:** {_md_table_cell(report['model'])}")
+        lines.append("")
+
     if mixed:
-        header = (
-            f"{col_step:30} {'Model':20} {col_in:>8}"
-            f" {col_out:>8} {col_tot:>8} {col_calls:>6} {col_time:>8}"
-        )
+        lines.append("| Step | Model | Input | Output | Total | Calls | Time |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- |")
     else:
-        header = f"{col_step:30} {col_in:>8} {col_out:>8} {col_tot:>8} {col_calls:>6} {col_time:>8}"
-    sep = "-" * len(header)
-    lines = [title, "", header, sep]
+        lines.append("| Step | Input | Output | Total | Calls | Time |")
+        lines.append("| --- | --- | --- | --- | --- | --- |")
+
     for row in report["rows"]:
+        a = _md_table_cell(row["agent"])
         if mixed:
-            line = (
-                f"{row['agent']:30} {row['model']:20} "
-                f"{row['input_tokens']:>8,} {row['output_tokens']:>8,} "
-                f"{row['total_tokens']:>8,} {row['calls']:>6} {row['duration_s']:>7.1f}s"
+            m = _md_table_cell(row["model"])
+            lines.append(
+                f"| {a} | {m} | {row['input_tokens']:,} | {row['output_tokens']:,} | "
+                f"{row['total_tokens']:,} | {row['calls']} | {row['duration_s']:.1f}s |"
             )
         else:
-            line = (
-                f"{row['agent']:30} "
-                f"{row['input_tokens']:>8,} {row['output_tokens']:>8,} "
-                f"{row['total_tokens']:>8,} {row['calls']:>6} {row['duration_s']:>7.1f}s"
+            lines.append(
+                f"| {a} | {row['input_tokens']:,} | {row['output_tokens']:,} | "
+                f"{row['total_tokens']:,} | {row['calls']} | {row['duration_s']:.1f}s |"
             )
-        lines.append(line)
-    lines.append(sep)
+
     if mixed:
-        footer = (
-            f"{'Total':30} {'':20} "
-            f"{report['total_input']:>8,} {report['total_output']:>8,} {report['total']:>8,} "
-            f"{report['total_calls']:>6} {report['total_duration_s']:>7.2f}s"
+        lines.append(
+            f"| **Total** | | {report['total_input']:,} | {report['total_output']:,} | "
+            f"{report['total']:,} | {report['total_calls']} | {report['total_duration_s']:.2f}s |"
         )
     else:
-        footer = (
-            f"{'Total':30} "
-            f"{report['total_input']:>8,} {report['total_output']:>8,} {report['total']:>8,} "
-            f"{report['total_calls']:>6} {report['total_duration_s']:>7.2f}s"
+        lines.append(
+            f"| **Total** | {report['total_input']:,} | {report['total_output']:,} | "
+            f"{report['total']:,} | {report['total_calls']} | {report['total_duration_s']:.2f}s |"
         )
-    lines.append(footer)
     return "\n".join(lines)
 
 
@@ -322,13 +315,12 @@ def _post_token_report_to_jira(
     """Post token usage report as a new Jira comment. No-op if notify_key is falsy or dry_run."""
     if not notify_key or getattr(settings, "dry_run", True):
         return
-    body_text = _token_report_as_text(claude)
-    if not body_text.strip():
+    body = _token_report_as_jira_markdown(claude)
+    if not body.strip():
         return
     from bmad_orchestrator.services.service_factory import create_jira_service
 
     jira = create_jira_service(settings)  # type: ignore[arg-type]
-    body = "h2. Token Usage\n\n{code}\n" + body_text + "\n{code}"
     jira.add_comment(notify_key, body)
 
 

@@ -1,5 +1,8 @@
 name: BMAD Orchestrator — Start Run
 
+# Shown in Actions UI; lets the webhook match runs when the REST API omits workflow_dispatch inputs.
+run-name: "BMAD Orchestrator ${{ inputs.prompt }} — ${{ inputs.execution_mode }} — Start Run"
+
 on:
   workflow_dispatch:
     inputs:

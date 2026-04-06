@@ -1,48 +1,62 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Box,
   Button,
   Inline,
   LoadingButton,
   SectionMessage,
+  Select,
   Stack,
   Text,
   TextArea,
 } from '@forge/react';
 import { requestJira } from '@forge/bridge';
-import { BMAD_SEND_BUTTON_STRETCH_XCSS, BMAD_SEND_ROW_XCSS } from '../constants';
+import { useBmadBranch } from '../hooks/useBmadBranch';
+import {
+  BMAD_COMMENT_ROW_XCSS,
+  BMAD_COMMENT_SELECT_CELL_XCSS,
+  BMAD_COMMENT_SEND_BUTTON_XCSS,
+  BMAD_COMMENT_SEND_CELL_XCSS,
+  BMAD_COMMENT_TEXTAREA_CELL_XCSS,
+} from '../constants';
 import { adfParagraph, buildBmadCommentLine } from '../utils/bmadComment';
 
-/**
- * Normalize TextArea onChange: UI Kit may pass a string or an event-like object.
- */
-function guidanceFromChange(raw) {
-  if (typeof raw === 'string') {
-    return raw;
-  }
-  if (raw && typeof raw === 'object') {
-    const t = raw.target;
-    if (t != null && typeof t === 'object' && typeof t.value === 'string') {
-      return t.value;
-    }
-    if (typeof raw.value === 'string') {
-      return raw.value;
-    }
-  }
-  return '';
-}
+const MODE_OPTIONS = [
+  { label: 'Refine', value: 'refine' },
+  { label: 'Retry', value: 'retry' },
+];
+
+const NO_BRANCH_WARNING_TITLE = 'BMAD branch not available';
+const NO_BRANCH_WARNING_BODY =
+  'You cannot send a message because this issue has no BMAD branch set. ' +
+  'Run "Run development" from the BMAD Story panel first so the branch is saved; ' +
+  'then you can use Refine or Retry.';
 
 /**
  * Posts a Jira comment starting with /bmad (refine or retry) for Automation + webhook.
  * Guidance is plain text; buildBmadCommentLine wraps it in double quotes in the command.
  */
 export function BmadCommentPanel({ issueKey }) {
+  const { hasBranch, loading: branchLoading, error: branchError } = useBmadBranch(issueKey);
   const [mode, setMode] = useState('refine');
-  const [guidance, setGuidance] = useState('');
+  /** Latest guidance without re-rendering on each keystroke (uncontrolled TextArea). */
+  const guidanceRef = useRef('');
+  /** Bump to remount TextArea and clear it after a successful post (defaultValue only applies on mount). */
+  const [guidanceFieldKey, setGuidanceFieldKey] = useState(0);
   const [banner, setBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const guidanceText = typeof guidance === 'string' ? guidance : '';
+  const selectedModeOption = MODE_OPTIONS.find((o) => o.value === mode) ?? MODE_OPTIONS[0];
+
+  const handleTextAreaChange = (raw) => {
+    const value =
+      typeof raw === 'string'
+        ? raw
+        : raw?.target?.value ?? raw?.currentTarget?.value ?? '';
+    guidanceRef.current = value ?? '';
+  };
+
+  const sendBlocked = branchLoading || !!branchError || !hasBranch;
 
   const postComment = async () => {
     setBanner(null);
@@ -55,6 +69,17 @@ export function BmadCommentPanel({ issueKey }) {
       return;
     }
 
+    if (!hasBranch) {
+      setBanner({
+        appearance: 'warning',
+        title: NO_BRANCH_WARNING_TITLE,
+        body: NO_BRANCH_WARNING_BODY,
+      });
+      return;
+    }
+
+    const guidanceText =
+      typeof guidanceRef.current === 'string' ? guidanceRef.current : '';
     const line = buildBmadCommentLine(mode, guidanceText);
     setSubmitting(true);
     try {
@@ -78,9 +103,10 @@ export function BmadCommentPanel({ issueKey }) {
           'Failed to add comment';
         throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       }
-      setGuidance('');
+      guidanceRef.current = '';
+      setGuidanceFieldKey((k) => k + 1);
       setBanner({
-        appearance: 'confirmation',
+        appearance: 'success',
         title: 'Comment added',
         body: 'Jira Automation should pick up the /bmad command and run your workflow.',
       });
@@ -95,50 +121,79 @@ export function BmadCommentPanel({ issueKey }) {
     }
   };
 
+  const onModeChange = (opt) => {
+    if (opt && !Array.isArray(opt) && typeof opt === 'object' && opt.value != null) {
+      setMode(opt.value);
+    }
+  };
+
   return (
     <Stack space="space.150">
       <Text>Action</Text>
-      <Inline space="space.100">
-        <Button
-          appearance={mode === 'refine' ? 'primary' : 'subtle'}
-          onClick={() => setMode('refine')}
-        >
-          Refine
-        </Button>
-        <Button
-          appearance={mode === 'retry' ? 'primary' : 'subtle'}
-          onClick={() => setMode('retry')}
-        >
-          Retry
-        </Button>
-      </Inline>
 
-      <TextArea
-        label="Guidance (optional)"
-        name="bmad-guidance"
-        placeholder="Add context for this action (optional)"
-        value={guidanceText}
-        onChange={(raw) => setGuidance(guidanceFromChange(raw))}
-      />
+      {branchError && (
+        <SectionMessage appearance="error" title="Could not load BMAD branch">
+          <Text>{branchError}</Text>
+        </SectionMessage>
+      )}
 
-      <Box xcss={BMAD_SEND_ROW_XCSS}>
-        {submitting ? (
-          <LoadingButton
-            appearance="primary"
-            isLoading
-            xcss={BMAD_SEND_BUTTON_STRETCH_XCSS}
-          >
-            Sending…
-          </LoadingButton>
-        ) : (
-          <Button
-            appearance="primary"
-            onClick={postComment}
-            xcss={BMAD_SEND_BUTTON_STRETCH_XCSS}
-          >
-            Send
-          </Button>
-        )}
+      {!branchLoading && !branchError && !hasBranch && (
+        <SectionMessage appearance="warning" title={NO_BRANCH_WARNING_TITLE}>
+          <Text>{NO_BRANCH_WARNING_BODY}</Text>
+        </SectionMessage>
+      )}
+
+      <Box xcss={BMAD_COMMENT_ROW_XCSS}>
+        <Inline space="space.100" alignBlock="stretch" grow="fill">
+          <Box xcss={BMAD_COMMENT_SELECT_CELL_XCSS}>
+            <Select
+              name="bmad-mode"
+              appearance="default"
+              spacing="default"
+              options={MODE_OPTIONS}
+              value={selectedModeOption}
+              onChange={onModeChange}
+              placeholder="Action"
+            />
+          </Box>
+
+          <Box xcss={BMAD_COMMENT_TEXTAREA_CELL_XCSS}>
+            <TextArea
+              key={guidanceFieldKey}
+              label="Guidance (optional)"
+              name="bmad-guidance"
+              placeholder="Add context for this action (optional)"
+              defaultValue=""
+              onChange={handleTextAreaChange}
+              isCompact
+              minimumRows={2}
+            />
+          </Box>
+
+          <Box xcss={BMAD_COMMENT_SEND_CELL_XCSS}>
+            {submitting ? (
+              <LoadingButton
+                appearance="primary"
+                isLoading
+                spacing="default"
+                xcss={BMAD_COMMENT_SEND_BUTTON_XCSS}
+                isDisabled={sendBlocked}
+              >
+                Sending…
+              </LoadingButton>
+            ) : (
+              <Button
+                appearance="primary"
+                spacing="default"
+                onClick={postComment}
+                xcss={BMAD_COMMENT_SEND_BUTTON_XCSS}
+                isDisabled={sendBlocked}
+              >
+                Send
+              </Button>
+            )}
+          </Box>
+        </Inline>
       </Box>
 
       {banner && (

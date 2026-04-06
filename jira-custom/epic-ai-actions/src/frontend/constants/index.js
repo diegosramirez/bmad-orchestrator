@@ -1,5 +1,11 @@
 import { xcss } from '@forge/react';
 
+/**
+ * Jira issue field for BMAD git branch (same as orchestrator webhook + JiraService).
+ * Refine/retry need this value; it is usually set after a development run.
+ */
+export const BMAD_BRANCH_CUSTOM_FIELD = 'customfield_10145';
+
 /** Human-readable labels for modals and fallbacks. */
 export const ACTION_LABELS = {
   discovery: 'Run Discovery',
@@ -39,26 +45,55 @@ export const AGENT_ACTIONS = [
   { id: 'stories', label: 'Generate Stories', iconGlyph: 'child-issues' },
 ];
 
-/** Selected agent: custom blue (Forge Button primary does not match this hex). */
-export const SELECTED_AGENT_XCSS = xcss({
-  backgroundColor: '#0d6efd',
-  borderRadius: 'border.radius',
-  paddingBlock: 'space.050',
-  paddingInline: 'space.150',
-  ':hover': {
-    backgroundColor: '#0069d9',
-  },
-});
-
-/** Full panel width so Send matches the text field above. */
-export const BMAD_SEND_ROW_XCSS = xcss({
+/** Full-width row for BMAD comment (select + textarea + send). */
+export const BMAD_COMMENT_ROW_XCSS = xcss({
   width: '100%',
   maxWidth: '100%',
 });
 
 /**
- * Stretch primary Button / LoadingButton to panel width (Forge theme blue via appearance).
+ * Textarea column: grows so the field uses remaining horizontal space in the row.
+ * @see Inline width control — child needs flexGrow for fill layouts.
  */
-export const BMAD_SEND_BUTTON_STRETCH_XCSS = xcss({
+export const BMAD_COMMENT_TEXTAREA_CELL_XCSS = xcss({
+  display: 'block',
+  flexGrow: 1,
+  minWidth: '0',
   width: '100%',
+  alignSelf: 'stretch',
+});
+
+/**
+ * Select column: stretches to row height (driven by TextArea); centers the control vertically.
+ */
+export const BMAD_COMMENT_SELECT_CELL_XCSS = xcss({
+  flexShrink: 0,
+  width: 'auto',
+  minWidth: '100px',
+  maxWidth: '100%',
+  alignSelf: 'stretch',
+  display: 'flex',
+  alignItems: 'center',
+});
+
+/**
+ * Send column: stretches to row height; centers the button; token padding (not raw px).
+ */
+export const BMAD_COMMENT_SEND_CELL_XCSS = xcss({
+  flexShrink: 0,
+  alignSelf: 'stretch',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 'space.050',
+});
+
+/**
+ * Forge Button often ignores height — use paddingBlock tokens to enlarge the control.
+ */
+export const BMAD_COMMENT_SEND_BUTTON_XCSS = xcss({
+  alignSelf: 'stretch',
+  paddingBlock: 'space.200',
+  paddingInline: 'space.200',
 });

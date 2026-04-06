@@ -1,11 +1,18 @@
 # epic-ai-actions (Jira issue panel)
 
-Forge UI Kit app: **AI Actions** panel on Jira issues (including Epics). Dispatches the BMAD orchestrator via your self-hosted FastAPI webhook, which triggers GitHub Actions.
+Forge UI Kit app: issue panels on Jira (Epic actions, Story development, comment helpers). Dispatches the BMAD orchestrator via your self-hosted FastAPI webhook, which triggers GitHub Actions.
 
-| Button | Orchestrator mode | Workflow |
-|--------|-------------------|----------|
+| Panel | Scope | What it does |
+|-------|--------|----------------|
+| **BMAD Epic** | Epic issues | Run Discovery, Design Architect, Generate Stories |
+| **BMAD Story** | Story issues | Full dev pipeline (detect → code → QA → review → E2E → commit → PR), skipping epic/story prep |
+| **AI Comments** | Story issues | Post `/bmad refine` or `/bmad retry` comments |
+
+| Button (Epic panel) | Orchestrator mode | Workflow |
+|---------------------|-------------------|----------|
 | **Run Discovery** | `discovery` | `check_epic_state` + `create_or_correct_epic`, then END |
 | **Design Architect** | `epic_architect` | `epic_architect` only (appends `# Architecture` to the Epic description), then END |
+| **Generate Stories** | `stories_breakdown` | `create_story_tasks` + `party_mode_refinement`, then END |
 
 ## Requirements
 
@@ -19,7 +26,7 @@ On the machine running `webhook_server.py`, set:
 | Variable | Purpose |
 |----------|---------|
 | `BMAD_GITHUB_REPO` | Repo that contains `.github/workflows/bmad-start-run.yml` |
-| `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch workflows) |
+| `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch) and read access to Actions (list workflow runs; avoids duplicate dispatches for the same Jira issue from the Forge panel) |
 | `BMAD_GITHUB_BASE_BRANCH` | Branch of **bmad-orchestrator** used as `workflow_dispatch` `ref` |
 | `DEFAULT_TARGET_REPO` | Fallback `owner/repo` when the issue has no **Target repo** custom field (`customfield_10112`) or the Forge resolver cannot read it |
 | `BMAD_FORGE_WEBHOOK_SECRET` | Shared secret for Forge (preferred) |
@@ -30,8 +37,11 @@ Endpoints:
 - Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123","target_repo":"optional"}` (the Forge resolver reads `customfield_10112` and sends `target_repo` when set)
 - Epic Architect: `POST /bmad/architect-run` — same shape
 - Stories: `POST /bmad/stories-run` — same shape
+- Story development: `POST /bmad/dev-run` — same shape (Story key as `issue_key`; `execution_mode` `inline` with epic/story-creation nodes skipped)
 
-Header (both endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
+Header (all endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
+
+**Duplicate run guard:** Before dispatching, the server checks GitHub for an active `bmad-start-run.yml` run for the current `issue_key`. It matches `inputs.prompt` when the GitHub API returns workflow inputs; otherwise it matches the run’s **`display_title`** (the workflow sets `run-name` to `BMAD Orchestrator {prompt} — {execution_mode} — Start Run`, so the Jira key appears in the title). If a match exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
 
 ## Configure this Forge app
 
@@ -58,7 +68,7 @@ forge variables set --environment development BMAD_FORGE_WEBHOOK_SECRET 'your-sh
 
 You may keep using `BMAD_DISCOVERY_WEBHOOK_URL` and `BMAD_DISCOVERY_WEBHOOK_SECRET` instead; the resolver accepts either name (see `src/resolvers/index.js`).
 
-- URL: origin only (no trailing slash, no path; resolvers append `/bmad/discovery-run` or `/bmad/architect-run`).
+- URL: origin only (no trailing slash, no path; resolvers append `/bmad/discovery-run`, `/bmad/architect-run`, `/bmad/stories-run`, or `/bmad/dev-run`).
 - Secret: must match `BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET` on the server.
 
 After changing variables or permissions, redeploy and reinstall if prompted:
@@ -77,9 +87,9 @@ Tunnel hot-reloads UI/resolver changes; manifest changes still require redeploy.
 
 ## UI behaviour
 
-- **Run Discovery** — confirms, then dispatches Discovery for the current issue key (Epic view).
-- **Design Architect** — confirms, then dispatches Epic Architect (requires prior Discovery: Epic description must include the H1 section **`# Discovery`**).
-- **Generate Stories** — not wired in this version (informational message after confirm).
+- **BMAD Epic** — Discovery, Design Architect, and Generate Stories (each confirms before dispatch) when the issue is an Epic.
+- **BMAD Story** — confirms, then dispatches the full dev pipeline for the current Story key when the issue is a Story.
+- **AI Comments** — shortcuts to post `/bmad refine` or `/bmad retry` on Story issues.
 
 ## Support
 
