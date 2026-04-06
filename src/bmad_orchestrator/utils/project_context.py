@@ -35,6 +35,25 @@ _TEST_RUNNER_DEPS: list[tuple[str, str]] = [
     ("playwright", "Playwright"),
 ]
 
+# Mocking API guidance per test runner — injected into project context so agents
+# use the correct API from the start instead of defaulting to Jasmine patterns.
+_TEST_RUNNER_MOCKING: dict[str, str] = {
+    "Vitest": (
+        "Use `vi.fn()`, `vi.spyOn()`, `vi.mock()` from 'vitest'. "
+        "Do NOT use `jasmine.createSpy`, `spyOn` without `vi.`, "
+        "`jasmine.objectContaining`, or `.and.callFake()`. "
+        "Use `expect.objectContaining()` instead of `jasmine.objectContaining()`."
+    ),
+    "Jest": (
+        "Use `jest.fn()`, `jest.spyOn()`, `jest.mock()`. "
+        "Do NOT use `jasmine.createSpy` or `vi.fn()`."
+    ),
+    "Jasmine / Karma": (
+        "Use `jasmine.createSpy()`, `spyOn()`, `.and.returnValue()`, "
+        "`.and.callFake()`. Do NOT use `vi.fn()` or `jest.fn()`."
+    ),
+}
+
 _PYTHON_FRAMEWORK_DEPS: list[tuple[str, str]] = [
     ("django", "Django"),
     ("flask", "Flask"),
@@ -244,6 +263,9 @@ def gather_project_context(cwd: Path) -> str:
         test_runner = _detect_js_test_runner(js_deps)
         if test_runner:
             lines.append(f"\nTest runner: {test_runner}")
+            mocking_guide = _TEST_RUNNER_MOCKING.get(test_runner)
+            if mocking_guide:
+                lines.append(f"CRITICAL — Mocking API: {mocking_guide}")
 
         config_files = [
             f for f in ("angular.json", "tsconfig.json", "package.json", "vite.config.ts",
