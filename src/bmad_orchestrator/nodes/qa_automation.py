@@ -9,7 +9,9 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd, _run_all_checks
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState, QAResult
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.utils.project_context import find_example_test_file
 
 logger = get_logger(__name__)
 
@@ -45,9 +47,29 @@ def make_qa_automation_node(
         impl_files_list = "\n".join(f"- {f}" for f in dict.fromkeys(touched_files))
         test_cmds_text = "\n".join(f"  {cmd}" for cmd in test_commands)
 
+        # Find an existing test file as a reference for the correct patterns.
+        # Prefer the project's OWN pre-existing test files (they use the correct
+        # framework globals/imports configured in the project) over dev-written
+        # specs (which may have guessed wrong).
+        cwd = _resolve_cwd(settings, state)
+        example_test = ""
+        if not settings.dry_run:
+            example_test = find_example_test_file(cwd)
+        if example_test:
+            logger.info("qa_reference_test_found", cwd=str(cwd), length=len(example_test))
+        else:
+            logger.warning("qa_reference_test_not_found", cwd=str(cwd))
+        example_block = (
+            f"## Reference — existing test file from this project:\n"
+            f"Follow the EXACT same test framework, imports, and patterns "
+            f"shown in this file. Do NOT use a different test library.\n\n"
+            f"{example_test}\n\n"
+        ) if example_test else ""
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
+            f"{example_block}"
             f"Write automated tests for the following story.\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
@@ -55,7 +77,11 @@ def make_qa_automation_node(
             f"- Project context is provided above — do NOT re-read package.json, "
             f"angular.json, tsconfig.json, or other config files unless you need "
             f"specific details not in the context.\n"
-            f"- Use the test framework identified in the project context above.\n"
+            f"- Use the EXACT test framework and patterns shown in the reference "
+            f"test file above. Do NOT use a different test library or syntax.\n"
+            f"- Before writing mocks or spies, read the project's test config "
+            f"file (e.g. vitest.config.ts, jest.config.ts, karma.conf.js, "
+            f"conftest.py) to confirm which mocking API is available.\n"
             f"- Do NOT explore the project to discover the test framework.\n\n"
             f"Story:\n{story_content}\n\n"
             f"Acceptance Criteria:\n{ac_text}\n\n"
@@ -81,12 +107,14 @@ def make_qa_automation_node(
             prompt,
             system_prompt=system_prompt,
             agent_id="qa",
-            cwd=_resolve_cwd(settings, state),
-            max_turns=10,
+            cwd=cwd,
+            max_turns=15,
             on_event=on_event,
         )
 
         touched = result.touched_files
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
 
         # The agent already runs test commands as part of its self-verification
         # loop (see prompt instructions above).  We record a summary result
@@ -108,6 +136,7 @@ def make_qa_automation_node(
                 test_commands=state.get("test_commands") or [],
                 lint_commands=[],
                 cwd=cwd,
+                setup_commands=state.get("setup_commands") or [],
             )
             if check_error:
                 logger.warning("qa_tests_failed", error=check_error[:300])
@@ -127,12 +156,16 @@ def make_qa_automation_node(
             "dry_run": settings.dry_run,
         }
 
-        return {
+        base = {
             "qa_results": qa_results,
             "tests_passing": tests_passing,
             "test_failure_output": check_error,
             "execution_log": [log_entry],
             "touched_files": touched,
+            "total_cost_usd": new_cost,
         }
+        if budget_msg:
+            base["failure_state"] = budget_msg
+        return base
 
     return qa_automation

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from bmad_orchestrator.nodes.code_review import (
     ReviewIssueItem,
@@ -279,3 +280,28 @@ def test_fail_with_state_diagnostic_without_test_failures(settings):
     diag = result["failure_diagnostic"]
     assert "Unresolved Issues" in diag
     assert "Test Failures" not in diag
+
+
+def test_router_skips_e2e_when_insufficient_time(settings):
+    """When remaining time < 10 min, skip E2E and go to commit."""
+    # Simulate a log started 25 min ago with a 30 min timeout
+    start_ts = (datetime.now(UTC) - timedelta(minutes=25)).isoformat()
+    router = make_review_router(settings)
+    state = make_state(
+        review_loop_count=0,
+        code_review_issues=[],
+        execution_log=[{"timestamp": start_ts, "node": "check_epic_state", "message": "ok"}],
+    )
+    assert router(state) == "e2e_skip"
+
+
+def test_router_allows_e2e_when_sufficient_time(settings):
+    """When plenty of time remains, route to E2E normally."""
+    start_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    router = make_review_router(settings)
+    state = make_state(
+        review_loop_count=0,
+        code_review_issues=[],
+        execution_log=[{"timestamp": start_ts, "node": "check_epic_state", "message": "ok"}],
+    )
+    assert router(state) == "e2e_automation"

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from bmad_orchestrator.utils.project_context import (
+    find_example_test_file,
     gather_project_context,
     read_dev_guidelines,
     read_manifest_scripts,
@@ -244,3 +245,45 @@ def test_read_dev_guidelines_capped_at_max_chars(tmp_path: Path) -> None:
     (tmp_path / "CLAUDE.md").write_text("x" * 5000, encoding="utf-8")
     result = read_dev_guidelines(tmp_path)
     assert len(result) <= 3200  # slight buffer above 3000 for the header line
+
+
+# ── find_example_test_file ───────────────────────────────────────────────────
+
+
+def test_find_example_test_file_discovers_spec_ts(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.spec.ts").write_text(
+        "import { describe } from 'vitest';\ndescribe('App', () => {});",
+    )
+    result = find_example_test_file(tmp_path)
+    assert "app.spec.ts" in result
+    assert "vitest" in result
+
+
+def test_find_example_test_file_discovers_python_test(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_main.py").write_text(
+        "import pytest\n\ndef test_hello():\n    assert True\n\ndef test_world():\n    pass\n",
+    )
+    result = find_example_test_file(tmp_path)
+    assert "test_main.py" in result
+    assert "pytest" in result
+
+
+def test_find_example_test_file_skips_node_modules(tmp_path: Path) -> None:
+    (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "node_modules" / "pkg" / "foo.spec.ts").write_text("x = 1; test")
+    result = find_example_test_file(tmp_path)
+    assert result == ""
+
+
+def test_find_example_test_file_skips_tiny_files(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "stub.spec.ts").write_text("x")  # < 50 bytes
+    result = find_example_test_file(tmp_path)
+    assert result == ""
+
+
+def test_find_example_test_file_empty_project(tmp_path: Path) -> None:
+    result = find_example_test_file(tmp_path)
+    assert result == ""

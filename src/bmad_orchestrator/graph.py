@@ -32,6 +32,7 @@ from bmad_orchestrator.nodes.epic_architect import make_epic_architect_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
 from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
+from bmad_orchestrator.nodes.validate_environment import make_validate_environment_node
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.services.claude_service import ClaudeService
@@ -58,6 +59,7 @@ NODE_LABELS: dict[str, str] = {
     "create_story_tasks": "Create story tasks",
     "party_mode_refinement": "Party mode refinement",
     "detect_commands": "Detect commands",
+    "validate_environment": "Validate environment",
     "create_github_issue": "Create GitHub Issue",
     "dev_story": "Dev story",
     "qa_automation": "QA automation",
@@ -427,6 +429,7 @@ def build_graph(
     )
     _node("party_mode_refinement", make_party_mode_node(claude, jira, settings, on_event=on_event))
     _node("detect_commands", make_detect_commands_node(claude, settings, on_event=on_event))
+    _node("validate_environment", make_validate_environment_node(settings, on_event=on_event))
     _node(
         "create_github_issue",
         make_create_github_issue_node(github, jira, settings),
@@ -481,18 +484,32 @@ def build_graph(
             return "create_github_issue"
         if settings.execution_mode == "discovery":
             return "discovery_end"
-        return "dev_story"
+        return "validate_environment"
 
     builder.add_conditional_edges(
         "detect_commands",
         _execution_mode_router,
         {
-            "dev_story": "dev_story",
+            "validate_environment": "validate_environment",
             "create_github_issue": "create_github_issue",
             "discovery_end": END,
         },
     )
     builder.add_edge("create_github_issue", END)
+
+    def _after_validate_env(state: OrchestratorState) -> str:
+        if state.get("failure_state"):
+            return "fail_with_state"
+        return "dev_story"
+
+    builder.add_conditional_edges(
+        "validate_environment",
+        _after_validate_env,
+        {
+            "dev_story": "dev_story",
+            "fail_with_state": "fail_with_state",
+        },
+    )
 
     builder.add_edge("dev_story", "qa_automation")
     builder.add_edge("qa_automation", "code_review")
@@ -504,6 +521,7 @@ def build_graph(
         {
             "dev_story_fix_loop": "dev_story_fix_loop",
             "e2e_automation": "e2e_automation",
+            "e2e_skip": "commit_and_push",
             "fail_with_state": "fail_with_state",
         },
     )
@@ -587,11 +605,13 @@ def make_initial_state(
         tests_passing=None,
         test_failure_output=None,
         retry_guidance=guidance,
+        setup_commands=[],
         build_commands=[],
         test_commands=[],
         lint_commands=[],
         e2e_commands=[],
         dev_guidelines=read_dev_guidelines(cwd) or None,
+        total_cost_usd=0.0,
         e2e_results=[],
         e2e_tests_passing=None,
         e2e_failure_output=None,

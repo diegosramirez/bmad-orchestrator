@@ -114,6 +114,74 @@ def test_test_failure_output_included_in_prompt(settings, mock_agent_service):
     assert "snippet-list.component.spec.ts" in prompt
 
 
+def test_env_issue_classified_in_prompt(settings, mock_agent_service):
+    """Missing type definitions should trigger the environment issue header."""
+    node = make_fix_loop_node(mock_agent_service, settings)
+    node(make_state(
+        test_failure_output="error TS2304: Cannot find name 'spyOn'",
+        code_review_issues=[
+            {"severity": "medium", "file": "x.spec.ts", "line": 1,
+             "description": "Test issue", "fix_required": True},
+        ],
+    ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "ENVIRONMENT/DEPENDENCY ISSUE" in prompt
+    assert "Cannot find name" in prompt
+
+
+def test_file_contents_pre_injected_in_prompt(
+    settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """Touched files should have their contents pre-injected in the prompt."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.ts").write_text("export class App { count = 0; }")
+    (tmp_path / "src" / "app.spec.ts").write_text("describe('App', () => {});")
+
+    node = make_fix_loop_node(mock_agent_service, settings)
+    node(make_state(
+        touched_files=["src/app.ts", "src/app.spec.ts"],
+        code_review_issues=[
+            {"severity": "high", "file": "src/app.ts", "line": 1,
+             "description": "Bug", "fix_required": True},
+        ],
+    ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "pre-loaded" in prompt.lower()
+    assert "export class App" in prompt
+    assert "describe('App'" in prompt
+    # Should NOT tell agent to read files since they're pre-loaded
+    assert "Read the files listed above" not in prompt
+
+
+def test_fix_loop_injects_test_reference_for_spec_issues(
+    settings, mock_agent_service, tmp_path, monkeypatch,
+):
+    """When issues involve spec files, inject existing test file as reference."""
+    from unittest.mock import patch as _patch
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+
+    with _patch(
+        "bmad_orchestrator.nodes.dev_story_fix_loop.find_example_test_file",
+        return_value="### src/app.spec.ts\n```\nimport { vi } from 'vitest';\n```",
+    ), _patch(
+        "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
+        return_value=None,
+    ):
+        node = make_fix_loop_node(mock_agent_service, non_dry)
+        node(make_state(
+            code_review_issues=[
+                {"severity": "high", "file": "src/foo.spec.ts", "line": 1,
+                 "description": "Wrong test pattern", "fix_required": True},
+            ],
+        ))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Reference" in prompt
+    assert "vitest" in prompt
+
+
 def test_fix_loop_runs_independent_tests(
     settings, mock_agent_service, tmp_path, monkeypatch,
 ):

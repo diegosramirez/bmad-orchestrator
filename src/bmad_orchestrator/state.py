@@ -107,11 +107,15 @@ class OrchestratorState(TypedDict):
     test_failure_output: str | None  # Error text from independent test run
 
     # ── Build/test/lint commands (detected from project config at start) ──────
+    setup_commands: list[str]
     build_commands: list[str]
     test_commands: list[str]
     lint_commands: list[str]
     e2e_commands: list[str]
     dev_guidelines: str | None
+
+    # ── Cost tracking ─────────────────────────────────────────────────────────
+    total_cost_usd: float
 
     # ── E2E testing ────────────────────────────────────────────────────────────
     e2e_results: Annotated[list[E2EResult], operator.add]

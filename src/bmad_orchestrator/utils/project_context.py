@@ -488,3 +488,55 @@ def run_compile_check(cwd: Path) -> list[str]:
         if len(errors) >= 30:
             break
     return errors
+
+
+# ── Test file discovery ──────────────────────────────────────────────────────
+
+# Common test file patterns across ecosystems, ordered by specificity.
+_TEST_GLOBS: list[str] = [
+    "**/*.spec.ts",      # Angular, TypeScript
+    "**/*.test.ts",      # Vitest, Jest (TS)
+    "**/*.spec.js",      # JavaScript
+    "**/*.test.js",      # Jest (JS)
+    "**/*.spec.tsx",     # React TSX
+    "**/*.test.tsx",     # React TSX
+    "**/test_*.py",      # pytest
+    "**/*_test.py",      # pytest alt
+    "**/*_test.go",      # Go
+    "**/*Test.java",     # JUnit
+    "**/*_spec.rb",      # RSpec
+    "**/*.test.rs",      # Rust
+    "**/*.spec.cs",      # .NET
+]
+
+# Directories to skip during test file search.
+_SKIP_DIRS = {"node_modules", ".git", "dist", "build", "__pycache__", ".next", "vendor"}
+
+
+def find_example_test_file(cwd: Path, max_chars: int = 3000) -> str:
+    """Find and read one existing test file from the project.
+
+    Returns the file contents (truncated to *max_chars*) prefixed with the
+    file path, or an empty string if no test file is found.  The result is
+    suitable for injection into an LLM prompt as a "follow this pattern"
+    reference.
+
+    Technology-agnostic: searches common test-file patterns across JS/TS,
+    Python, Go, Java, Ruby, Rust, and .NET projects.
+    """
+    for pattern in _TEST_GLOBS:
+        # Use rglob but skip node_modules etc. via manual filter
+        for candidate in sorted(cwd.rglob(pattern)):
+            # Skip files inside ignored directories
+            if any(part in _SKIP_DIRS for part in candidate.parts):
+                continue
+            # Skip very small files (likely empty stubs)
+            try:
+                if candidate.stat().st_size < 50:
+                    continue
+                content = candidate.read_text(encoding="utf-8")[:max_chars]
+                rel_path = candidate.relative_to(cwd)
+                return f"### {rel_path}\n```\n{content}\n```"
+            except Exception:
+                continue
+    return ""

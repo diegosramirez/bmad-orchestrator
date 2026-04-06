@@ -10,6 +10,7 @@ from bmad_orchestrator.nodes.e2e_automation import _DEFAULT_E2E_COMMANDS, _run_e
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -85,6 +86,9 @@ def make_e2e_fix_loop_node(
             on_event=on_event,
         )
 
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
+
         touched = result.touched_files
         log_entry: ExecutionLogEntry = {
             "timestamp": now,
@@ -108,6 +112,7 @@ def make_e2e_fix_loop_node(
                 "e2e_tests_passing": False,
                 "e2e_failure_output": result.result_text,
                 "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry, fail_log],
             }
 
@@ -121,11 +126,23 @@ def make_e2e_fix_loop_node(
             else:
                 logger.info("e2e_fix_loop_passed")
 
+        if budget_msg:
+            return {
+                "e2e_loop_count": loop_count + 1,
+                "e2e_tests_passing": check_error is None,
+                "e2e_failure_output": check_error,
+                "failure_state": budget_msg,
+                "touched_files": touched,
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+            }
+
         return {
             "e2e_loop_count": loop_count + 1,
             "e2e_tests_passing": check_error is None,
             "e2e_failure_output": check_error,
             "touched_files": touched,
+            "total_cost_usd": new_cost,
             "execution_log": [log_entry],
         }
 

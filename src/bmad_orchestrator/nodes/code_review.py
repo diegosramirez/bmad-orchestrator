@@ -11,6 +11,7 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import CodeReviewIssue, ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -149,6 +150,9 @@ def make_code_review_node(
             on_event=on_event,
         )
 
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, agent_result, settings)
+
         # Parse structured output from the agent session.
         if agent_result.is_error or agent_result.structured_output is None:
             result = ReviewResult(issues=[], overall_assessment="Agent error — no review")
@@ -190,8 +194,17 @@ def make_code_review_node(
             "dry_run": settings.dry_run,
         }
 
+        if budget_msg:
+            return {
+                "code_review_issues": new_issues,
+                "failure_state": budget_msg,
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+            }
+
         return {
             "code_review_issues": new_issues,
+            "total_cost_usd": new_cost,
             "execution_log": [log_entry],
         }
 
@@ -250,6 +263,30 @@ def make_review_router(
             if loop_count < settings.max_review_loops:
                 return "dev_story_fix_loop"
             return "fail_with_state"
+        # Skip E2E if too much time has elapsed (Playwright install + test
+        # can easily consume 10+ minutes, causing 30m timeout).
+        _E2E_MIN_REMAINING_S = 900  # need at least 15 min for E2E + commit
+        execution_log = state.get("execution_log") or []
+        if execution_log and settings.execution_timeout_minutes > 0:
+            try:
+                first_ts = execution_log[0].get("timestamp", "") if isinstance(
+                    execution_log[0], dict
+                ) else ""
+                if first_ts:
+                    start = datetime.fromisoformat(first_ts)
+                    elapsed = (datetime.now(UTC) - start).total_seconds()
+                    budget = settings.execution_timeout_minutes * 60
+                    remaining = budget - elapsed
+                    if remaining < _E2E_MIN_REMAINING_S:
+                        logger.warning(
+                            "skipping_e2e_insufficient_time",
+                            remaining_s=remaining,
+                            min_required_s=_E2E_MIN_REMAINING_S,
+                        )
+                        return "e2e_skip"
+            except (ValueError, TypeError, KeyError):
+                pass
+
         return "e2e_automation"
 
     return route

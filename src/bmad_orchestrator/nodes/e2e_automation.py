@@ -10,6 +10,7 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import E2EResult, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import run_project_command
 
@@ -96,6 +97,9 @@ def make_e2e_automation_node(
             on_event=on_event,
         )
 
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
+
         touched = result.touched_files
 
         e2e_results: list[E2EResult] = [
@@ -129,10 +133,22 @@ def make_e2e_automation_node(
             "dry_run": settings.dry_run,
         }
 
+        if budget_msg:
+            return {
+                "e2e_results": e2e_results,
+                "e2e_tests_passing": tests_passing,
+                "e2e_failure_output": check_error,
+                "failure_state": budget_msg,
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+                "touched_files": touched,
+            }
+
         return {
             "e2e_results": e2e_results,
             "e2e_tests_passing": tests_passing,
             "e2e_failure_output": check_error,
+            "total_cost_usd": new_cost,
             "execution_log": [log_entry],
             "touched_files": touched,
         }

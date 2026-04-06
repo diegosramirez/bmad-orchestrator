@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from bmad_orchestrator.config import Settings
@@ -10,7 +11,9 @@ from bmad_orchestrator.nodes.dev_story import _resolve_cwd, _run_all_checks
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.utils.project_context import find_example_test_file
 
 logger = get_logger(__name__)
 
@@ -75,49 +78,115 @@ def make_fix_loop_node(
         ) if obligations_lines else ""
 
         touched_files = state.get("touched_files") or []
-        files_list = "\n".join(f"- {f}" for f in dict.fromkeys(touched_files))
+        unique_files = list(dict.fromkeys(touched_files))
+
+        # Pre-inject file contents so the agent doesn't burn turns reading
+        cwd_for_read = _resolve_cwd(settings, state)
+        _MAX_FILE_CHARS = 3000
+        _MAX_TOTAL_CHARS = 30000
+        file_contents_parts: list[str] = []
+        total_chars = 0
+        for fpath in unique_files:
+            full = cwd_for_read / fpath if not Path(fpath).is_absolute() else Path(fpath)
+            if not full.exists() or not full.is_file():
+                continue
+            try:
+                content = full.read_text(encoding="utf-8")[:_MAX_FILE_CHARS]
+                block = f"### {fpath}\n```\n{content}\n```"
+                if total_chars + len(block) > _MAX_TOTAL_CHARS:
+                    break
+                file_contents_parts.append(block)
+                total_chars += len(block)
+            except Exception:
+                continue
+
+        if file_contents_parts:
+            files_block = (
+                "## Current file contents (pre-loaded — do NOT re-read these):\n\n"
+                + "\n\n".join(file_contents_parts)
+            )
+        else:
+            files_list = "\n".join(f"- {f}" for f in unique_files)
+            files_block = f"## Files to read and fix:\n{files_list}"
+
+        # Inject existing test file reference when fixing test-related issues
+        example_block = ""
+        has_test_issues = any(
+            "spec" in i.get("file", "") or "test" in i.get("file", "")
+            for i in medium_plus
+        ) or "spec" in (state.get("test_failure_output") or "").lower()
+        if has_test_issues and not settings.dry_run:
+            example_test = find_example_test_file(cwd_for_read)
+            if example_test:
+                example_block = (
+                    f"## Reference — existing test file from this project:\n"
+                    f"When fixing test files, follow the EXACT same test "
+                    f"framework, imports, and patterns shown here.\n\n"
+                    f"{example_test}\n\n"
+                )
 
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
             f"{guidelines_block}"
             f"{obligations_block}"
+            f"{example_block}"
             f"Fix code review issues (loop {loop_count + 1}).\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
             f"- Use RELATIVE paths (e.g. src/app/foo.ts) for all file operations.\n"
-            f"- Do NOT re-read config files. Go straight to the listed files.\n\n"
+            f"- Do NOT re-read files already shown below.\n\n"
             f"Story context:\n{story_content}\n\n"
             f"Acceptance Criteria:\n{ac_text}\n\n"
             f"Issues to fix:\n{issues_text}\n\n"
-            f"## Files to read and fix:\n{files_list}\n\n"
+            f"{files_block}\n\n"
             f"Instructions:\n"
-            f"1. Read the files listed above to understand the current state.\n"
-            f"2. Fix ONLY the listed issues — do NOT rewrite unrelated files.\n"
-            f"3. If build/tests pass now, your fixes must NOT break them.\n"
-            f"4. Preserve all working logic — only change what is needed.\n"
-            f"5. Cross-check class names, imports, and identifiers across files.\n"
-            f"6. After fixing, run the verification commands above.\n"
-            f"7. If any command fails, fix the issues and re-run until all pass.\n"
-            f"8. Keep your final summary brief (under 500 words)."
+            f"1. Fix ONLY the listed issues — do NOT rewrite unrelated files.\n"
+            f"2. If build/tests pass now, your fixes must NOT break them.\n"
+            f"3. Preserve all working logic — only change what is needed.\n"
+            f"4. Cross-check class names, imports, and identifiers across files.\n"
+            f"5. After fixing, run the verification commands above.\n"
+            f"6. If any command fails, fix the issues and re-run until all pass.\n"
+            f"7. Keep your final summary brief (under 500 words)."
         )
 
         test_failure = state.get("test_failure_output") or ""
         if test_failure:
-            _MAX_FAILURE = 2000
-            prompt += (
-                f"\n\n## TEST FAILURES — MUST FIX BEFORE ANYTHING ELSE:\n"
-                f"{test_failure[:_MAX_FAILURE]}\n"
+            _MAX_FAILURE = 4000
+            _ENV_PATTERNS = (
+                "Cannot find name",
+                "Cannot find namespace",
+                "Cannot find type definition",
+                "Cannot find module",
+                "Module not found",
+                "command not found",
+                "not found",
+                "ENOENT",
             )
+            is_env_issue = any(p in test_failure for p in _ENV_PATTERNS)
+            if is_env_issue:
+                header = (
+                    "## ENVIRONMENT/DEPENDENCY ISSUE — fix config before code:\n"
+                    "The errors below suggest missing dependencies or type "
+                    "definitions. Check package.json dependencies, "
+                    "tsconfig.json type roots, and run `npm install` before "
+                    "attempting code-level fixes.\n"
+                )
+            else:
+                header = "## TEST FAILURES — MUST FIX BEFORE ANYTHING ELSE:\n"
+            prompt += f"\n\n{header}{test_failure[:_MAX_FAILURE]}\n"
 
         result = agent.run_agent(
             prompt,
             system_prompt=system_prompt,
             agent_id="developer",
             cwd=_resolve_cwd(settings, state),
-            max_turns=10,
+            max_turns=20,
             on_event=on_event,
         )
+
+        current_cost = state.get("total_cost_usd") or 0.0
+        new_cost, budget_msg = accumulate_cost(current_cost, result, settings)
 
         touched = result.touched_files
         log_entry: ExecutionLogEntry = {
@@ -143,6 +212,7 @@ def make_fix_loop_node(
                 "review_loop_count": loop_count + 1,
                 "code_review_issues": [],
                 "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry, fail_log],
             }
 
@@ -155,6 +225,7 @@ def make_fix_loop_node(
                 test_commands=state.get("test_commands") or [],
                 lint_commands=state.get("lint_commands") or [],
                 cwd=cwd,
+                setup_commands=state.get("setup_commands") or [],
             )
             if check_error:
                 logger.warning("fix_loop_tests_failed", error=check_error[:300])
@@ -181,6 +252,19 @@ def make_fix_loop_node(
                     f"problem).\nError: {check_error[:500]}"
                 ),
                 "touched_files": [],
+                "total_cost_usd": new_cost,
+                "execution_log": [log_entry],
+            }
+
+        if budget_msg:
+            return {
+                "review_loop_count": loop_count + 1,
+                "code_review_issues": [],
+                "tests_passing": check_error is None,
+                "test_failure_output": check_error,
+                "failure_state": budget_msg,
+                "touched_files": touched,
+                "total_cost_usd": new_cost,
                 "execution_log": [log_entry],
             }
 
@@ -190,6 +274,7 @@ def make_fix_loop_node(
             "tests_passing": check_error is None,
             "test_failure_output": check_error,
             "touched_files": touched,
+            "total_cost_usd": new_cost,
             "execution_log": [log_entry],
         }
 

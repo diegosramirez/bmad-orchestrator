@@ -129,6 +129,38 @@ def test_run_all_checks_no_commands_returns_none(mock_compile, tmp_path):
     assert _run_all_checks([], [], [], tmp_path) is None
 
 
+@patch("bmad_orchestrator.nodes.dev_story.run_compile_check", return_value=[])
+@patch("bmad_orchestrator.nodes.dev_story.run_project_command", return_value=(True, "ok"))
+def test_run_all_checks_runs_setup_commands(mock_cmd, mock_compile, tmp_path):
+    """Setup commands run before build commands."""
+    _run_all_checks(["npm run build"], [], [], tmp_path, setup_commands=["npm install"])
+    assert mock_cmd.call_count == 2
+    assert mock_cmd.call_args_list[0][0] == ("npm install", tmp_path)
+    assert mock_cmd.call_args_list[1][0] == ("npm run build", tmp_path)
+
+
+@patch("bmad_orchestrator.nodes.dev_story.run_compile_check", return_value=[])
+@patch("bmad_orchestrator.nodes.dev_story.run_project_command", return_value=(True, "ok"))
+def test_run_all_checks_no_setup_commands_skips_setup(mock_cmd, mock_compile, tmp_path):
+    """Without setup_commands, only build/test/lint commands run."""
+    _run_all_checks(["npm run build"], [], [], tmp_path)
+    assert mock_cmd.call_count == 1
+    assert mock_cmd.call_args_list[0][0] == ("npm run build", tmp_path)
+
+
+@patch("bmad_orchestrator.nodes.dev_story.run_compile_check", return_value=[])
+@patch(
+    "bmad_orchestrator.nodes.dev_story.run_project_command",
+    return_value=(False, "ENOENT: dotnet not found"),
+)
+def test_run_all_checks_setup_failure_returns_error(mock_cmd, mock_compile, tmp_path):
+    """If a setup command fails, return an error string immediately."""
+    result = _run_all_checks([], [], [], tmp_path, setup_commands=["dotnet restore"])
+    assert result is not None
+    assert "Setup failed" in result
+    assert "dotnet restore" in result
+
+
 # ── dev_story node with Agent SDK ─────────────────────────────────────────────
 
 def test_dev_story_returns_touched_files(settings, mock_agent_service):

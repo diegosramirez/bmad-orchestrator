@@ -66,7 +66,7 @@ def test_shared_usage_tracker():
 
 
 @pytest.mark.asyncio
-async def test_run_async_captures_write_paths(settings):
+async def test_run_async_captures_write_paths(settings, tmp_path):
     """Write/Edit tool uses in AssistantMessage should be captured as touched files."""
     from claude_agent_sdk import AssistantMessage, ResultMessage
     from claude_agent_sdk.types import ToolUseBlock
@@ -74,12 +74,19 @@ async def test_run_async_captures_write_paths(settings):
     non_dry = settings.model_copy(update={"dry_run": False})
     service = ClaudeAgentService(non_dry)
 
+    # Use paths under tmp_path (the cwd) so they pass the in-cwd filter
+    foo = str(tmp_path / "foo.ts")
+    bar = str(tmp_path / "bar.ts")
+    baz = str(tmp_path / "baz.ts")
+    outside = "/tmp/outside/secret.ts"
+
     assistant_msg = AssistantMessage(
         content=[
-            ToolUseBlock(id="1", name="Write", input={"file_path": "/tmp/test/foo.ts"}),
-            ToolUseBlock(id="2", name="Edit", input={"file_path": "/tmp/test/bar.ts"}),
-            ToolUseBlock(id="3", name="Read", input={"file_path": "/tmp/test/baz.ts"}),
-            ToolUseBlock(id="4", name="Write", input={"file_path": "/tmp/test/foo.ts"}),
+            ToolUseBlock(id="1", name="Write", input={"file_path": foo}),
+            ToolUseBlock(id="2", name="Edit", input={"file_path": bar}),
+            ToolUseBlock(id="3", name="Read", input={"file_path": baz}),
+            ToolUseBlock(id="4", name="Write", input={"file_path": foo}),
+            ToolUseBlock(id="5", name="Write", input={"file_path": outside}),
         ],
         model="claude-sonnet-4-20250514",
     )
@@ -105,15 +112,16 @@ async def test_run_async_captures_write_paths(settings):
             prompt="test",
             system_prompt="test",
             agent_id="developer",
-            cwd=None,
+            cwd=str(tmp_path),
             allowed_tools=None,
             disallowed_tools=None,
             output_format_schema=None,
             max_turns=5,
         )
 
-    # Write and Edit captured; Read ignored; duplicate Write not added twice
-    assert result.touched_files == ["/tmp/test/foo.ts", "/tmp/test/bar.ts"]
+    # Write and Edit under cwd captured; Read ignored; duplicate Write not added;
+    # Write outside cwd filtered out
+    assert result.touched_files == [foo, bar]
     assert result.is_error is False
     assert result.duration_ms == 1000
 
@@ -233,3 +241,64 @@ async def test_run_async_structured_output(settings):
         "summary": "All good",
         "items": ["no issues"],
     }
+
+
+def test_content_filter_retry(settings):
+    """run_agent retries once when the first attempt hits a content-filtering error."""
+    from bmad_orchestrator.services.claude_agent_service import AgentResult
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    service = ClaudeAgentService(non_dry)
+
+    error_result = AgentResult(
+        is_error=True,
+        result_text="API Error: 400 — Output blocked by content filtering policy",
+    )
+    success_result = AgentResult(is_error=False, result_text="Done")
+
+    call_count = 0
+
+    async def fake_run_async(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        return error_result if call_count == 1 else success_result
+
+    with patch.object(service, "_run_async", side_effect=fake_run_async):
+        result = service.run_agent(
+            "test prompt",
+            system_prompt="test",
+            agent_id="developer",
+        )
+
+    assert call_count == 2
+    assert result.is_error is False
+
+
+def test_no_retry_on_non_filter_error(settings):
+    """run_agent should NOT retry on errors unrelated to content filtering."""
+    from bmad_orchestrator.services.claude_agent_service import AgentResult
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    service = ClaudeAgentService(non_dry)
+
+    error_result = AgentResult(
+        is_error=True,
+        result_text="API Error: 500 — Internal server error",
+    )
+
+    call_count = 0
+
+    async def fake_run_async(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        return error_result
+
+    with patch.object(service, "_run_async", side_effect=fake_run_async):
+        result = service.run_agent(
+            "test prompt",
+            system_prompt="test",
+            agent_id="developer",
+        )
+
+    assert call_count == 1
+    assert result.is_error is True
