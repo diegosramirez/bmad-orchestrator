@@ -82,6 +82,32 @@ async def test_returns_false_when_no_active_status(monkeypatch: pytest.MonkeyPat
     )
 
 
+def test_run_matches_issue_key_prefers_inputs_prompt() -> None:
+    matched, reason = github_active_run._run_matches_issue_key(
+        {"inputs": {"prompt": "SAM1-275"}},
+        "SAM1-275",
+    )
+    assert matched is True
+    assert reason == "inputs.prompt"
+
+
+def test_run_matches_issue_key_display_title_fallback() -> None:
+    matched, reason = github_active_run._run_matches_issue_key(
+        {"display_title": "SAM1-400 · inline", "event": "workflow_dispatch"},
+        "SAM1-400",
+    )
+    assert matched is True
+    assert reason == "display_title"
+
+
+def test_run_matches_issue_key_wrong_prompt_no_title() -> None:
+    matched, _reason = github_active_run._run_matches_issue_key(
+        {"inputs": {"prompt": "OTHER-9"}},
+        "SAM1-1",
+    )
+    assert matched is False
+
+
 @pytest.mark.asyncio
 async def test_returns_true_when_active_run_matches_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     issue = "SAM1-275"
@@ -100,6 +126,48 @@ async def test_returns_true_when_active_run_matches_prompt(monkeypatch: pytest.M
             return httpx.Response(
                 200,
                 json={"inputs": {"prompt": issue}},
+            )
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(
+        github_active_run.httpx,
+        "AsyncClient",
+        lambda *a, **kw: _MockAsyncClient(get_impl),
+    )
+
+    assert (
+        await github_active_run.has_active_bmad_run_for_prompt(
+            issue,
+            github_repo="o/r",
+            github_token="tok",
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_returns_true_when_display_title_matches_without_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issue = "SAM1-400"
+
+    async def get_impl(url: str) -> httpx.Response:
+        if "workflows/bmad-start-run.yml/runs" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {"id": 24015281943, "status": "in_progress"},
+                    ]
+                },
+            )
+        if url.endswith(f"/actions/runs/{24015281943}"):
+            return httpx.Response(
+                200,
+                json={
+                    "event": "workflow_dispatch",
+                    "display_title": f"{issue} · inline",
+                },
             )
         raise AssertionError(f"unexpected url {url}")
 
