@@ -344,7 +344,7 @@ def read_manifest_scripts(cwd: Path) -> dict[str, str]:
     return {}
 
 
-def run_project_command(cmd: str, cwd: Path, max_output: int = 2000) -> tuple[bool, str]:
+def run_project_command(cmd: str, cwd: Path, max_output: int = 4000) -> tuple[bool, str]:
     """Run a single shell command string and return (success, truncated_output).
 
     Uses shell=True so that npm/npx commands and PATH-based binaries resolve
