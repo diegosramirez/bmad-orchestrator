@@ -56,7 +56,7 @@ export function StoryDevPanel() {
       });
     } else if (result?.code === 'run_in_progress') {
       setBanner({
-        appearance: 'info',
+        appearance: 'warning',
         title: 'Run in progress',
         body:
           result?.message ||
