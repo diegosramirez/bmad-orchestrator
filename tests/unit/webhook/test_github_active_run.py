@@ -93,7 +93,10 @@ def test_run_matches_issue_key_prefers_inputs_prompt() -> None:
 
 def test_run_matches_issue_key_display_title_fallback() -> None:
     matched, reason = github_active_run._run_matches_issue_key(
-        {"display_title": "SAM1-400 · inline", "event": "workflow_dispatch"},
+        {
+            "display_title": "BMAD Orchestrator SAM1-400 — inline — Start Run",
+            "event": "workflow_dispatch",
+        },
         "SAM1-400",
     )
     assert matched is True
@@ -166,7 +169,9 @@ async def test_returns_true_when_display_title_matches_without_inputs(
                 200,
                 json={
                     "event": "workflow_dispatch",
-                    "display_title": f"{issue} · inline",
+                    "display_title": (
+                        f"BMAD Orchestrator {issue} — inline — Start Run"
+                    ),
                 },
             )
         raise AssertionError(f"unexpected url {url}")

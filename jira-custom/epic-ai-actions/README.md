@@ -41,7 +41,7 @@ Endpoints:
 
 Header (all endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
 
-**Duplicate run guard:** Before dispatching, the server checks GitHub for an active `bmad-start-run.yml` run for the current `issue_key`. It matches `inputs.prompt` when the GitHub API returns workflow inputs; otherwise it matches the run’s **`display_title`** (the workflow sets `run-name` to `prompt · execution_mode`, so the Jira key appears in the title). If a match exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
+**Duplicate run guard:** Before dispatching, the server checks GitHub for an active `bmad-start-run.yml` run for the current `issue_key`. It matches `inputs.prompt` when the GitHub API returns workflow inputs; otherwise it matches the run’s **`display_title`** (the workflow sets `run-name` to `BMAD Orchestrator {prompt} — {execution_mode} — Start Run`, so the Jira key appears in the title). If a match exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
 
 ## Configure this Forge app
 
