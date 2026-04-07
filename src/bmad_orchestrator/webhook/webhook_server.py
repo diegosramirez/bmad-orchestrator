@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.webhook.bmad_comment_parse import parse_bmad_comment_command
 from bmad_orchestrator.webhook.dev_story import build_dev_story_workflow_inputs
 from bmad_orchestrator.webhook.discovery import (
     build_discovery_workflow_inputs,
@@ -680,44 +680,17 @@ async def jira_comment_webhook(request: Request):
             status_code=200,
         )
 
-    try:
-        tokens = shlex.split(comment_body)
-    except ValueError as exc:
+    _, guidance, parse_error = parse_bmad_comment_command(comment_body)
+    if parse_error:
         return JSONResponse(
             content={
                 "ok": False,
                 "saved": str(path),
                 "run_started": False,
-                "message": f"Invalid /bmad command syntax: {exc}",
+                "message": parse_error,
             },
             status_code=400,
         )
-
-    if len(tokens) < 2:
-        return JSONResponse(
-            content={
-                "ok": False,
-                "saved": str(path),
-                "run_started": False,
-                "message": 'Usage: /bmad retry "guidance" or /bmad refine "guidance"',
-            },
-            status_code=400,
-        )
-
-    subcommand = tokens[1]
-    if subcommand not in {"retry", "refine"}:
-        return JSONResponse(
-            content={
-                "ok": False,
-                "saved": str(path),
-                "run_started": False,
-                "message": f"Unknown /bmad subcommand: {subcommand}",
-            },
-            status_code=400,
-        )
-
-    # Guidance: optional third token (in quotes), e.g. /bmad retry "fix the auth"
-    guidance = tokens[2] if len(tokens) >= 3 else ""
 
     issue = body.get("issue") or {}
     issue_key = issue.get("key") or "unknown"
