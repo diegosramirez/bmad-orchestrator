@@ -68,41 +68,18 @@ def test_validate_env_setup_fails_returns_failure_state(
 
 
 @patch("bmad_orchestrator.nodes.validate_environment.run_project_command")
-def test_validate_env_build_fails_returns_failure_state(
+def test_validate_env_build_fails_warns_but_continues(
     mock_cmd, settings, tmp_path, monkeypatch,
 ):
-    """Build failure after successful setup should set failure_state."""
+    """Build failure is a warning, not a blocker — pre-existing failures allowed."""
     non_dry = settings.model_copy(update={"dry_run": False})
     monkeypatch.chdir(tmp_path)
 
     def side_effect(cmd, cwd):
         if "install" in cmd:
             return True, "ok"
-        return False, "error TS6053: File not found"
-
-    mock_cmd.side_effect = side_effect
-    node = make_validate_environment_node(non_dry)
-    result = node(make_state(
-        setup_commands=["npm install"],
-        build_commands=["npm run build"],
-        test_commands=["npm run test"],
-    ))
-    assert "Baseline build failed" in result["failure_state"]
-    # setup + build, test should not run
-    assert mock_cmd.call_count == 2
-
-
-@patch("bmad_orchestrator.nodes.validate_environment.run_project_command")
-def test_validate_env_test_fails_returns_failure_state(
-    mock_cmd, settings, tmp_path, monkeypatch,
-):
-    """Test failure after successful setup+build should set failure_state."""
-    non_dry = settings.model_copy(update={"dry_run": False})
-    monkeypatch.chdir(tmp_path)
-
-    def side_effect(cmd, cwd):
-        if "test" in cmd:
-            return False, "FAIL: 2 tests failed"
+        if "build" in cmd:
+            return False, "error TS6053: File not found"
         return True, "ok"
 
     mock_cmd.side_effect = side_effect
@@ -112,7 +89,35 @@ def test_validate_env_test_fails_returns_failure_state(
         build_commands=["npm run build"],
         test_commands=["npm run test"],
     ))
-    assert "Baseline test failed" in result["failure_state"]
+    # Should NOT set failure_state — build/test failures are warnings
+    assert "failure_state" not in result
+    assert "with warnings" in result["execution_log"][0]["message"]
+    # All 3 commands should run (setup + build + test)
+    assert mock_cmd.call_count == 3
+
+
+@patch("bmad_orchestrator.nodes.validate_environment.run_project_command")
+def test_validate_env_test_fails_warns_but_continues(
+    mock_cmd, settings, tmp_path, monkeypatch,
+):
+    """Test failure is a warning — pre-existing test failures (e.g. missing DB) allowed."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    monkeypatch.chdir(tmp_path)
+
+    def side_effect(cmd, cwd):
+        if "test" in cmd:
+            return False, "FAIL: connection refused (PostgreSQL not running)"
+        return True, "ok"
+
+    mock_cmd.side_effect = side_effect
+    node = make_validate_environment_node(non_dry)
+    result = node(make_state(
+        setup_commands=["npm install"],
+        build_commands=["npm run build"],
+        test_commands=["npm run test"],
+    ))
+    assert "failure_state" not in result
+    assert "warning" in result["execution_log"][0]["message"].lower()
     assert mock_cmd.call_count == 3
 
 
