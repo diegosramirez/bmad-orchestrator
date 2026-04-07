@@ -10,7 +10,7 @@ import {
   Text,
   TextArea,
 } from '@forge/react';
-import { requestJira } from '@forge/bridge';
+import { requestJira, view } from '@forge/bridge';
 import { useBmadBranch } from '../hooks/useBmadBranch';
 import {
   BMAD_COMMENT_ROW_XCSS,
@@ -105,6 +105,11 @@ export function BmadCommentPanel({ issueKey }) {
       }
       guidanceRef.current = '';
       setGuidanceFieldKey((k) => k + 1);
+      try {
+        await view.refresh();
+      } catch {
+        /* Not all host contexts expose refresh; comment was still created. */
+      }
       setBanner({
         appearance: 'success',
         title: 'Comment added',
