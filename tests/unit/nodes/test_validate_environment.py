@@ -75,7 +75,7 @@ def test_validate_env_build_fails_warns_but_continues(
     non_dry = settings.model_copy(update={"dry_run": False})
     monkeypatch.chdir(tmp_path)
 
-    def side_effect(cmd, cwd):
+    def side_effect(cmd, cwd, **kwargs):
         if "install" in cmd:
             return True, "ok"
         if "build" in cmd:
@@ -104,7 +104,7 @@ def test_validate_env_test_fails_warns_but_continues(
     non_dry = settings.model_copy(update={"dry_run": False})
     monkeypatch.chdir(tmp_path)
 
-    def side_effect(cmd, cwd):
+    def side_effect(cmd, cwd, **kwargs):
         if "test" in cmd:
             return False, "FAIL: connection refused (PostgreSQL not running)"
         return True, "ok"

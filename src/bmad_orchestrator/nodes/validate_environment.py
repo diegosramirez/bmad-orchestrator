@@ -69,9 +69,11 @@ def make_validate_environment_node(
                     break
 
         # Phase 1: Setup is mandatory — if deps can't install, abort.
+        # Use a longer timeout for setup (pip install, go mod download can be slow).
+        _SETUP_TIMEOUT_S = 300
         for cmd in setup_commands:
             _emit(f"Running setup: `{cmd}`")
-            success, output = run_project_command(cmd, cwd)
+            success, output = run_project_command(cmd, cwd, timeout=_SETUP_TIMEOUT_S)
             if not success:
                 msg = f"Baseline setup failed (`{cmd}`): {output[:500]}"
                 logger.error("env_setup_failed", cmd=cmd, output=output[:300])
