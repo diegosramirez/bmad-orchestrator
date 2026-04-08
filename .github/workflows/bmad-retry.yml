@@ -1,3 +1,6 @@
+# Handles /bmad retry commands on PRs in THIS repo (bmad-orchestrator).
+# For PRs in target repos (my-test-app, etc.), the auto-installed
+# bmad-pr-retry.yml forwarder workflow dispatches back here.
 name: "BMAD Orchestrator — PR Retry"
 
 on:
