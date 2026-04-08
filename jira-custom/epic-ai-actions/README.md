@@ -28,13 +28,13 @@ On the machine running `webhook_server.py`, set:
 | `BMAD_GITHUB_REPO` | Repo that contains `.github/workflows/bmad-start-run.yml` |
 | `BMAD_GITHUB_TOKEN` | PAT with `workflow` scope (dispatch) and read access to Actions (list workflow runs; avoids duplicate dispatches for the same Jira issue from the Forge panel) |
 | `BMAD_GITHUB_BASE_BRANCH` | Branch of **bmad-orchestrator** used as `workflow_dispatch` `ref` |
-| `DEFAULT_TARGET_REPO` | Fallback `owner/repo` when the issue has no **Target repo** custom field (`customfield_10112`) or the Forge resolver cannot read it |
+| `DEFAULT_TARGET_REPO` | Fallback `owner/repo` when the issue has no target-repo custom field or the Forge resolver cannot read it |
 | `BMAD_FORGE_WEBHOOK_SECRET` | Shared secret for Forge (preferred) |
 | `BMAD_DISCOVERY_WEBHOOK_SECRET` | Legacy fallback if `BMAD_FORGE_WEBHOOK_SECRET` is unset |
 
 Endpoints:
 
-- Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123","target_repo":"optional"}` (the Forge resolver reads `customfield_10112` and sends `target_repo` when set)
+- Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123","target_repo":"optional"}` (the Forge resolver reads the target-repo field, default `customfield_10112`, and sends `target_repo` when set)
 - Epic Architect: `POST /bmad/architect-run` — same shape
 - Stories: `POST /bmad/stories-run` — same shape
 - Story development: `POST /bmad/dev-run` — same shape (Story key as `issue_key`; `execution_mode` `inline` with epic/story-creation nodes skipped)
@@ -55,7 +55,7 @@ Redeploy after any change:
 forge deploy --non-interactive --environment development
 ```
 
-The app declares `read:jira-work` so the resolver can read `customfield_10112` on the current issue. After adding or changing scopes, run **`forge install --upgrade`** (see below) so Jira prompts for the new permission.
+The app declares `read:jira-work` so the resolver can read the target-repo field on the current issue. After adding or changing scopes, run **`forge install --upgrade`** (see below) so Jira prompts for the new permission.
 
 ### 2. Environment variables (resolver)
 
@@ -64,12 +64,16 @@ Set variables for the environment you use (e.g. development):
 ```bash
 forge variables set --environment development BMAD_FORGE_WEBHOOK_URL 'https://your-host'
 forge variables set --environment development BMAD_FORGE_WEBHOOK_SECRET 'your-shared-secret'
+# Optional — if your Jira site uses different custom field IDs than the BMAD defaults:
+# forge variables set --environment development BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID 'customfield_10112'
+# forge variables set --environment development BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID 'customfield_10145'
 ```
 
 You may keep using `BMAD_DISCOVERY_WEBHOOK_URL` and `BMAD_DISCOVERY_WEBHOOK_SECRET` instead; the resolver accepts either name (see `src/resolvers/index.js`).
 
 - URL: origin only (no trailing slash, no path; resolvers append `/bmad/discovery-run`, `/bmad/architect-run`, `/bmad/stories-run`, or `/bmad/dev-run`).
 - Secret: must match `BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET` on the server.
+- Target-repo / branch field IDs: optional `BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID` and `BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID` (same names as the Python orchestrator `.env`); defaults match `customfield_10112` and `customfield_10145`.
 
 After changing variables or permissions, redeploy and reinstall if prompted:
 

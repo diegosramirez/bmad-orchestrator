@@ -1,4 +1,4 @@
-"""Update Jira story customfield_10145 (BMAD Branch) with the current git branch name."""
+"""Update the Jira story branch custom field (BMAD Branch) with the current git branch name."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -19,7 +19,7 @@ def make_update_jira_branch_node(
     jira: JiraServiceProtocol,
     settings: Settings,
 ) -> Callable[[OrchestratorState], dict[str, Any]]:
-    """Return a node that writes branch_name to the story's customfield_10145 (BMAD Branch)."""
+    """Return a node that writes branch_name to the Jira branch custom field (BMAD Branch)."""
 
     def update_jira_branch(state: OrchestratorState) -> dict[str, Any]:
         story_key = state.get("current_story_id")
@@ -52,7 +52,7 @@ def make_update_jira_branch_node(
             return {"execution_log": [log_entry]}
 
         log_entry["message"] = (
-            f"Updated Jira field customfield_10145 "
+            f"Updated Jira field {settings.jira_branch_custom_field_id} "
             f"with branch {branch_name}"
         )
         return {"execution_log": [log_entry]}

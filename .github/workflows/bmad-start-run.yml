@@ -136,6 +136,8 @@ jobs:
       BMAD_JIRA_USERNAME: ${{ secrets.BMAD_JIRA_USERNAME }}
       BMAD_JIRA_API_TOKEN: ${{ secrets.BMAD_JIRA_API_TOKEN }}
       BMAD_JIRA_PROJECT_KEY: ${{ secrets.BMAD_JIRA_PROJECT_KEY }}
+      BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID: ${{ vars.BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID }}
+      BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID: ${{ vars.BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID }}
 
       # ── GitHub (target repo) ───────────────────────────────────────────
       BMAD_GITHUB_REPO: ${{ inputs.target_repo }}

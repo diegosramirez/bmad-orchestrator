@@ -383,6 +383,23 @@ def test_set_story_branch_field(jira_svc):
     )
 
 
+def test_set_story_branch_field_respects_settings_field_id(jira_svc, settings):
+    svc, client = jira_svc
+    custom = settings.model_copy(
+        update={
+            "dry_run": False,
+            "jira_branch_custom_field_id": "customfield_77777",
+        },
+    )
+    svc = type(svc)(custom)
+    issue = _make_mock_issue()
+    client.issue.return_value = issue
+    svc.set_story_branch_field("X-1", "feature/foo")
+    issue.update.assert_called_once_with(
+        fields={"customfield_77777": "feature/foo"},
+    )
+
+
 # ── list_stories_under_epic ─────────────────────────────────────────────────────
 
 

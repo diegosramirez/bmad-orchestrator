@@ -1,6 +1,6 @@
 # Jira Comment Webhook — Retry / Refine from Comments
 
-Trigger BMAD retry or refine runs from Jira by posting a comment that starts with `/bmad`. The webhook server reads the branch from the story's **BMAD Branch** custom field (`customfield_10145`) and dispatches the same GitHub Actions workflow used by Slack.
+Trigger BMAD retry or refine runs from Jira by posting a comment that starts with `/bmad`. The webhook server reads the branch from the story's **BMAD Branch** custom field (default `customfield_10145`; override with `BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID`) and dispatches the same GitHub Actions workflow used by Slack.
 
 ## Endpoint
 
@@ -18,17 +18,17 @@ The **guidance** text is optional but must be in quotes when present, e.g. `"fix
 
 ## Requirements
 
-1. **BMAD Branch field (`customfield_10145`)**  
+1. **BMAD Branch field** (`BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID`, default `customfield_10145`)  
    The issue must have this field set to the git branch name (e.g. `bmad/sam1/SAM1-61-as-a-new-user-i-want-to-re-enter-my-pass`). BMAD fills it automatically after the **commit and push** step when you run the pipeline (via the manual automation button or the issue webhook). If the field is empty, the comment webhook returns 400 and does not start a run.
 
-2. **Target repo field (`customfield_10112`)**  
+2. **Target repo field** (`BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID`, default `customfield_10112`)  
    Optional. If present (e.g. `value: "my-test-app"`), the webhook builds `target_repo` as `{BMAD_GITHUB_OWNER}/{value}`. Otherwise it uses `DEFAULT_TARGET_REPO` from the server environment.
 
 3. **Jira Automation payload**  
    The webhook expects the comment trigger to send a JSON body that includes:
    - `issue.key`, `issue.id`
-   - `issue.fields.customfield_10112` (target repo slug)
-   - `issue.fields.customfield_10145` (BMAD Branch)
+   - Target repo field (default `customfield_10112`) — slug
+   - Branch field (default `customfield_10145`) — BMAD Branch
    - `comment.body`, `comment.id`, `comment.author.displayName`
 
    Example minimal structure:
@@ -51,6 +51,8 @@ The **guidance** text is optional but must be in quotes when present, e.g. `"fix
    }
    ```
 
+   Replace `customfield_*` keys in `fields` with your `BMAD_JIRA_*_CUSTOM_FIELD_ID` values when not using defaults.
+
 ## Examples
 
 - Retry without extra guidance:  
@@ -67,6 +69,6 @@ Comments that do **not** start with `/bmad` are ignored (saved to disk, no workf
 ## Response
 
 - **200** — Comment saved; no `/bmad` command or invalid syntax; `run_started: false`.
-- **400** — Invalid command or missing `customfield_10145`; `run_started: false`, `message` explains the error.
+- **400** — Invalid command or missing branch field; `run_started: false`, `message` explains the error.
 - **202** — Workflow dispatched; `run_started: true`, `actions_url` points to the GitHub Actions workflow.
 - **500** — Dispatch to GitHub failed; `run_started: false`, `dispatch_status` and `dispatch_error` included.

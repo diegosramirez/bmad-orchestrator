@@ -1,5 +1,5 @@
 permissions:
-  # Read issue fields (customfield_10112); write comments for /bmad helper.
+  # Read issue fields (target repo + branch; ids configurable via Forge env vars).
   scopes:
     - read:jira-work
     - write:jira-work
@@ -47,4 +47,4 @@ app:
     name: nodejs24.x
     memoryMB: 256
     architecture: arm64
-  id: ari:cloud:ecosystem::app/a89bf36f-39f5-4369-91fd-282f788edba0
+  id: ari:cloud:ecosystem::app/27b91fad-3b4a-4e18-aa7c-86d437ceca5e

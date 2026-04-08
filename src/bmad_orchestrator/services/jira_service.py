@@ -99,11 +99,7 @@ def _retry_jira(
                 raise
     raise last_exc  # type: ignore[misc]  # unreachable
 
-# Target app repo (same id on Epic and Story when the field is on both issue types).
-TARGET_REPO_CUSTOM_FIELD_ID = "customfield_10112"
-
-
-def _customfield_10112_from_raw_issue(issue: Any) -> Any | None:
+def _target_repo_value_from_raw_issue(issue: Any, field_id: str) -> Any | None:
     """Return raw Jira REST value for the target-repo custom field, or None if unset."""
     raw_issue = getattr(issue, "raw", None)
     if not isinstance(raw_issue, dict):
@@ -111,7 +107,7 @@ def _customfield_10112_from_raw_issue(issue: Any) -> Any | None:
     fields_json = raw_issue.get("fields")
     if not isinstance(fields_json, dict):
         return None
-    val = fields_json.get(TARGET_REPO_CUSTOM_FIELD_ID)
+    val = fields_json.get(field_id)
     if val is None:
         return None
     if isinstance(val, str) and not val.strip():
@@ -281,13 +277,16 @@ class JiraService:
         return _issue_to_dict(issue)
 
     def get_epic_customfield_10112_value(self, epic_key: str) -> Any | None:
-        """Return raw API payload for customfield_10112 from the Epic (to copy onto new Stories)."""
+        """Return raw API payload for the Epic target-repo field (copied onto new Stories)."""
         try:
             issue = self._client.issue(epic_key)
             it = getattr(issue.fields, "issuetype", None)
             if not it or getattr(it, "name", None) != "Epic":
                 return None
-            return _customfield_10112_from_raw_issue(issue)
+            return _target_repo_value_from_raw_issue(
+                issue,
+                self.settings.jira_target_repo_custom_field_id,
+            )
         except Exception:
             return None
 
@@ -542,13 +541,13 @@ class JiraService:
     def set_story_branch_field(
         self, story_key: str, branch: str,
     ) -> None:
-        """Store the BMAD git branch in customfield_10145."""
-        _retry_jira(
-            lambda: self._client.issue(story_key).update(
-                fields={"customfield_10145": branch},
-            ),
-            label="set_story_branch_field",
-        )
+        """Store the BMAD git branch in the configured branch custom field."""
+        fid = self.settings.jira_branch_custom_field_id
+
+        def _do() -> None:
+            self._client.issue(story_key).update(fields={fid: branch})
+
+        _retry_jira(_do, label="set_story_branch_field")
         logger.info(
             "story_branch_field_updated",
             story_key=story_key,

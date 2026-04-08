@@ -184,7 +184,7 @@ class DummyJiraService:
         issue = self._read_issue("epics", epic_key)
         if not issue or issue.get("issue_type") != "Epic":
             return None
-        val = issue.get("customfield_10112")
+        val = issue.get(self.settings.jira_target_repo_custom_field_id)
         if val is None:
             return None
         if isinstance(val, str) and not val.strip():
@@ -315,5 +315,5 @@ class DummyJiraService:
             logger.info("dummy_comment_updated", issue_key=issue_key)
 
     def set_story_branch_field(self, story_key: str, branch: str) -> None:
-        """No-op in dummy; real implementation updates customfield_10145."""
+        """No-op in dummy; real implementation updates the branch custom field."""
         logger.info("dummy_set_story_branch_field", story_key=story_key, branch=branch)
