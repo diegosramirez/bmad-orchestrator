@@ -3,9 +3,13 @@
   "rewrites": [
     { "source": "/bmad/jira-webhook", "destination": "/api/jira-issue" },
     { "source": "/bmad/jira-comment-webhook", "destination": "/api/jira-comment" },
-    { "source": "/bmad/discovery-run", "destination": "/api/bmad-discovery-run" },
-    { "source": "/bmad/architect-run", "destination": "/api/bmad-architect-run" },
-    { "source": "/bmad/stories-run", "destination": "/api/bmad-stories-run" },
-    { "source": "/bmad/dev-run", "destination": "/api/bmad-dev-run" }
+    { "source": "/workflow/discovery-run", "destination": "/api/workflow-discovery-run" },
+    { "source": "/workflow/architect-run", "destination": "/api/workflow-architect-run" },
+    { "source": "/workflow/stories-run", "destination": "/api/workflow-stories-run" },
+    { "source": "/workflow/dev-run", "destination": "/api/workflow-dev-run" },
+    { "source": "/bmad/discovery-run", "destination": "/api/workflow-discovery-run" },
+    { "source": "/bmad/architect-run", "destination": "/api/workflow-architect-run" },
+    { "source": "/bmad/stories-run", "destination": "/api/workflow-stories-run" },
+    { "source": "/bmad/dev-run", "destination": "/api/workflow-dev-run" }
   ]
 }
