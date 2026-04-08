@@ -1,6 +1,6 @@
 # BMAD Slack + Jira workers (Vercel)
 
-Serverless functions for **Slack** slash commands / interactivity and **Jira** webhooks. Everything here is **TypeScript** only; deploy with Vercel (`vercel deploy` or connect the repo).
+Serverless functions for **Slack** slash commands / interactivity and **Jira** webhooks. Everything here is **TypeScript** only; deploy with Vercel (`vercel deploy` or connect the repo). Shared Jira helpers live in `lib/jira-webhooks.ts` (outside `api/` so Vercel bundles them with Node ESM).
 
 ## Endpoints
 

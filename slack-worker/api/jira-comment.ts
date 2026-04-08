@@ -17,7 +17,7 @@ import {
   readJsonBody,
   verifyJiraWebhookSecret,
   FORGE_RUN_IN_PROGRESS_MESSAGE,
-} from "./lib/jira-webhooks";
+} from "../lib/jira-webhooks.js";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

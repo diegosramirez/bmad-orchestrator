@@ -1,6 +1,9 @@
 /**
  * Jira webhook helpers for Vercel (TypeScript only). Parses Jira payloads, dispatches
  * bmad-start-run.yml via GitHub API, and detects in-flight runs.
+ *
+ * Lives outside `api/` so Vercel ships this module next to the compiled handlers (Node ESM
+ * does not resolve `api/lib/*` in the serverless bundle).
  */
 import { timingSafeEqual } from "node:crypto";
 
@@ -373,6 +376,9 @@ export async function readJsonBody(req: any): Promise<unknown> {
     } catch {
       return {};
     }
+  }
+  if (typeof req.on !== "function") {
+    return {};
   }
   const raw = await readRawBodyString(req);
   if (!raw || !raw.trim()) return {};

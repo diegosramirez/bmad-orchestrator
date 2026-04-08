@@ -8,13 +8,12 @@
 import {
   buildGithubActionsWorkflowUrl,
   dispatchGithubWorkflowFromJira,
-  getJiraWebhookSecret,
   hasActiveBmadRunForPrompt,
   parseJiraWebhook,
   readJsonBody,
   verifyJiraWebhookSecret,
   FORGE_RUN_IN_PROGRESS_MESSAGE,
-} from "./lib/jira-webhooks";
+} from "../lib/jira-webhooks.js";
 
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== "POST") {
