@@ -142,5 +142,5 @@ bmad-orchestrator run \
 ## Notes
 
 - **Logs & checkpoints** are stored in `~/.bmad/` — not in the target project
-- **Personas** are bundled into the installed package from `.claude/commands/` — no need to copy them to the target project
+- **Personas** are bundled into the installed package from `.claude/skills/` — no need to copy them to the target project
 - Updates to the orchestrator source are reflected immediately (editable install — no reinstall needed)

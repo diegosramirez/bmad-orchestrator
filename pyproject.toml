@@ -33,7 +33,7 @@ bmad-orchestrator = "bmad_orchestrator.cli:app"
 packages = ["src/bmad_orchestrator"]
 
 [tool.hatch.build.targets.wheel.force-include]
-".claude/commands" = "bmad_orchestrator/personas/data"
+".claude/skills" = "bmad_orchestrator/personas/data"
 
 [dependency-groups]
 dev = [
