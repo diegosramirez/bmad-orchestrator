@@ -4,7 +4,10 @@ import subprocess
 
 import pytest
 
-from bmad_orchestrator.nodes.commit_and_push import make_commit_and_push_node
+from bmad_orchestrator.nodes.commit_and_push import (
+    _ensure_pr_retry_workflow,
+    make_commit_and_push_node,
+)
 from tests.conftest import make_state
 
 
@@ -41,9 +44,11 @@ def test_commits_and_returns_branch_and_sha(settings, mock_git, tmp_path, monkey
         "team-alpha", "TEST-10", "Add user authentication"
     )
     mock_git.create_and_checkout_branch.assert_called_once()
-    assert mock_git.stage_path.call_count == 2
+    # 2 touched files + 1 auto-installed PR retry forwarder
+    assert mock_git.stage_path.call_count == 3
     mock_git.stage_path.assert_any_call("src/api/auth.py")
     mock_git.stage_path.assert_any_call("tests/test_auth.py")
+    mock_git.stage_path.assert_any_call(".github/workflows/bmad-pr-retry.yml")
     mock_git.commit.assert_called_once()
     mock_git.push.assert_called_once()
 
@@ -63,7 +68,9 @@ def test_skips_staging_nonexistent_paths(settings, mock_git, tmp_path, monkeypat
         touched_files=["real.py", "ghost/does_not_exist.jsx"],
     ))
 
-    mock_git.stage_path.assert_called_once_with("real.py")
+    # real.py + auto-installed PR retry forwarder
+    mock_git.stage_path.assert_any_call("real.py")
+    assert mock_git.stage_path.call_count == 2
 
 
 def test_skips_staging_paths_outside_repo(settings, mock_git, tmp_path, monkeypatch):
@@ -85,7 +92,9 @@ def test_skips_staging_paths_outside_repo(settings, mock_git, tmp_path, monkeypa
         ],
     ))
 
-    mock_git.stage_path.assert_called_once_with("real.py")
+    # real.py + auto-installed PR retry forwarder
+    mock_git.stage_path.assert_any_call("real.py")
+    assert mock_git.stage_path.call_count == 2
 
 
 def test_skips_when_already_committed(settings, mock_git):
@@ -360,3 +369,30 @@ def test_commit_hook_failure_returns_failure_state(
     assert "pre-commit hook" in result["failure_state"].lower()
     assert result.get("branch_name") == "bmad/t/T-1-feat"
     mock_git.push.assert_not_called()
+
+
+# ── PR retry forwarder auto-install ──────────────────────────────────────────
+
+
+def test_ensure_pr_retry_installs_when_missing(tmp_path, mock_git):
+    """Forwarder workflow is written and staged when not present."""
+    installed = _ensure_pr_retry_workflow(tmp_path, mock_git)
+    target = tmp_path / ".github" / "workflows" / "bmad-pr-retry.yml"
+
+    assert installed is True
+    assert target.exists()
+    assert "BMAD" in target.read_text()
+    mock_git.stage_path.assert_called_once_with(".github/workflows/bmad-pr-retry.yml")
+
+
+def test_ensure_pr_retry_skips_when_present(tmp_path, mock_git):
+    """Forwarder workflow is not overwritten if it already exists."""
+    target = tmp_path / ".github" / "workflows" / "bmad-pr-retry.yml"
+    target.parent.mkdir(parents=True)
+    target.write_text("existing content")
+
+    installed = _ensure_pr_retry_workflow(tmp_path, mock_git)
+
+    assert installed is False
+    assert target.read_text() == "existing content"
+    mock_git.stage_path.assert_not_called()

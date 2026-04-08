@@ -68,48 +68,63 @@ def make_validate_environment_node(
                     _emit(f"Fallback setup detected from {manifest}: `{cmd}`")
                     break
 
-        phases: list[tuple[str, list[str]]] = [
-            ("Setup", setup_commands),
-            ("Build", build_commands),
-            ("Test", test_commands),
-        ]
+        # Phase 1: Setup is mandatory — if deps can't install, abort.
+        # Use a longer timeout for setup (pip install, go mod download can be slow).
+        _SETUP_TIMEOUT_S = 300
+        for cmd in setup_commands:
+            _emit(f"Running setup: `{cmd}`")
+            success, output = run_project_command(cmd, cwd, timeout=_SETUP_TIMEOUT_S)
+            if not success:
+                msg = f"Baseline setup failed (`{cmd}`): {output[:500]}"
+                logger.error("env_setup_failed", cmd=cmd, output=output[:300])
+                fail_log: ExecutionLogEntry = {
+                    "timestamp": now,
+                    "node": NODE_NAME,
+                    "message": msg,
+                    "dry_run": False,
+                }
+                return {
+                    "failure_state": msg,
+                    "execution_log": [fail_log],
+                }
 
-        for phase_name, commands in phases:
+        # Phase 2: Build and test are best-effort — pre-existing failures
+        # (e.g. missing database, incomplete test env) should not block the
+        # agent from writing new code.  Log warnings but continue.
+        warnings: list[str] = []
+        for phase_name, commands in [("Build", build_commands), ("Test", test_commands)]:
             for cmd in commands:
                 _emit(f"Validating {phase_name.lower()}: `{cmd}`")
                 success, output = run_project_command(cmd, cwd)
                 if not success:
-                    msg = f"Baseline {phase_name.lower()} failed (`{cmd}`): {output[:500]}"
-                    logger.error(
-                        "env_validation_failed",
+                    warning = (
+                        f"Baseline {phase_name.lower()} has pre-existing "
+                        f"failures (`{cmd}`): {output[:300]}"
+                    )
+                    logger.warning(
+                        "env_baseline_warning",
                         phase=phase_name.lower(),
                         cmd=cmd,
                         output=output[:300],
                     )
-                    fail_log: ExecutionLogEntry = {
-                        "timestamp": now,
-                        "node": NODE_NAME,
-                        "message": msg,
-                        "dry_run": False,
-                    }
-                    return {
-                        "failure_state": msg,
-                        "execution_log": [fail_log],
-                    }
+                    warnings.append(warning)
+                    _emit(f"Warning: {phase_name.lower()} failed (pre-existing)")
 
+        status = "with warnings" if warnings else "clean"
         log_entry = {
             "timestamp": now,
             "node": NODE_NAME,
             "message": (
-                f"Environment validated — "
+                f"Environment validated ({status}) — "
                 f"{len(setup_commands)} setup, "
                 f"{len(build_commands)} build, "
-                f"{len(test_commands)} test command(s) passed"
+                f"{len(test_commands)} test command(s)"
+                + (f"; {len(warnings)} pre-existing warning(s)" if warnings else " passed")
             ),
             "dry_run": False,
         }
-        logger.info("env_validated")
-        _emit("Environment validation passed")
+        logger.info("env_validated", status=status, warnings=len(warnings))
+        _emit(f"Environment validation {status}")
         return {"execution_log": [log_entry]}
 
     return validate_environment

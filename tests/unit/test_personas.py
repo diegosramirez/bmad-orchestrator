@@ -73,3 +73,40 @@ def test_load_persona_falls_back_on_parse_error(tmp_path):
     result = load_persona("architect", str(tmp_path))
     assert len(result) > 20  # got fallback, not empty
     load_persona.cache_clear()
+
+
+def test_parse_agent_yaml_v62_manifest(tmp_path):
+    """v6.2+ bmad-skill-manifest.yaml uses flat format with displayName etc."""
+    path = tmp_path / "bmad-skill-manifest.yaml"
+    path.write_text(
+        "type: agent\n"
+        "name: bmad-agent-dev\n"
+        "displayName: Amelia\n"
+        "title: Developer Agent\n"
+        "role: Senior Software Engineer\n"
+        "identity: Executes approved stories\n"
+        "communicationStyle: Ultra-succinct\n"
+        "principles: All tests must pass 100%\n"
+    )
+    result = _parse_agent_yaml(path)
+    assert "Amelia" in result
+    assert "Senior Software Engineer" in result
+    assert "Ultra-succinct" in result
+    assert "All tests must pass" in result
+
+
+def test_load_persona_reads_v62_manifest(tmp_path):
+    """load_persona finds v6.2+ bmad-skill-manifest.yaml in skill directory."""
+    load_persona.cache_clear()
+    skill_dir = tmp_path / "bmad-agent-dev"
+    skill_dir.mkdir()
+    (skill_dir / "bmad-skill-manifest.yaml").write_text(
+        "type: agent\n"
+        "name: bmad-agent-dev\n"
+        "displayName: Amelia\n"
+        "role: Senior Software Engineer\n"
+        "communicationStyle: Ultra-succinct\n"
+    )
+    result = load_persona("developer", str(tmp_path))
+    assert "Senior Software Engineer" in result
+    load_persona.cache_clear()

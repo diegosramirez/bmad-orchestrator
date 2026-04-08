@@ -14,15 +14,29 @@ try:
 except Exception:
     _BUNDLED_PERSONAS_DIR = None
 
-# ── Mapping from logical agent ID to the expected YAML filename ───────────────
+# ── Mapping from logical agent ID to expected YAML filenames ──────────────────
+# v6.2+ uses bmad-skill-manifest.yaml inside skill directories; legacy names kept
+# for backwards-compatibility with older BMAD installs.
 AGENT_FILE_MAP: dict[str, list[str]] = {
-    "architect":    ["architect.agent.yaml", "architect.yaml"],
-    "designer":     ["ux-designer.agent.yaml", "ux-designer.yaml", "designer.yaml"],
-    "developer":    ["dev.agent.yaml", "developer.agent.yaml", "dev.yaml"],
-    "qa":           ["qa.agent.yaml", "qa.yaml"],
-    "e2e_tester":   ["qa.agent.yaml", "qa.yaml"],
-    "scrum_master": ["sm.agent.yaml", "scrum-master.agent.yaml", "sm.yaml"],
-    "pm":           ["pm.agent.yaml", "product-manager.agent.yaml", "pm.yaml"],
+    "architect":    ["bmad-skill-manifest.yaml", "architect.agent.yaml", "architect.yaml"],
+    "designer":     ["bmad-skill-manifest.yaml", "ux-designer.agent.yaml", "ux-designer.yaml"],
+    "developer":    ["bmad-skill-manifest.yaml", "dev.agent.yaml", "developer.agent.yaml"],
+    "qa":           ["bmad-skill-manifest.yaml", "qa.agent.yaml", "qa.yaml"],
+    "e2e_tester":   ["bmad-skill-manifest.yaml", "qa.agent.yaml", "qa.yaml"],
+    "scrum_master": ["bmad-skill-manifest.yaml", "sm.agent.yaml", "scrum-master.agent.yaml"],
+    "pm":           ["bmad-skill-manifest.yaml", "pm.agent.yaml", "product-manager.agent.yaml"],
+}
+
+# v6.2+ skill directory names containing the agent manifest for each persona.
+# Used to disambiguate when multiple bmad-skill-manifest.yaml files exist.
+_AGENT_SKILL_DIRS: dict[str, str] = {
+    "architect":    "bmad-agent-architect",
+    "designer":     "bmad-agent-ux-designer",
+    "developer":    "bmad-agent-dev",
+    "qa":           "bmad-agent-qa",
+    "e2e_tester":   "bmad-agent-qa",
+    "scrum_master": "bmad-agent-sm",
+    "pm":           "bmad-agent-pm",
 }
 
 # ── Human-readable display names for console logging ─────────────────────────
@@ -88,22 +102,52 @@ FALLBACK_PERSONAS: dict[str, str] = {
 
 
 def _find_agent_file(agent_id: str, search_dir: Path) -> Path | None:
-    """Search search_dir recursively for a BMAD agent YAML file."""
+    """Search search_dir recursively for a BMAD agent YAML file.
+
+    For v6.2+ manifest files (bmad-skill-manifest.yaml), only match when the
+    file lives inside the expected skill directory for this agent_id so we don't
+    accidentally pick up a manifest from an unrelated skill.
+    """
+    expected_dir = _AGENT_SKILL_DIRS.get(agent_id)
     candidates = AGENT_FILE_MAP.get(agent_id, [])
     for filename in candidates:
+        is_manifest = filename == "bmad-skill-manifest.yaml"
         for found in search_dir.rglob(filename):
-            if found.is_file():
-                return found
+            if not found.is_file():
+                continue
+            # For manifests, only accept if parent dir matches the expected skill dir.
+            if is_manifest and expected_dir and found.parent.name != expected_dir:
+                continue
+            return found
     return None
 
 
 def _parse_agent_yaml(path: Path) -> str:
-    """Parse a BMAD agent YAML and return a formatted system prompt string."""
+    """Parse a BMAD agent YAML and return a formatted system prompt string.
+
+    Supports two formats:
+    - v6.2+ flat manifest (bmad-skill-manifest.yaml): displayName, role,
+      identity, communicationStyle, principles at top level.
+    - Legacy nested format: name/title, persona.role, persona.identity, etc.
+    """
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     parts: list[str] = []
 
+    # v6.2+ flat manifest format (bmad-skill-manifest.yaml)
+    if "displayName" in data or "communicationStyle" in data:
+        display = data.get("displayName") or data.get("title", "")
+        if display:
+            parts.append(f"Name: {display}")
+        for key in ("role", "identity", "principles", "communicationStyle"):
+            val = data.get(key)
+            if val:
+                label = "Communication Style" if key == "communicationStyle" else key.title()
+                parts.append(f"{label}: {val}")
+        return "\n".join(parts) if parts else str(data)
+
+    # Legacy nested format
     name = data.get("name") or data.get("title", "")
     if name:
         parts.append(f"Name: {name}")
@@ -146,7 +190,7 @@ def load_persona(agent_id: str, bmad_install_dir: str) -> str:
             except Exception:
                 pass
 
-    # 2. CWD-relative install dir (e.g. .claude/commands/ when running from source)
+    # 2. CWD-relative install dir (e.g. .claude/skills/ when running from source)
     search_dir = Path(bmad_install_dir)
     if search_dir.exists():
         found = _find_agent_file(agent_id, search_dir)

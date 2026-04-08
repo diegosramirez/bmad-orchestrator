@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.resources
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -13,6 +14,30 @@ from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.retry import retry_on_subprocess_error
 
 logger = get_logger(__name__)
+
+_RETRY_WORKFLOW_REL = ".github/workflows/bmad-pr-retry.yml"
+
+
+def _ensure_pr_retry_workflow(repo_root: Path, git: GitService) -> bool:
+    """Install the PR retry forwarder workflow if missing. Returns True if installed."""
+    target = repo_root / _RETRY_WORKFLOW_REL
+    if target.exists():
+        return False
+    try:
+        template = (
+            importlib.resources.files("bmad_orchestrator")
+            / "templates"
+            / "bmad-pr-retry.yml"
+        )
+        content = template.read_text(encoding="utf-8")
+    except Exception:
+        logger.info("pr_retry_template_not_found")
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    git.stage_path(str(target.relative_to(repo_root)))
+    logger.info("pr_retry_workflow_installed", path=str(target))
+    return True
 
 NODE_NAME = "commit_and_push"
 
@@ -152,6 +177,10 @@ def make_commit_and_push_node(
                 }
 
         repo_root = Path.cwd().resolve()
+
+        # Auto-install PR retry forwarder workflow in target repo
+        _ensure_pr_retry_workflow(repo_root, git)
+
         seen: set[str] = set()
         for path in state.get("touched_files") or []:
             if path in seen:

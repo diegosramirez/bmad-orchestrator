@@ -67,7 +67,7 @@ src/bmad_orchestrator/
 │   ├── github_service.py   # GitHub CLI (gh) wrapper
 │   └── dummy_github_service.py  # File-backed GitHub mock
 ├── personas/
-│   └── loader.py           # Loads YAML personas from .claude/commands/ or falls back to hardcoded
+│   └── loader.py           # Loads YAML personas from .claude/skills/ or falls back to hardcoded
 └── utils/
     ├── cli_prompts.py      # Interactive Rich prompts (CLI only, never in nodes)
     ├── dry_run.py          # @skip_if_dry_run decorator
@@ -181,7 +181,7 @@ Users can override via `BMAD_AGENT_MODELS` env var (JSON dict mapping agent_id �
 | `docs/installation.md` | Dev-mode installation and usage guide |
 | `.env.example` | All `BMAD_*` environment variables |
 | `project.json` | Nx monorepo project config (targets: install, test, lint, run) |
-| `.claude/commands/` | 43 BMAD persona YAML files loaded at runtime |
+| `.claude/skills/` | 43 BMAD skill directories loaded at runtime (SKILL.md + bmad-skill-manifest.yaml) |
 | `_bmad/` | BMAD framework core (workflows, agents, templates) |
 
 ## Idempotency Rules

@@ -19,21 +19,22 @@ from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Relative to bmad_root (e.g. _bmad/)
-PATH_CREATE_EPICS_WORKFLOW = "bmm/workflows/3-solutioning/create-epics-and-stories/workflow.md"
+# Relative to bmad_root (e.g. _bmad/).
+# v6.2+ moved workflows from bmm/workflows/<phase>/<name>/ to bmm/<phase>/bmad-<name>/
+# and converted YAML/XML to markdown.
+PATH_CREATE_EPICS_WORKFLOW = "bmm/3-solutioning/bmad-create-epics-and-stories/workflow.md"
 PATH_CREATE_EPICS_STEP01 = (
-    "bmm/workflows/3-solutioning/create-epics-and-stories"
+    "bmm/3-solutioning/bmad-create-epics-and-stories"
     "/steps/step-01-validate-prerequisites.md"
 )
 PATH_CREATE_EPICS_STEP02 = (
-    "bmm/workflows/3-solutioning/create-epics-and-stories"
+    "bmm/3-solutioning/bmad-create-epics-and-stories"
     "/steps/step-02-design-epics.md"
 )
-PATH_CORRECT_COURSE_YAML = "bmm/workflows/4-implementation/correct-course/workflow.yaml"
-PATH_CORRECT_COURSE_INSTRUCTIONS = "bmm/workflows/4-implementation/correct-course/instructions.md"
-PATH_CREATE_STORY_YAML = "bmm/workflows/4-implementation/create-story/workflow.yaml"
-PATH_CREATE_STORY_INSTRUCTIONS = "bmm/workflows/4-implementation/create-story/instructions.xml"
-PATH_CREATE_STORY_TEMPLATE = "bmm/workflows/4-implementation/create-story/template.md"
+PATH_CORRECT_COURSE_WORKFLOW = "bmm/4-implementation/bmad-correct-course/workflow.md"
+PATH_CORRECT_COURSE_CHECKLIST = "bmm/4-implementation/bmad-correct-course/checklist.md"
+PATH_CREATE_STORY_WORKFLOW = "bmm/4-implementation/bmad-create-story/workflow.md"
+PATH_CREATE_STORY_TEMPLATE = "bmm/4-implementation/bmad-create-story/template.md"
 
 
 def _bmad_path(settings: Settings) -> Path:
@@ -48,7 +49,7 @@ def _read_workflow_text(settings: Settings, rel_path: str) -> str:
     """Read workflow file content; return empty string if missing."""
     root = _bmad_path(settings)
     # bmad_root is "_bmad", so root = cwd/_bmad.
-    # PATH_ constants are relative to bmad_root (e.g. bmm/workflows/...),
+    # PATH_ constants are relative to bmad_root (e.g. bmm/3-solutioning/...),
     # so full = root / rel_path resolves correctly.
     full = root / rel_path
     if not full.exists():
@@ -80,8 +81,8 @@ def load_create_epics_and_stories_context(settings: Settings) -> str:
 def load_correct_course_context(settings: Settings) -> str:
     """Load BMAD correct-course workflow context for headless execution."""
     parts = [
-        _read_workflow_text(settings, PATH_CORRECT_COURSE_YAML),
-        _read_workflow_text(settings, PATH_CORRECT_COURSE_INSTRUCTIONS),
+        _read_workflow_text(settings, PATH_CORRECT_COURSE_WORKFLOW),
+        _read_workflow_text(settings, PATH_CORRECT_COURSE_CHECKLIST),
     ]
     combined = "\n\n---\n\n".join(p for p in parts if p.strip())
     if not combined.strip():
@@ -95,8 +96,7 @@ def load_correct_course_context(settings: Settings) -> str:
 def load_create_story_context(settings: Settings) -> str:
     """Load BMAD create-story workflow context for headless execution."""
     parts = [
-        _read_workflow_text(settings, PATH_CREATE_STORY_YAML),
-        _read_workflow_text(settings, PATH_CREATE_STORY_INSTRUCTIONS),
+        _read_workflow_text(settings, PATH_CREATE_STORY_WORKFLOW),
         _read_workflow_text(settings, PATH_CREATE_STORY_TEMPLATE),
     ]
     combined = "\n\n---\n\n".join(p for p in parts if p.strip())

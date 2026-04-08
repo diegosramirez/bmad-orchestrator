@@ -38,7 +38,7 @@ def test_load_create_epics_reads_files_when_present(settings, monkeypatch, tmp_p
     monkeypatch.chdir(tmp_path)
     workflow_dir = (
         tmp_path / settings.bmad_root
-        / "bmm/workflows/3-solutioning/create-epics-and-stories"
+        / "bmm/3-solutioning/bmad-create-epics-and-stories"
     )
     steps_dir = workflow_dir / "steps"
     steps_dir.mkdir(parents=True)
