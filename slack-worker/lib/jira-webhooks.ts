@@ -88,6 +88,20 @@ export function getJiraWebhookSecret(): string {
   return envString("BMAD_JIRA_WEBHOOK_SECRET", "");
 }
 
+/** Forge JSON endpoints: `BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET`. */
+export function getForgeWebhookSecret(): string {
+  const forge = envString("BMAD_FORGE_WEBHOOK_SECRET", "");
+  const discovery = envString("BMAD_DISCOVERY_WEBHOOK_SECRET", "");
+  return forge || discovery;
+}
+
+export function forgeWebhookSecretConfigured(): boolean {
+  return Boolean(getForgeWebhookSecret().trim());
+}
+
+export const FORGE_SECRET_ENV_MESSAGE =
+  "Set BMAD_FORGE_WEBHOOK_SECRET or BMAD_DISCOVERY_WEBHOOK_SECRET on the server.";
+
 // ── Secret verification ─────────────────────────────────────────────────────
 
 export function verifyJiraWebhookSecret(headerValue: string | undefined): boolean {

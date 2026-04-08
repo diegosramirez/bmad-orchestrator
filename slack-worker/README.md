@@ -9,6 +9,12 @@ Serverless functions for **Slack** slash commands / interactivity and **Jira** w
 | `/api/slack` | Slack signing secret + slash commands / interactive payloads |
 | `/api/jira-issue` | Jira **issue** webhooks → dispatches `bmad-start-run.yml` when a story has a parent epic |
 | `/api/jira-comment` | Jira **comment** webhooks → `/bmad retry\|refine` commands |
+| `/api/bmad-discovery-run` | Forge / panel: **Discovery** only (`execution_mode`: `discovery`) |
+| `/api/bmad-architect-run` | Forge: **Epic Architect** only (`epic_architect`) |
+| `/api/bmad-stories-run` | Forge: **Stories** breakdown + party (`stories_breakdown`) |
+| `/api/bmad-dev-run` | Forge: **Dev** pipeline on a Story (`inline`) |
+
+All Forge routes expect **POST** JSON: `{"issue_key":"PROJ-123","target_repo":"optional/override","team_id":"optional"}`. They require **`BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET`** to be set (otherwise **503**).
 
 Legacy-style paths (rewrites in `vercel.json`):
 
@@ -16,6 +22,10 @@ Legacy-style paths (rewrites in `vercel.json`):
 |----------------|-------------|
 | `/bmad/jira-webhook` | `/api/jira-issue` |
 | `/bmad/jira-comment-webhook` | `/api/jira-comment` |
+| `/bmad/discovery-run` | `/api/bmad-discovery-run` |
+| `/bmad/architect-run` | `/api/bmad-architect-run` |
+| `/bmad/stories-run` | `/api/bmad-stories-run` |
+| `/bmad/dev-run` | `/api/bmad-dev-run` |
 
 ## Environment variables
 
@@ -37,6 +47,8 @@ Legacy-style paths (rewrites in `vercel.json`):
 | `DEFAULT_TARGET_REPO` | Fallback `owner/repo` for the app under development |
 | `DEFAULT_TEAM_ID` | Fallback team id when it cannot be inferred from the issue key |
 | `BMAD_JIRA_WEBHOOK_SECRET` | Optional. If set, every Jira webhook request must send header `X-BMAD-Jira-Secret` with the same value |
+| `BMAD_FORGE_WEBHOOK_SECRET` | Set this or `BMAD_DISCOVERY_WEBHOOK_SECRET` for Forge routes (`/api/bmad-*-run`); same as Python orchestrator |
+| `BMAD_DISCOVERY_WEBHOOK_SECRET` | Alternative Forge secret (either this or `BMAD_FORGE_WEBHOOK_SECRET`) |
 | `JIRA_TARGET_REPO_CUSTOM_FIELD_ID` | Default `customfield_10112` |
 | `JIRA_BRANCH_CUSTOM_FIELD_ID` | Default `customfield_10145` (BMAD Branch; required for comment retry/refine) |
 
