@@ -286,7 +286,7 @@ class TestChecklistText:
         story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
         svc.set_story_checklist_text(
             story["key"],
-            "## Implementation checklist\n\n* [ ] **Step** — do it",
+            "* [ ] **Step** — do it",
         )
         assert svc.story_checklist_text_is_empty(story["key"]) is False
 

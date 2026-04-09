@@ -434,7 +434,7 @@ def test_set_story_checklist_text(jira_svc):
         return fetch_issue if fields else update_issue
 
     client.issue.side_effect = _issue_side_effect
-    md = "## Implementation checklist\n\n* [ ] **A** — b"
+    md = "* [ ] **A** — b"
     svc.set_story_checklist_text("PUG-5", md)
     payload = paragraph_custom_field_payload_for_api(None, md)
     update_issue.update.assert_called_once_with(fields={fid: payload})

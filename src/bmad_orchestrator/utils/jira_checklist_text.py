@@ -9,8 +9,11 @@ def tasks_to_checklist_markdown(tasks: list[Any]) -> str:
     """Turn structured tasks (summary + description) into markdown checklist lines.
 
     Each item becomes ``* [ ] **summary** — description`` (description collapsed to one line).
+
+    No heading is prepended: Jira Checklist Text treats ``##`` lines as extra checklist rows
+    (e.g. ``h2. ...``), so we emit only task lines.
     """
-    lines = ["## Implementation checklist", ""]
+    lines: list[str] = []
     for t in tasks:
         summary = str(getattr(t, "summary", "") or "").strip()
         desc = str(getattr(t, "description", "") or "").strip()
