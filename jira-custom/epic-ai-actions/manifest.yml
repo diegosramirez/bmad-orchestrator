@@ -7,7 +7,7 @@ permissions:
     fetch:
       backend:
         # Replace with the public HTTPS origin of your BMAD FastAPI webhook (no path). Redeploy after editing.
-        - 'https://discernably-bastionary-amelia.ngrok-free.dev/'
+        - 'https://service-ai-lemon.vercel.app/'
 
 modules:
   jira:issuePanel:
