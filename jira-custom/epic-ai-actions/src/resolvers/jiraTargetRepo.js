@@ -5,7 +5,7 @@ import api, { route } from '@forge/api';
 
 /** Must match BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID / JiraService (default customfield_10112). */
 export const TARGET_REPO_CUSTOM_FIELD =
-  process.env.BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID || 'customfield_10112';
+  process.env.BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID || 'customfield_10080';
 
 /**
  * Parse target-repo custom field from a Jira issue JSON `fields` object.
