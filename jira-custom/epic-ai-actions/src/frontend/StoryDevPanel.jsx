@@ -22,7 +22,7 @@ const DEFAULT_SUCCESS_BODY =
   'GitHub Actions workflow was dispatched. Check the issue comment for progress.';
 
 /**
- * Story issues only: dispatch full BMAD dev pipeline (detect → implementation → QA → PR).
+ * Story issues only: dispatch full workflow dev pipeline (detect → implementation → QA → PR).
  */
 export function StoryDevPanel() {
   const { issueKey, loading, error, issueTypeName, isStory } = useIssueMetadata();
@@ -60,7 +60,7 @@ export function StoryDevPanel() {
         title: 'Run in progress',
         body:
           result?.message ||
-          'A BMAD orchestrator run is already in progress for this issue. Wait for it to finish.',
+          'A workflow orchestrator run is already in progress for this issue. Wait for it to finish.',
       });
     } else {
       setBanner({
@@ -101,12 +101,12 @@ export function StoryDevPanel() {
       <Stack space="space.150">
         <SectionMessage appearance="info" title="Story-only panel">
           <Text>
-            This panel runs the BMAD development pipeline on <Text as="strong">Story</Text>{' '}
+            This panel runs the workflow development pipeline on <Text as="strong">Story</Text>{' '}
             issues. This issue&apos;s type is{' '}
             <Text as="strong">{issueTypeName || 'unknown'}</Text>.
           </Text>
           <Text>
-            For <Text as="strong">Epic</Text> issues, use the <Text as="strong">BMAD Epic</Text>{' '}
+            For <Text as="strong">Epic</Text> issues, use the <Text as="strong">Workflow Epic</Text>{' '}
             panel (Discovery, Design Architect, Generate Stories).
           </Text>
         </SectionMessage>

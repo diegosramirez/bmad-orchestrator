@@ -16,7 +16,7 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: BMAD Epic
+      title: Workflow Epic
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
     - key: bmad-ai-comments-panel
       resource: comment-apps-main
@@ -30,7 +30,7 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: BMAD Story
+      title: Workflow Story
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
   function:
     - key: resolver

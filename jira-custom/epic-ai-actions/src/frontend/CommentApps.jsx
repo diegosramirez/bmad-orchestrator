@@ -9,7 +9,7 @@ import { BmadCommentPanel } from './components/BmadCommentPanel';
 import { useIssueMetadata } from './hooks/useIssueMetadata';
 
 /**
- * Story issues only: /bmad comment helper (no epic actions).
+ * Story issues only: workflow comment helper (no epic actions).
  */
 export function CommentApps() {
   const { issueKey, loading, error, issueTypeName, isStory } = useIssueMetadata();
@@ -44,15 +44,14 @@ export function CommentApps() {
       <Stack space="space.150">
         <SectionMessage appearance="info" title="Story-only panel">
           <Text>
-            This panel posts <Text as="strong">/bmad refine</Text> or{' '}
-            <Text as="strong">/bmad retry</Text> comments on <Text as="strong">Story</Text>{' '}
-            issues. This issue&apos;s type is{' '}
+            This panel posts <Text as="strong">refine</Text> or <Text as="strong">retry</Text>{' '}
+            workflow comments on <Text as="strong">Story</Text> issues. This issue&apos;s type is{' '}
             <Text as="strong">{issueTypeName || 'unknown'}</Text>.
           </Text>
           <Text>
-            For <Text as="strong">Epic</Text> issues, use the <Text as="strong">BMAD Epic</Text>{' '}
+            For <Text as="strong">Epic</Text> issues, use the <Text as="strong">Workflow Epic</Text>{' '}
             panel (Discovery, Design Architect, Generate Stories). For a full automated dev run on a
-            Story, use <Text as="strong">BMAD Story</Text>.
+            Story, use <Text as="strong">Workflow Story</Text>.
           </Text>
         </SectionMessage>
       </Stack>
