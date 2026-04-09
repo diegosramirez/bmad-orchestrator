@@ -11,8 +11,11 @@ from pydantic import BaseModel, Field, field_validator
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
+from bmad_orchestrator.services.claude_service import ClaudeService
+from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.cost_tracking import accumulate_cost
+from bmad_orchestrator.utils.jira_checklist_text import mark_checklist_items_done
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import run_compile_check, run_project_command
@@ -61,6 +64,81 @@ class FileContent(BaseModel):
     """Phase-2 output: complete content for a single file."""
 
     content: str = Field(description="Complete, production-ready file content")
+
+
+class ChecklistCompletionAssessment(BaseModel):
+    """Which checklist item summaries were fully completed in a dev session."""
+
+    completed_task_summaries: list[str] = Field(default_factory=list)
+
+    @field_validator("completed_task_summaries", mode="before")
+    @classmethod
+    def _parse_stringified_json(cls, v: Any) -> Any:
+        return parse_stringified_list(v)
+
+
+def _truncate_session_text(text: str | None, max_len: int = 8000) -> str:
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "..."
+
+
+def maybe_update_jira_checklist_after_dev_session(
+    jira: JiraServiceProtocol,
+    claude: ClaudeService,
+    settings: Settings,
+    story_key: str | None,
+    checklist_markdown: str,
+    session_summary: str | None,
+    acceptance_criteria: list[str],
+    *,
+    on_event: Callable[[str], None] | None,
+) -> None:
+    """Mark completed checklist items in Jira Checklist Text only (not comments)."""
+    if not story_key or story_key == "UNKNOWN":
+        return
+    if not (checklist_markdown or "").strip():
+        return
+
+    sm_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
+    ac_lines = "\n".join(f"- {ac}" for ac in acceptance_criteria)
+    user_msg = (
+        "From the Jira implementation checklist and the development session output below, "
+        "list which checklist items are FULLY completed in this session.\n\n"
+        "Each checklist line has a bold **summary** — return those summary strings exactly "
+        "as they appear in the checklist (or close enough to match the same line).\n"
+        "Do not include items that are only partially done or not addressed.\n\n"
+        f"## Checklist (from Jira)\n{checklist_markdown}\n\n"
+        f"## Acceptance criteria\n{ac_lines or '(none)'}\n\n"
+        "## Session output\n"
+        f"{_truncate_session_text(session_summary)}\n\n"
+        "Return JSON with field completed_task_summaries: array of strings."
+    )
+    try:
+        assessment = claude.complete_structured(
+            system_prompt=sm_prompt,
+            user_message=user_msg,
+            schema=ChecklistCompletionAssessment,
+            agent_id="scrum_master",
+            max_tokens=4096,
+            on_event=on_event,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("checklist_completion_assessment_failed", error=str(exc)[:200])
+        return
+
+    new_md = mark_checklist_items_done(
+        checklist_markdown,
+        assessment.completed_task_summaries,
+    )
+    if new_md == checklist_markdown:
+        return
+    try:
+        jira.set_story_checklist_text(story_key, new_md)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("checklist_jira_update_failed", story_key=story_key, error=str(exc)[:200])
 
 
 def _prefix_output_dir(
@@ -153,6 +231,8 @@ def _resolve_cwd(settings: Settings, state: OrchestratorState) -> Path:
 
 def make_dev_story_node(
     agent: ClaudeAgentService,
+    claude: ClaudeService,
+    jira: JiraServiceProtocol,
     settings: Settings,
     *,
     on_event: Callable[[str], None] | None = None,
@@ -160,6 +240,14 @@ def make_dev_story_node(
     system_prompt = build_system_prompt("developer", settings.bmad_install_dir)
 
     def dev_story(state: OrchestratorState) -> dict[str, Any]:
+        story_key = state.get("current_story_id")
+        checklist_md = ""
+        if story_key and story_key != "UNKNOWN":
+            try:
+                checklist_md = jira.get_story_checklist_text(story_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("checklist_read_failed", story_key=story_key, error=str(exc)[:200])
+
         story_content = state["story_content"] or ""
         acceptance_criteria = state["acceptance_criteria"] or []
         architect_output = state["architect_output"] or ""
@@ -195,11 +283,21 @@ def make_dev_story_node(
             "and re-run until all pass.\n\n"
         ) if obligations_lines else ""
 
+        checklist_block = ""
+        if checklist_md.strip():
+            checklist_block = (
+                "## Implementation checklist (from Jira)\n"
+                f"{checklist_md}\n\n"
+                "Work through these items as you implement; completed items will be "
+                "reflected in Jira after this session.\n\n"
+            )
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
             f"{guidelines_block}"
             f"{obligations_block}"
+            f"{checklist_block}"
             f"Implement the following user story.\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
@@ -276,6 +374,17 @@ def make_dev_story_node(
                 "total_cost_usd": new_cost,
                 "execution_log": [log_entry],
             }
+
+        maybe_update_jira_checklist_after_dev_session(
+            jira,
+            claude,
+            settings,
+            story_key,
+            checklist_md,
+            result.result_text,
+            acceptance_criteria,
+            on_event=on_event,
+        )
 
         return {"execution_log": [log_entry], "touched_files": touched, "total_cost_usd": new_cost}
 

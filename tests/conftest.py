@@ -94,6 +94,7 @@ def mock_jira() -> MagicMock:
     m = MagicMock()
     m.settings = MagicMock(dry_run=False)
     m.get_epic_customfield_10112_value.return_value = None
+    m.get_story_checklist_text.return_value = ""
     return m
 
 

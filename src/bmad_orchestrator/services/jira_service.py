@@ -598,6 +598,31 @@ class JiraService:
             return not (md or "").strip()
         return False
 
+    def get_story_checklist_text(self, story_key: str) -> str:
+        """Return Checklist Text custom field as markdown, or empty string if unset/unreadable."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+        try:
+
+            def _fetch() -> Any:
+                return self._client.issue(story_key, fields=f"summary,{fid}")
+
+            issue = _retry_jira(_fetch, label="get_story_checklist_text_fetch")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_checklist_text_read_failed",
+                story_key=story_key,
+                error=str(exc)[:200],
+            )
+            return ""
+        val = _issue_field_value(issue, fid)
+        if val is None:
+            return ""
+        if isinstance(val, str):
+            return val.strip()
+        if is_adf_document(val):
+            return (description_from_jira_api(val) or "").strip()
+        return ""
+
     @skip_if_dry_run(fake_return=None)
     def set_story_checklist_text(self, story_key: str, markdown: str) -> None:
         """Write implementation tasks as markdown into the Checklist Text custom field."""

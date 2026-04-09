@@ -5,8 +5,8 @@ from bmad_orchestrator.services.claude_agent_service import AgentResult
 from tests.conftest import make_state
 
 
-def test_increments_review_loop_count(settings, mock_agent_service):
-    node = make_fix_loop_node(mock_agent_service, settings)
+def test_increments_review_loop_count(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state(
         review_loop_count=1,
         code_review_issues=[
@@ -17,8 +17,8 @@ def test_increments_review_loop_count(settings, mock_agent_service):
     assert result["review_loop_count"] == 2
 
 
-def test_clears_code_review_issues_after_fix(settings, mock_agent_service):
-    node = make_fix_loop_node(mock_agent_service, settings)
+def test_clears_code_review_issues_after_fix(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state(
         review_loop_count=0,
         code_review_issues=[
@@ -29,8 +29,8 @@ def test_clears_code_review_issues_after_fix(settings, mock_agent_service):
     assert result["code_review_issues"] == []
 
 
-def test_logs_fix_loop_iteration(settings, mock_agent_service):
-    node = make_fix_loop_node(mock_agent_service, settings)
+def test_logs_fix_loop_iteration(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state(
         review_loop_count=2,
         code_review_issues=[
@@ -41,11 +41,11 @@ def test_logs_fix_loop_iteration(settings, mock_agent_service):
     assert "3" in result["execution_log"][0]["message"]
 
 
-def test_returns_touched_files_from_agent(settings, mock_agent_service):
+def test_returns_touched_files_from_agent(settings, mock_agent_service, mock_claude, mock_jira):
     mock_agent_service.run_agent.return_value = AgentResult(
         touched_files=["src/fixed.ts"],
     )
-    node = make_fix_loop_node(mock_agent_service, settings)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state(
         code_review_issues=[
             {"severity": "high", "file": "src/fixed.ts", "line": 1,
@@ -55,12 +55,12 @@ def test_returns_touched_files_from_agent(settings, mock_agent_service):
     assert result["touched_files"] == ["src/fixed.ts"]
 
 
-def test_agent_error_returns_failure_state(settings, mock_agent_service):
+def test_agent_error_returns_failure_state(settings, mock_agent_service, mock_claude, mock_jira):
     mock_agent_service.run_agent.return_value = AgentResult(
         is_error=True,
         result_text="Agent session crashed",
     )
-    node = make_fix_loop_node(mock_agent_service, settings)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state(
         code_review_issues=[
             {"severity": "high", "file": "x.ts", "line": 1,
@@ -72,8 +72,8 @@ def test_agent_error_returns_failure_state(settings, mock_agent_service):
     assert result["code_review_issues"] == []
 
 
-def test_issues_text_included_in_prompt(settings, mock_agent_service):
-    node = make_fix_loop_node(mock_agent_service, settings)
+def test_issues_text_included_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(
         code_review_issues=[
             {"severity": "high", "file": "auth.py", "line": 10,
@@ -85,8 +85,8 @@ def test_issues_text_included_in_prompt(settings, mock_agent_service):
     assert "auth.py" in prompt
 
 
-def test_touched_files_listed_in_prompt(settings, mock_agent_service):
-    node = make_fix_loop_node(mock_agent_service, settings)
+def test_touched_files_listed_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(
         touched_files=["src/app.ts", "src/service.ts"],
         code_review_issues=[
@@ -99,9 +99,9 @@ def test_touched_files_listed_in_prompt(settings, mock_agent_service):
     assert "src/service.ts" in prompt
 
 
-def test_test_failure_output_included_in_prompt(settings, mock_agent_service):
+def test_test_failure_output_included_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
     """When test_failure_output is set, it should appear in the prompt."""
-    node = make_fix_loop_node(mock_agent_service, settings)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(
         test_failure_output="FAIL: snippet-list.component.spec.ts > should have link",
         code_review_issues=[
@@ -114,9 +114,9 @@ def test_test_failure_output_included_in_prompt(settings, mock_agent_service):
     assert "snippet-list.component.spec.ts" in prompt
 
 
-def test_env_issue_classified_in_prompt(settings, mock_agent_service):
+def test_env_issue_classified_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
     """Missing type definitions should trigger the environment issue header."""
-    node = make_fix_loop_node(mock_agent_service, settings)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(
         test_failure_output="error TS2304: Cannot find name 'spyOn'",
         code_review_issues=[
@@ -130,7 +130,7 @@ def test_env_issue_classified_in_prompt(settings, mock_agent_service):
 
 
 def test_file_contents_pre_injected_in_prompt(
-    settings, mock_agent_service, tmp_path, monkeypatch,
+    settings, mock_agent_service, mock_claude, mock_jira, tmp_path, monkeypatch,
 ):
     """Touched files should have their contents pre-injected in the prompt."""
     monkeypatch.chdir(tmp_path)
@@ -138,7 +138,7 @@ def test_file_contents_pre_injected_in_prompt(
     (tmp_path / "src" / "app.ts").write_text("export class App { count = 0; }")
     (tmp_path / "src" / "app.spec.ts").write_text("describe('App', () => {});")
 
-    node = make_fix_loop_node(mock_agent_service, settings)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(
         touched_files=["src/app.ts", "src/app.spec.ts"],
         code_review_issues=[
@@ -155,7 +155,7 @@ def test_file_contents_pre_injected_in_prompt(
 
 
 def test_fix_loop_injects_test_reference_for_spec_issues(
-    settings, mock_agent_service, tmp_path, monkeypatch,
+    settings, mock_agent_service, mock_claude, mock_jira, tmp_path, monkeypatch,
 ):
     """When issues involve spec files, inject existing test file as reference."""
     from unittest.mock import patch as _patch
@@ -170,7 +170,7 @@ def test_fix_loop_injects_test_reference_for_spec_issues(
         "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
         return_value=None,
     ):
-        node = make_fix_loop_node(mock_agent_service, non_dry)
+        node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, non_dry)
         node(make_state(
             code_review_issues=[
                 {"severity": "high", "file": "src/foo.spec.ts", "line": 1,
@@ -183,14 +183,14 @@ def test_fix_loop_injects_test_reference_for_spec_issues(
 
 
 def test_fix_loop_runs_independent_tests(
-    settings, mock_agent_service, tmp_path, monkeypatch,
+    settings, mock_agent_service, mock_claude, mock_jira, tmp_path, monkeypatch,
 ):
     """Non-dry-run fix loop should run _run_all_checks and set tests_passing."""
     from unittest.mock import patch
 
     non_dry = settings.model_copy(update={"dry_run": False})
     monkeypatch.chdir(tmp_path)
-    node = make_fix_loop_node(mock_agent_service, non_dry)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, non_dry)
     with patch(
         "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
         return_value="Test failed: 1 failing",
@@ -206,7 +206,7 @@ def test_fix_loop_runs_independent_tests(
 
 
 def test_fix_loop_env_failure_sets_failure_state(
-    settings, mock_agent_service, tmp_path, monkeypatch,
+    settings, mock_agent_service, mock_claude, mock_jira, tmp_path, monkeypatch,
 ):
     """When agent touches 0 files and checks fail, set failure_state."""
     from unittest.mock import patch
@@ -215,7 +215,7 @@ def test_fix_loop_env_failure_sets_failure_state(
     monkeypatch.chdir(tmp_path)
     # Agent returns no touched files
     mock_agent_service.run_agent.return_value = AgentResult(touched_files=[])
-    node = make_fix_loop_node(mock_agent_service, non_dry)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, non_dry)
     with patch(
         "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
         return_value="Build failed (`make setup`): Docker not running",
@@ -232,7 +232,7 @@ def test_fix_loop_env_failure_sets_failure_state(
 
 
 def test_fix_loop_no_env_failure_when_agent_touched_files(
-    settings, mock_agent_service, tmp_path, monkeypatch,
+    settings, mock_agent_service, mock_claude, mock_jira, tmp_path, monkeypatch,
 ):
     """When agent touches files but checks still fail, no failure_state."""
     from unittest.mock import patch
@@ -242,7 +242,7 @@ def test_fix_loop_no_env_failure_when_agent_touched_files(
     mock_agent_service.run_agent.return_value = AgentResult(
         touched_files=["src/fix.ts"],
     )
-    node = make_fix_loop_node(mock_agent_service, non_dry)
+    node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, non_dry)
     with patch(
         "bmad_orchestrator.nodes.dev_story_fix_loop._run_all_checks",
         return_value="Test failed: 1 failing",

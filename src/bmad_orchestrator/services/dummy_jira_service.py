@@ -337,6 +337,21 @@ class DummyJiraService:
             return not (description_from_jira_api(val) or "").strip()
         return False
 
+    def get_story_checklist_text(self, story_key: str) -> str:
+        """Return Checklist Text as markdown, or empty string if unset."""
+        issue = self._read_issue("stories", story_key)
+        if not issue:
+            return ""
+        fid = self.settings.jira_checklist_text_custom_field_id
+        val = issue.get(fid)
+        if val is None:
+            return ""
+        if isinstance(val, str):
+            return val.strip()
+        if is_adf_document(val):
+            return (description_from_jira_api(val) or "").strip()
+        return ""
+
     def set_story_checklist_text(self, story_key: str, markdown: str) -> None:
         issue = self._read_issue("stories", story_key)
         if issue is None:

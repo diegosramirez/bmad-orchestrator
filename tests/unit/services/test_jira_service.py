@@ -417,6 +417,22 @@ def test_story_checklist_text_is_empty(jira_svc):
     assert svc.story_checklist_text_is_empty("PUG-2") is False
 
 
+def test_get_story_checklist_text_returns_string(jira_svc):
+    svc, client = jira_svc
+    fid = svc.settings.jira_checklist_text_custom_field_id
+    issue = MagicMock()
+    issue.raw = {"fields": {fid: "* [ ] **Task**"}}
+    client.issue.return_value = issue
+    assert svc.get_story_checklist_text("PUG-5") == "* [ ] **Task**"
+    client.issue.assert_called_with("PUG-5", fields=f"summary,{fid}")
+
+
+def test_get_story_checklist_text_returns_empty_on_error(jira_svc):
+    svc, client = jira_svc
+    client.issue.side_effect = RuntimeError("network")
+    assert svc.get_story_checklist_text("PUG-9") == ""
+
+
 def test_story_checklist_text_is_empty_returns_true_on_fetch_error(jira_svc):
     svc, client = jira_svc
     client.issue.side_effect = RuntimeError("network")

@@ -70,8 +70,11 @@ def main() -> None:
     if DRY_RUN:
         os.environ["BMAD_DRY_RUN"] = "true"
 
+    from unittest.mock import MagicMock
+
     from bmad_orchestrator.config import Settings
     from bmad_orchestrator.nodes.dev_story import make_dev_story_node
+    from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
     from bmad_orchestrator.services.claude_service import ClaudeService
     from bmad_orchestrator.utils.logger import configure_logging
     from bmad_orchestrator.state import OrchestratorState
@@ -79,7 +82,15 @@ def main() -> None:
     configure_logging(verbose=True)
     settings = Settings()  # type: ignore[call-arg]
 
-    node = make_dev_story_node(ClaudeService(settings), settings)
+    mock_jira = MagicMock()
+    mock_jira.get_story_checklist_text.return_value = ""
+    claude = ClaudeService(settings)
+    node = make_dev_story_node(
+        ClaudeAgentService(settings, usage_tracker=claude._usage),
+        claude,
+        mock_jira,
+        settings,
+    )
 
     # Minimal state — only the fields dev_story reads
     state: OrchestratorState = {

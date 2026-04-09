@@ -293,3 +293,14 @@ class TestChecklistText:
     def test_set_raises_for_missing_story(self, svc: DummyJiraService) -> None:
         with pytest.raises(ValueError, match="not found"):
             svc.set_story_checklist_text("DUMMY-999", "x")
+
+    def test_get_story_checklist_text_round_trip(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("E", "d", "growth")
+        story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
+        svc.set_story_checklist_text(story["key"], "* [ ] **Step** — do it")
+        text = svc.get_story_checklist_text(story["key"])
+        assert "Step" in text
+        assert "do it" in text
+
+    def test_get_story_checklist_text_missing_story(self, svc: DummyJiraService) -> None:
+        assert svc.get_story_checklist_text("DUMMY-999") == ""
