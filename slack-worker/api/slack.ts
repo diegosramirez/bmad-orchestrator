@@ -57,8 +57,9 @@ async function slackApi(method: string, body: Record<string, unknown>): Promise<
 
 // ── Command parser ───────────────────────────────────────────────────────────
 
-const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
+const HELP_TEXT = `*BMAD Orchestrator — Commands*
 
+*Slash commands (any channel):*
 \`/bmad\` — Open the run wizard (interactive form)
 \`/bmad run <team> "<prompt>"\` — Start a new orchestrator run
 \`/bmad run <team> "<prompt>" --verbose\` — Start with verbose Slack updates
@@ -67,6 +68,14 @@ const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
 \`/bmad retry <team> <branch> "<guidance>"\` — Retry a failed run on an existing branch
 \`/bmad status\` — Link to GitHub Actions runs
 \`/bmad help\` — Show this message
+
+*DM the bot (under Apps → BMAD Orchestrator):*
+Just type your prompt and I'll start a run with the default team.
+\`Add user dashboard with analytics\` — Starts a run
+\`run SAM1 "Add SSO login"\` — Explicit team + prompt
+\`retry SAM1 bmad/sam1/SAM1-54 "fix tests"\` — Retry a failed branch
+\`status\` — Link to workflow runs
+\`help\` — Show this message
 
 *Examples:*
 \`/bmad run SAM1 "Add user dashboard with analytics"\`
@@ -807,6 +816,113 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
   res.status(200).send("");
 }
 
+// ── DM (Events API) handler ─────────────────────────────────────────────────
+
+async function handleDirectMessage(event: any): Promise<void> {
+  // Ignore bot's own messages and message edits/deletes
+  if (event.bot_id || event.subtype) return;
+
+  const text = (event.text || "").trim();
+  const channel = event.channel;  // DM channel ID
+  const userTs = event.ts;        // message timestamp — used as thread parent
+
+  if (!text || !channel) return;
+
+  // Helper: reply in the DM thread
+  const reply = async (msg: string, threadTs?: string) => {
+    await slackApi("chat.postMessage", {
+      channel,
+      text: msg,
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+    });
+  };
+
+  // ── Parse: try structured command first, fall back to bare prompt ──────
+  const parsed = parseCommand(text);
+
+  if ("error" in parsed) {
+    // Not a structured command → treat entire text as a prompt with default team
+    const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
+    const cmd: ParsedCommand = {
+      action: "run",
+      teamId: defaultTeam,
+      prompt: text,
+      verbose: true,
+      skipNodes: [],
+      branch: "",
+      targetRepo: process.env.DEFAULT_TARGET_REPO || "",
+      slackThreadTs: userTs,
+    };
+
+    // Create a thread with run details
+    await reply(
+      `🚀 *Starting run…*\nTeam: \`${cmd.teamId}\`\nPrompt: "${cmd.prompt}"`,
+      userTs,
+    );
+
+    try {
+      const ok = await dispatchWorkflow(cmd);
+      if (!ok) {
+        await reply("❌ Failed to dispatch workflow. Check GitHub token permissions.", userTs);
+        return;
+      }
+      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+      await reply(
+        `✅ Dispatched! <https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View workflow runs>`,
+        userTs,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      await reply(`❌ Error: ${msg}`, userTs);
+    }
+    return;
+  }
+
+  // ── Structured commands ─────────────────────────────────────────────────
+
+  if (parsed.action === "help") {
+    await reply(HELP_TEXT);
+    return;
+  }
+
+  if (parsed.action === "status") {
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    await reply(`<https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View BMAD Orchestrator runs>`);
+    return;
+  }
+
+  // run or retry — dispatch and reply in thread
+  parsed.slackThreadTs = userTs;
+  if (!parsed.targetRepo) parsed.targetRepo = process.env.DEFAULT_TARGET_REPO || "";
+
+  // Default to verbose in DM mode so updates land in the thread
+  parsed.verbose = true;
+
+  const actionLabel = parsed.action === "retry" ? "Retry" : "Run";
+  const parts = [`🚀 *${actionLabel} starting…*`, `Team: \`${parsed.teamId}\``];
+  if (parsed.prompt) parts.push(`Prompt: "${parsed.prompt}"`);
+  if (parsed.branch) parts.push(`Branch: \`${parsed.branch}\``);
+  if (parsed.skipNodes.length) parts.push(`Skip: ${parsed.skipNodes.join(", ")}`);
+
+  await reply(parts.join("\n"), userTs);
+
+  try {
+    const ok = await dispatchWorkflow(parsed);
+    if (!ok) {
+      await reply("❌ Failed to dispatch workflow. Check GitHub token permissions.", userTs);
+      return;
+    }
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    await reply(
+      `✅ Dispatched! <https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View workflow runs>`,
+      userTs,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    await reply(`❌ Error: ${msg}`, userTs);
+  }
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 function readRawBody(req: any): Promise<string> {
@@ -839,9 +955,41 @@ export default async function handler(req: any, res: any): Promise<void> {
     return;
   }
 
+  // ── Events API (JSON body) ──────────────────────────────────────────────
+  // Slack Events API sends JSON, not form-encoded. Detect by trying to parse.
+  let jsonBody: any = null;
+  try {
+    jsonBody = JSON.parse(rawBody);
+  } catch {
+    // Not JSON — fall through to form-encoded handling below
+  }
+
+  if (jsonBody) {
+    // URL verification challenge (one-time setup handshake)
+    if (jsonBody.type === "url_verification") {
+      res.status(200).json({ challenge: jsonBody.challenge });
+      return;
+    }
+
+    // Event callback (DM messages, etc.)
+    if (jsonBody.type === "event_callback") {
+      const event = jsonBody.event;
+      // Respond immediately — Slack retries after 3 seconds
+      res.status(200).send("");
+
+      // Handle DM messages
+      if (event?.type === "message" && event?.channel_type === "im") {
+        await handleDirectMessage(event).catch((err) =>
+          console.error("handleDirectMessage error:", err)
+        );
+      }
+      return;
+    }
+  }
+
+  // ── Form-encoded payloads (slash commands, interactive components) ──────
   const params = new URLSearchParams(rawBody);
 
-  // ── Route by payload type ────────────────────────────────────────────────
   // Interactive payloads (button clicks, modal submissions) come as a JSON
   // string in a "payload" form field.
   const payloadStr = params.get("payload");
