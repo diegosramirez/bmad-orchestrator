@@ -841,7 +841,21 @@ async function handleDirectMessage(event: any): Promise<void> {
   const parsed = parseCommand(text);
 
   if ("error" in parsed) {
-    // Not a structured command → treat entire text as a prompt with default team
+    // Not a structured command — check if it looks like a real prompt
+    // (at least 10 chars and multiple words) vs casual chat
+    const wordCount = text.split(/\s+/).length;
+    if (text.length < 10 || wordCount < 3) {
+      await reply(
+        "👋 Hi! I'm the BMAD Orchestrator. To start a pipeline run, describe what you want to build.\n\n"
+        + "*Examples:*\n"
+        + '`Add a health check endpoint that returns uptime and status`\n'
+        + '`run SAM1 "Add user authentication with JWT"`\n'
+        + "`help` — show all commands",
+      );
+      return;
+    }
+
+    // Looks like a real prompt → treat as a run with default team
     const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
     const cmd: ParsedCommand = {
       action: "run",
@@ -971,18 +985,26 @@ export default async function handler(req: any, res: any): Promise<void> {
       return;
     }
 
+    // Slack retries — acknowledge and skip
+    if (req.headers["x-slack-retry-num"]) {
+      res.status(200).send("");
+      return;
+    }
+
     // Event callback (DM messages, etc.)
     if (jsonBody.type === "event_callback") {
       const event = jsonBody.event;
-      // Respond immediately — Slack retries after 3 seconds
-      res.status(200).send("");
 
-      // Handle DM messages
+      // Process BEFORE responding — Vercel kills the function after res.send()
       if (event?.type === "message" && event?.channel_type === "im") {
-        await handleDirectMessage(event).catch((err) =>
-          console.error("handleDirectMessage error:", err)
-        );
+        try {
+          await handleDirectMessage(event);
+        } catch (err) {
+          console.error("handleDirectMessage error:", err);
+        }
       }
+
+      res.status(200).send("");
       return;
     }
   }
