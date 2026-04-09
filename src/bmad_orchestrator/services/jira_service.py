@@ -10,7 +10,12 @@ from jira import JIRA
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
-from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
+from bmad_orchestrator.utils.jira_adf import (
+    description_for_jira_api,
+    description_from_jira_api,
+    is_adf_document,
+    paragraph_custom_field_payload_for_api,
+)
 from bmad_orchestrator.utils.jira_mermaid import (
     markdown_intermediate_without_mermaid_images,
     mermaid_pipeline_enabled,
@@ -98,6 +103,19 @@ def _retry_jira(
             else:
                 raise
     raise last_exc  # type: ignore[misc]  # unreachable
+
+def _issue_field_value(issue: Any, field_id: str) -> Any:
+    """Read a custom or standard field from a jira Issue (prefer ``raw['fields']``)."""
+    raw_issue = getattr(issue, "raw", None)
+    if isinstance(raw_issue, dict):
+        fields_json = raw_issue.get("fields")
+        if isinstance(fields_json, dict) and field_id in fields_json:
+            return fields_json[field_id]
+    flds = getattr(issue, "fields", None)
+    if flds is not None:
+        return getattr(flds, field_id, None)
+    return None
+
 
 def _target_repo_value_from_raw_issue(issue: Any, field_id: str) -> Any | None:
     """Return raw Jira REST value for the target-repo custom field, or None if unset."""
@@ -552,4 +570,48 @@ class JiraService:
             "story_branch_field_updated",
             story_key=story_key,
             branch=branch,
+        )
+
+    def story_checklist_text_is_empty(self, story_key: str) -> bool:
+        """True if the Checklist Text custom field is unset or has no visible text."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+        try:
+
+            def _fetch() -> Any:
+                return self._client.issue(story_key, fields=f"summary,{fid}")
+
+            issue = _retry_jira(_fetch, label="story_checklist_text_is_empty_fetch")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_checklist_text_read_failed",
+                story_key=story_key,
+                error=str(exc)[:200],
+            )
+            return True
+        val = _issue_field_value(issue, fid)
+        if val is None:
+            return True
+        if isinstance(val, str):
+            return not val.strip()
+        if is_adf_document(val):
+            md = description_from_jira_api(val)
+            return not (md or "").strip()
+        return False
+
+    @skip_if_dry_run(fake_return=None)
+    def set_story_checklist_text(self, story_key: str, markdown: str) -> None:
+        """Write implementation tasks as markdown into the Checklist Text custom field."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+
+        def _do() -> None:
+            issue = self._client.issue(story_key, fields=f"summary,{fid}")
+            before = _issue_field_value(issue, fid)
+            payload = paragraph_custom_field_payload_for_api(before, markdown)
+            self._client.issue(story_key).update(fields={fid: payload})
+
+        _retry_jira(_do, label="set_story_checklist_text")
+        logger.info(
+            "story_checklist_text_updated",
+            story_key=story_key,
+            field=fid,
         )

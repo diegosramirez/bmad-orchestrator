@@ -518,6 +518,20 @@ def description_for_jira_api(markdown: str) -> dict[str, Any]:
     return markdown_to_adf(markdown)
 
 
+def is_adf_document(val: Any) -> bool:
+    """True if *val* is an Atlassian Document (ADF) root (``type`` == ``doc``)."""
+    if isinstance(val, dict) and val.get("type") == "doc":
+        return True
+    return getattr(val, "type", None) == "doc"
+
+
+def paragraph_custom_field_payload_for_api(before: Any, markdown: str) -> Any:
+    """Paragraph / rich-text custom fields: ADF when the field already uses ADF; else plain str."""
+    if before is not None and not is_adf_document(before) and isinstance(before, str):
+        return markdown
+    return description_for_jira_api(markdown)
+
+
 def _jira_adf_payload_to_dict(obj: Any) -> Any:
     """Turn python-jira ``PropertyHolder`` trees (nested ADF) into plain ``dict``/list for parsing.
 

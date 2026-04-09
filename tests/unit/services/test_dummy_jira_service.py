@@ -273,3 +273,23 @@ class TestDummyMermaidPipeline:
         fetched = svc_m.get_story(story["key"])
         assert fetched is not None
         assert "review it in the Attachments section" in fetched["description"]
+
+
+class TestChecklistText:
+    def test_is_empty_when_unset(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("E", "d", "growth")
+        story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
+        assert svc.story_checklist_text_is_empty(story["key"]) is True
+
+    def test_set_makes_non_empty(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("E", "d", "growth")
+        story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
+        svc.set_story_checklist_text(
+            story["key"],
+            "## Implementation checklist\n\n* [ ] **Step** — do it",
+        )
+        assert svc.story_checklist_text_is_empty(story["key"]) is False
+
+    def test_set_raises_for_missing_story(self, svc: DummyJiraService) -> None:
+        with pytest.raises(ValueError, match="not found"):
+            svc.set_story_checklist_text("DUMMY-999", "x")

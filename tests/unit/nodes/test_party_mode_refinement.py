@@ -63,7 +63,7 @@ def test_project_context_injected_into_architect_and_developer_messages(settings
     assert "Angular" in complete_calls[2].kwargs["user_message"]  # developer
 
 
-# ── webhook-specific behaviour: title + subtasks ─────────────────────────────
+# ── webhook-specific behaviour: title + checklist text ───────────────────────
 
 
 def test_webhook_does_not_touch_title_when_already_user_story(settings):
@@ -81,6 +81,7 @@ def test_webhook_does_not_touch_title_when_already_user_story(settings):
         "key": "PUG-1",
         "summary": "As a user, I want X so that Y.",
     }
+    mock_jira.story_checklist_text_is_empty.return_value = False
     # skip_nodes contains create_story_tasks → webhook mode
     settings = settings.model_copy(update={"skip_nodes": ["create_story_tasks"]})
 
@@ -92,8 +93,8 @@ def test_webhook_does_not_touch_title_when_already_user_story(settings):
     assert result["execution_log"]
 
 
-def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
-    """Webhook: fix non-user-story title and create subtasks when none exist."""
+def test_webhook_updates_title_and_writes_checklist_when_empty(settings):
+    """Webhook: fix non-user-story title and write Checklist Text when field is empty."""
     mock_claude = MagicMock()
     mock_jira = MagicMock()
     # Designer/architect/developer outputs
@@ -121,21 +122,21 @@ def test_webhook_updates_title_and_creates_subtasks_when_missing(settings):
         "key": "PUG-2",
         "summary": "Improve dashboard copy",  # not in user-story format
     }
-    mock_jira.get_subtasks.return_value = []  # No existing subtasks
+    mock_jira.story_checklist_text_is_empty.return_value = True
 
     settings = settings.model_copy(update={"skip_nodes": ["create_story_tasks"]})
     node = make_party_mode_node(mock_claude, mock_jira, settings)
     result = node(make_state(current_story_id="PUG-2"))
 
     mock_jira.update_story_summary.assert_called_once()
-    mock_jira.get_subtasks.assert_called_once_with("PUG-2")
-    # Two subtasks created via Jira
-    assert mock_jira.create_task.call_count == 2
+    mock_jira.story_checklist_text_is_empty.assert_called_once_with("PUG-2")
+    assert mock_jira.set_story_checklist_text.call_count == 1
+    assert "Task 1" in mock_jira.set_story_checklist_text.call_args[0][1]
     assert result["execution_log"]
 
 
 def test_stories_breakdown_refines_each_created_story(settings):
-    """stories_breakdown: party refines each story and creates subtasks when none exist."""
+    """stories_breakdown: party refines each story and writes Checklist Text when empty."""
     mock_claude = MagicMock()
     mock_jira = MagicMock()
     refined = RefinedStory(
@@ -163,7 +164,7 @@ def test_stories_breakdown_refines_each_created_story(settings):
         }
 
     mock_jira.get_story.side_effect = lambda key: _story_body(key)
-    mock_jira.get_subtasks.return_value = []
+    mock_jira.story_checklist_text_is_empty.return_value = True
 
     sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
     node = make_party_mode_node(mock_claude, mock_jira, sb)
@@ -176,8 +177,8 @@ def test_stories_breakdown_refines_each_created_story(settings):
 
     assert mock_jira.get_story.call_count >= 2
     assert mock_jira.update_story_description.call_count == 2
-    assert mock_jira.get_subtasks.call_count == 2
-    assert mock_jira.create_task.call_count == 2
+    assert mock_jira.story_checklist_text_is_empty.call_count == 2
+    assert mock_jira.set_story_checklist_text.call_count == 2
     assert result["execution_log"]
     assert result["story_content"]
 
@@ -197,7 +198,7 @@ def test_stories_breakdown_does_not_refine_epic_fallback(settings):
     assert "no story keys to refine" in result["execution_log"][0]["message"]
 
 
-def test_non_webhook_does_not_call_summary_or_subtasks(settings):
+def test_non_webhook_does_not_call_summary_or_checklist(settings):
     """When not webhook (skip_nodes does not include create_story_tasks), skip webhook logic."""
     mock_claude = MagicMock()
     mock_jira = MagicMock()
@@ -215,6 +216,6 @@ def test_non_webhook_does_not_call_summary_or_subtasks(settings):
 
     mock_jira.get_story.assert_not_called()
     mock_jira.update_story_summary.assert_not_called()
-    mock_jira.get_subtasks.assert_not_called()
-    mock_jira.create_task.assert_not_called()
+    mock_jira.story_checklist_text_is_empty.assert_not_called()
+    mock_jira.set_story_checklist_text.assert_not_called()
     assert result["execution_log"]

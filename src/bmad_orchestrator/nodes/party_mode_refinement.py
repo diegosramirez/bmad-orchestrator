@@ -13,6 +13,7 @@ from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.jira_checklist_text import tasks_to_checklist_markdown
 from bmad_orchestrator.utils.jira_template import (
     load_template,
     matches_template,
@@ -94,8 +95,8 @@ def make_party_mode_node(
         now = datetime.now(UTC).isoformat()
         is_webhook = "create_story_tasks" in settings.skip_nodes
         # Jira automation skips create_story_tasks (is_webhook). Epic Generate stories runs it
-        # but should still get subtasks from refined output like the Story automation path.
-        create_subtasks_after_refinement = (
+        # but should still sync implementation tasks to Checklist Text like the Story path.
+        sync_checklist_after_refinement = (
             is_webhook or settings.execution_mode == "stories_breakdown"
         )
 
@@ -346,18 +347,19 @@ def make_party_mode_node(
                 "dry_run": settings.dry_run,
             })
 
-            # ── Webhook / stories_breakdown: create subtasks if story has none ─────
-            if create_subtasks_after_refinement and story_id != "UNKNOWN":
-                subtasks = jira.get_subtasks(story_id)
-                if not subtasks:
+            # ── Webhook / stories_breakdown: checklist text if field is empty ───────
+            if sync_checklist_after_refinement and story_id != "UNKNOWN":
+                if jira.story_checklist_text_is_empty(story_id):
                     aggregator_prompt_tasks = build_system_prompt(
                         "scrum_master", settings.bmad_install_dir
                     )
                     sublist = claude.complete_structured(
                         system_prompt=aggregator_prompt_tasks,
                         user_message=(
-                            f"From this refined story, produce 2 to 6 concrete subtasks (Jira subtasks) "
-                            f"that a developer would implement. Each task: summary (short), description (what to do).\n\n"
+                            "From this refined story, produce 2 to 6 concrete implementation tasks "
+                            "that a developer would execute. Each task: summary (short), "
+                            "description (what to do). These will be stored in the story's "
+                            "Checklist Text field (not as Jira subtasks).\n\n"
                             f"Refined description:\n{refined.updated_description}\n\n"
                             f"Acceptance criteria:\n"
                             + "\n".join(f"- {ac}" for ac in refined.acceptance_criteria)
@@ -369,12 +371,17 @@ def make_party_mode_node(
                         agent_id="scrum_master",
                         on_event=on_event,
                     )
-                    for task in sublist.tasks:
-                        jira.create_task(story_id, task.summary, task.description)
+                    jira.set_story_checklist_text(
+                        story_id,
+                        tasks_to_checklist_markdown(sublist.tasks),
+                    )
                     log_entries.append({
                         "timestamp": now,
                         "node": NODE_NAME,
-                        "message": f"Created {len(sublist.tasks)} subtasks for story {story_id} (webhook)",
+                        "message": (
+                            f"Wrote {len(sublist.tasks)} implementation tasks to Checklist Text "
+                            f"for story {story_id}"
+                        ),
                         "dry_run": settings.dry_run,
                     })
 

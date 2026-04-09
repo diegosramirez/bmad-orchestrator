@@ -122,6 +122,7 @@ def test_execution_timeout_disabled() -> None:
 
 
 def test_jira_custom_field_ids_default() -> None:
+    """Built-in Jira custom field defaults (explicit; local .env cannot override)."""
     s = Settings(
         anthropic_api_key="k",  # type: ignore[arg-type]
         jira_base_url="https://x.atlassian.net",
@@ -129,9 +130,13 @@ def test_jira_custom_field_ids_default() -> None:
         jira_api_token="t",  # type: ignore[arg-type]
         jira_project_key="P",
         github_repo="o/r",
+        jira_target_repo_custom_field_id="customfield_10112",
+        jira_branch_custom_field_id="customfield_10145",
+        jira_checklist_text_custom_field_id="customfield_10046",
     )
     assert s.jira_target_repo_custom_field_id == "customfield_10112"
     assert s.jira_branch_custom_field_id == "customfield_10145"
+    assert s.jira_checklist_text_custom_field_id == "customfield_10046"
 
 
 def test_jira_custom_field_ids_override() -> None:
@@ -159,6 +164,19 @@ def test_jira_custom_field_id_must_start_with_customfield() -> None:
             jira_project_key="P",
             github_repo="o/r",
             jira_target_repo_custom_field_id="bad",
+        )
+
+
+def test_jira_checklist_text_custom_field_id_must_start_with_customfield() -> None:
+    with pytest.raises(ValueError, match="customfield"):
+        Settings(
+            anthropic_api_key="k",  # type: ignore[arg-type]
+            jira_base_url="https://x.atlassian.net",
+            jira_username="u",
+            jira_api_token="t",  # type: ignore[arg-type]
+            jira_project_key="P",
+            github_repo="o/r",
+            jira_checklist_text_custom_field_id="bad",
         )
 
 

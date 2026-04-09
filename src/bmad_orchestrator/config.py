@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # Jira custom field IDs (vary per Cloud site). Defaults match legacy BMAD fields.
     jira_target_repo_custom_field_id: str = "customfield_10112"
     jira_branch_custom_field_id: str = "customfield_10145"
+    # Checklists for Jira | Free — "Checklist Text" field (Paragraph / multi-line).
+    jira_checklist_text_custom_field_id: str = "customfield_10046"
     # Reserved for future Jira ADF inline media; Mermaid diagrams are attached as PNG only.
     jira_media_collection: str = ""
     # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
@@ -135,6 +137,17 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return s
 
+    @field_validator("jira_checklist_text_custom_field_id", mode="before")
+    @classmethod
+    def _checklist_text_cf_default(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return "customfield_10046"
+        s = str(v).strip()
+        if not s.startswith("customfield_"):
+            msg = "Jira custom field id must look like customfield_12345"
+            raise ValueError(msg)
+        return s
+
     @model_validator(mode="after")
     def _apply_default_agent_models(self) -> Settings:
         """Merge user-provided agent_models on top of built-in defaults."""
@@ -173,6 +186,7 @@ class Settings(BaseSettings):
 # Defaults for code paths that do not load full Settings (e.g. FastAPI webhook env-only).
 JIRA_TARGET_REPO_CUSTOM_FIELD_ID_DEFAULT = "customfield_10112"
 JIRA_BRANCH_CUSTOM_FIELD_ID_DEFAULT = "customfield_10145"
+JIRA_CHECKLIST_TEXT_CUSTOM_FIELD_ID_DEFAULT = "customfield_10046"
 
 
 def jira_target_repo_custom_field_id_from_env() -> str:

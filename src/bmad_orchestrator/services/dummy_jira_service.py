@@ -10,7 +10,12 @@ from typing import Any, cast
 import yaml
 
 from bmad_orchestrator.config import Settings
-from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
+from bmad_orchestrator.utils.jira_adf import (
+    description_for_jira_api,
+    description_from_jira_api,
+    is_adf_document,
+    paragraph_custom_field_payload_for_api,
+)
 from bmad_orchestrator.utils.jira_mermaid import (
     markdown_intermediate_without_mermaid_images,
     mermaid_pipeline_enabled,
@@ -317,3 +322,28 @@ class DummyJiraService:
     def set_story_branch_field(self, story_key: str, branch: str) -> None:
         """No-op in dummy; real implementation updates the branch custom field."""
         logger.info("dummy_set_story_branch_field", story_key=story_key, branch=branch)
+
+    def story_checklist_text_is_empty(self, story_key: str) -> bool:
+        issue = self._read_issue("stories", story_key)
+        if not issue:
+            return True
+        fid = self.settings.jira_checklist_text_custom_field_id
+        val = issue.get(fid)
+        if val is None:
+            return True
+        if isinstance(val, str):
+            return not val.strip()
+        if is_adf_document(val):
+            return not (description_from_jira_api(val) or "").strip()
+        return False
+
+    def set_story_checklist_text(self, story_key: str, markdown: str) -> None:
+        issue = self._read_issue("stories", story_key)
+        if issue is None:
+            msg = f"Story {story_key} not found in dummy store"
+            raise ValueError(msg)
+        fid = self.settings.jira_checklist_text_custom_field_id
+        before = issue.get(fid)
+        issue[fid] = paragraph_custom_field_payload_for_api(before, markdown)
+        self._write_issue("stories", issue)
+        logger.info("dummy_checklist_text_updated", story_key=story_key, field=fid)

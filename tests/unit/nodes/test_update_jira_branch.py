@@ -17,7 +17,7 @@ def test_updates_jira_branch_field_when_story_and_branch_present(settings, mock_
         "bmad/sam1/SAM1-61-add-signup",
     )
     assert len(result["execution_log"]) == 1
-    assert "customfield_10145" in result["execution_log"][0]["message"]
+    assert settings.jira_branch_custom_field_id in result["execution_log"][0]["message"]
 
 
 def test_skips_when_missing_story_key(settings, mock_jira):

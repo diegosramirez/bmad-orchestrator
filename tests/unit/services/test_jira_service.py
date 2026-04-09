@@ -10,7 +10,10 @@ from bmad_orchestrator.services.jira_service import (
     _issue_to_dict,
     _retry_jira,
 )
-from bmad_orchestrator.utils.jira_adf import description_for_jira_api
+from bmad_orchestrator.utils.jira_adf import (
+    description_for_jira_api,
+    paragraph_custom_field_payload_for_api,
+)
 
 
 def _make_mock_issue(
@@ -289,8 +292,9 @@ def test_create_story_merges_extra_fields(jira_svc):
 
 def test_get_epic_customfield_10112_value_reads_raw(jira_svc):
     svc, client = jira_svc
+    fid = svc.settings.jira_target_repo_custom_field_id
     issue = _make_mock_issue(key="PUG-10", issuetype_name="Epic")
-    issue.raw = {"fields": {"customfield_10112": {"value": "slug-only"}}}
+    issue.raw = {"fields": {fid: {"value": "slug-only"}}}
     client.issue.return_value = issue
     assert svc.get_epic_customfield_10112_value("PUG-10") == {"value": "slug-only"}
 
@@ -375,11 +379,12 @@ def test_update_story_summary(jira_svc):
 
 def test_set_story_branch_field(jira_svc):
     svc, client = jira_svc
+    fid = svc.settings.jira_branch_custom_field_id
     issue = _make_mock_issue()
     client.issue.return_value = issue
     svc.set_story_branch_field("SAM1-61", "bmad/sam1/SAM1-61-add-signup")
     issue.update.assert_called_once_with(
-        fields={"customfield_10145": "bmad/sam1/SAM1-61-add-signup"},
+        fields={fid: "bmad/sam1/SAM1-61-add-signup"},
     )
 
 
@@ -398,6 +403,41 @@ def test_set_story_branch_field_respects_settings_field_id(jira_svc, settings):
     issue.update.assert_called_once_with(
         fields={"customfield_77777": "feature/foo"},
     )
+
+
+def test_story_checklist_text_is_empty(jira_svc):
+    svc, client = jira_svc
+    fid = svc.settings.jira_checklist_text_custom_field_id
+    empty_issue = MagicMock()
+    empty_issue.raw = {"fields": {fid: None}}
+    filled_issue = MagicMock()
+    filled_issue.raw = {"fields": {fid: "not empty"}}
+    client.issue.side_effect = [empty_issue, filled_issue]
+    assert svc.story_checklist_text_is_empty("PUG-1") is True
+    assert svc.story_checklist_text_is_empty("PUG-2") is False
+
+
+def test_story_checklist_text_is_empty_returns_true_on_fetch_error(jira_svc):
+    svc, client = jira_svc
+    client.issue.side_effect = RuntimeError("network")
+    assert svc.story_checklist_text_is_empty("PUG-9") is True
+
+
+def test_set_story_checklist_text(jira_svc):
+    svc, client = jira_svc
+    fid = svc.settings.jira_checklist_text_custom_field_id
+    fetch_issue = MagicMock()
+    fetch_issue.raw = {"fields": {fid: None}}
+    update_issue = MagicMock()
+
+    def _issue_side_effect(key: str, fields: str | None = None) -> MagicMock:
+        return fetch_issue if fields else update_issue
+
+    client.issue.side_effect = _issue_side_effect
+    md = "## Implementation checklist\n\n* [ ] **A** — b"
+    svc.set_story_checklist_text("PUG-5", md)
+    payload = paragraph_custom_field_payload_for_api(None, md)
+    update_issue.update.assert_called_once_with(fields={fid: payload})
 
 
 # ── list_stories_under_epic ─────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.jira_checklist_text import tasks_to_checklist_markdown
 from bmad_orchestrator.utils.jira_template import (
     epic_has_discovery_section,
     load_template,
@@ -270,11 +271,10 @@ def make_create_story_tasks_node(
             created_keys.append(key)
             existing_keys.add(norm)
 
-            for task in planned.tasks:
-                jira.create_task(
-                    story_key=key,
-                    summary=task.summary[:_JIRA_SUMMARY_MAX],
-                    description=task.description,
+            if planned.tasks:
+                jira.set_story_checklist_text(
+                    key,
+                    tasks_to_checklist_markdown(planned.tasks),
                 )
 
         if not created_keys:
@@ -477,15 +477,14 @@ def make_create_story_tasks_node(
             extra_fields=single_story_extra,
         )
 
-        for task in draft.tasks:
-            jira.create_task(
-                story_key=story["key"],
-                summary=task.summary[:_JIRA_SUMMARY_MAX],
-                description=task.description,
+        if draft.tasks:
+            jira.set_story_checklist_text(
+                story["key"],
+                tasks_to_checklist_markdown(draft.tasks),
             )
 
         log_entry["message"] = (
-            f"Created story {story['key']} with {len(draft.tasks)} tasks "
+            f"Created story {story['key']} with {len(draft.tasks)} tasks in Checklist Text "
             f"and {len(draft.acceptance_criteria)} ACs"
         )
 

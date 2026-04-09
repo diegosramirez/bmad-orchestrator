@@ -33,7 +33,6 @@ def test_creates_story_when_none_exists(settings, mock_jira, mock_claude):
     # Node calls complete_structured twice: StoryDraft then StoryQualityAssessment
     mock_claude.complete_structured.side_effect = [_make_draft(), _make_quality_ok()]
     mock_jira.create_story.return_value = {"key": "TEST-10", "summary": "Login story"}
-    mock_jira.create_task.return_value = {"key": "TEST-11"}
 
     node = make_create_story_tasks_node(mock_jira, mock_claude, settings)
     result = node(make_state(current_epic_id="TEST-1"))
@@ -43,7 +42,10 @@ def test_creates_story_when_none_exists(settings, mock_jira, mock_claude):
         "Can log in with valid creds",
         "Cannot log in with wrong creds",
     ]
-    assert mock_jira.create_task.call_count == 2
+    assert mock_jira.set_story_checklist_text.call_count == 1
+    checklist_md = mock_jira.set_story_checklist_text.call_args[0][1]
+    assert "Create login endpoint" in checklist_md
+    assert "Write login tests" in checklist_md
 
 
 def test_skips_creation_when_story_already_exists(settings, mock_jira, mock_claude):
@@ -67,7 +69,6 @@ def test_story_not_found_in_jira_recreates(settings, mock_jira, mock_claude):
     mock_jira.get_story.return_value = None  # stale ID
     mock_claude.complete_structured.side_effect = [_make_draft(), _make_quality_ok()]
     mock_jira.create_story.return_value = {"key": "TEST-20", "summary": "Re-created"}
-    mock_jira.create_task.return_value = {"key": "TEST-21"}
 
     node = make_create_story_tasks_node(mock_jira, mock_claude, settings)
     result = node(make_state(current_story_id="TEST-10", current_epic_id="TEST-1"))
@@ -144,7 +145,6 @@ def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_cl
         {"key": "TEST-10", "summary": breakdown.stories[0].summary},
         {"key": "TEST-11", "summary": breakdown.stories[1].summary},
     ]
-    mock_jira.create_task.return_value = {"key": "TEST-12"}
     mock_jira.get_story.return_value = {
         "key": "TEST-11",
         "description": "**Acceptance Criteria:**\n- AC b1\n- AC b2\n",
@@ -158,11 +158,17 @@ def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_cl
     assert result["created_story_ids"] == ["TEST-10", "TEST-11"]
     assert result["current_story_id"] == "TEST-11"
     assert mock_jira.create_story.call_count == 2
-    assert mock_jira.create_task.call_count == 2
+    assert mock_jira.set_story_checklist_text.call_count == 1
+    assert "Sub 1" in mock_jira.set_story_checklist_text.call_args[0][1]
 
 
 def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):
-    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    sb = settings.model_copy(
+        update={
+            "execution_mode": "stories_breakdown",
+            "jira_target_repo_custom_field_id": "customfield_10112",
+        },
+    )
     mock_jira.get_epic.return_value = _epic_with_discovery()
     mock_jira.list_stories_under_epic.return_value = []
     mock_jira.get_epic_customfield_10112_value.return_value = {"value": "shared-repo"}
