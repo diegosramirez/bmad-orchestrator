@@ -3,11 +3,12 @@
  */
 import api, { route } from '@forge/api';
 
-/** Must match FastAPI / Jira automation (customfield_10112). */
-export const TARGET_REPO_CUSTOM_FIELD = 'customfield_10112';
+/** Must match BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID / JiraService (default customfield_10112). */
+export const TARGET_REPO_CUSTOM_FIELD =
+  process.env.BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID || 'customfield_10080';
 
 /**
- * Parse fields.customfield_10112 from a Jira issue JSON `fields` object.
+ * Parse target-repo custom field from a Jira issue JSON `fields` object.
  * Supports string field, or object with .value / .name (select-style).
  */
 export function parseTargetRepoFromIssueFields(fields) {

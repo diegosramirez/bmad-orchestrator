@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from bmad_orchestrator.nodes.dev_story import (
+    ChecklistCompletionAssessment,
     FileOperationList,
     FileOperationModel,
     _apply_operations,
@@ -163,44 +164,82 @@ def test_run_all_checks_setup_failure_returns_error(mock_cmd, mock_compile, tmp_
 
 # ── dev_story node with Agent SDK ─────────────────────────────────────────────
 
-def test_dev_story_returns_touched_files(settings, mock_agent_service):
+def test_dev_story_returns_touched_files(settings, mock_agent_service, mock_claude, mock_jira):
     mock_agent_service.run_agent.return_value = AgentResult(
         touched_files=["src/app.ts", "src/app.html"],
     )
-    node = make_dev_story_node(mock_agent_service, settings)
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state())
     assert result["touched_files"] == ["src/app.ts", "src/app.html"]
     assert len(result["execution_log"]) == 1
 
 
-def test_dev_story_agent_error_returns_failure_state(settings, mock_agent_service):
+def test_dev_story_agent_error_returns_failure_state(settings, mock_agent_service, mock_claude, mock_jira):
     mock_agent_service.run_agent.return_value = AgentResult(
         is_error=True,
         result_text="Session crashed",
     )
-    node = make_dev_story_node(mock_agent_service, settings)
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
     result = node(make_state())
     assert result["failure_state"] == "Session crashed"
     assert len(result["execution_log"]) == 2
 
 
-def test_dev_story_injects_project_context(settings, mock_agent_service):
-    node = make_dev_story_node(mock_agent_service, settings)
+def test_dev_story_injects_project_context(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(project_context="Framework: Angular (TypeScript)"))
     prompt = mock_agent_service.run_agent.call_args.args[0]
     assert "Angular" in prompt
 
 
-def test_dev_story_includes_verification_commands(settings, mock_agent_service):
-    node = make_dev_story_node(mock_agent_service, settings)
+def test_dev_story_includes_verification_commands(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(build_commands=["npm run build"], test_commands=["npm test"]))
     prompt = mock_agent_service.run_agent.call_args.args[0]
     assert "npm run build" in prompt
     assert "npm test" in prompt
 
 
-def test_dev_story_includes_guidelines(settings, mock_agent_service):
-    node = make_dev_story_node(mock_agent_service, settings)
+def test_dev_story_includes_guidelines(settings, mock_agent_service, mock_claude, mock_jira):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(dev_guidelines="Use strict TypeScript"))
     prompt = mock_agent_service.run_agent.call_args.args[0]
     assert "Use strict TypeScript" in prompt
+
+
+def test_dev_story_includes_jira_checklist_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
+    mock_jira.get_story_checklist_text.return_value = "* [ ] **Step one** — do it"
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
+    node(make_state(current_story_id="PROJ-1"))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Implementation checklist (from Jira)" in prompt
+    assert "Step one" in prompt
+    mock_jira.get_story_checklist_text.assert_called_once_with("PROJ-1")
+
+
+def test_dev_story_updates_checklist_after_success(settings, mock_agent_service, mock_claude, mock_jira):
+    """Non-dry-run: complete_structured marks items; set_story_checklist_text receives [x]."""
+    non_dry = settings.model_copy(update={"dry_run": False})
+    mock_jira.get_story_checklist_text.return_value = "* [ ] **Alpha** — first"
+    mock_agent_service.run_agent.return_value = AgentResult(
+        touched_files=["a.ts"],
+        result_text="Implemented Alpha.",
+    )
+    mock_claude.complete_structured.return_value = ChecklistCompletionAssessment(
+        completed_task_summaries=["Alpha"],
+    )
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, non_dry)
+    node(make_state(current_story_id="PROJ-9", acceptance_criteria=["AC1"]))
+    mock_claude.complete_structured.assert_called_once()
+    mock_jira.set_story_checklist_text.assert_called_once()
+    updated = mock_jira.set_story_checklist_text.call_args[0][1]
+    assert "* [x] **Alpha**" in updated
+
+
+def test_dev_story_skips_checklist_sync_when_empty(settings, mock_agent_service, mock_claude, mock_jira):
+    mock_jira.get_story_checklist_text.return_value = ""
+    mock_agent_service.run_agent.return_value = AgentResult(touched_files=["x.ts"])
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
+    node(make_state(current_story_id="PROJ-1"))
+    mock_claude.complete_structured.assert_not_called()
+    mock_jira.set_story_checklist_text.assert_not_called()

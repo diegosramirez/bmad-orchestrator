@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from bmad_orchestrator.config import Settings
+import pytest
+
+from bmad_orchestrator.config import (
+    Settings,
+    jira_branch_custom_field_id_from_env,
+    jira_target_repo_custom_field_id_from_env,
+)
 
 
 def test_settings_with_required_values() -> None:
@@ -113,3 +119,76 @@ def test_execution_timeout_disabled() -> None:
         execution_timeout_minutes=0,
     )
     assert s.execution_timeout_minutes == 0
+
+
+def test_jira_custom_field_ids_default() -> None:
+    """Built-in Jira custom field defaults (explicit; local .env cannot override)."""
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        github_repo="o/r",
+        jira_target_repo_custom_field_id="customfield_10112",
+        jira_branch_custom_field_id="customfield_10145",
+        jira_checklist_text_custom_field_id="customfield_10046",
+    )
+    assert s.jira_target_repo_custom_field_id == "customfield_10112"
+    assert s.jira_branch_custom_field_id == "customfield_10145"
+    assert s.jira_checklist_text_custom_field_id == "customfield_10046"
+
+
+def test_jira_custom_field_ids_override() -> None:
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        github_repo="o/r",
+        jira_target_repo_custom_field_id="customfield_99999",
+        jira_branch_custom_field_id="customfield_88888",
+    )
+    assert s.jira_target_repo_custom_field_id == "customfield_99999"
+    assert s.jira_branch_custom_field_id == "customfield_88888"
+
+
+def test_jira_custom_field_id_must_start_with_customfield() -> None:
+    with pytest.raises(ValueError, match="customfield"):
+        Settings(
+            anthropic_api_key="k",  # type: ignore[arg-type]
+            jira_base_url="https://x.atlassian.net",
+            jira_username="u",
+            jira_api_token="t",  # type: ignore[arg-type]
+            jira_project_key="P",
+            github_repo="o/r",
+            jira_target_repo_custom_field_id="bad",
+        )
+
+
+def test_jira_checklist_text_custom_field_id_must_start_with_customfield() -> None:
+    with pytest.raises(ValueError, match="customfield"):
+        Settings(
+            anthropic_api_key="k",  # type: ignore[arg-type]
+            jira_base_url="https://x.atlassian.net",
+            jira_username="u",
+            jira_api_token="t",  # type: ignore[arg-type]
+            jira_project_key="P",
+            github_repo="o/r",
+            jira_checklist_text_custom_field_id="bad",
+        )
+
+
+def test_jira_custom_field_id_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID", raising=False)
+    monkeypatch.delenv("BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID", raising=False)
+    assert jira_target_repo_custom_field_id_from_env() == "customfield_10112"
+    assert jira_branch_custom_field_id_from_env() == "customfield_10145"
+
+
+def test_jira_custom_field_id_from_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID", "customfield_999")
+    monkeypatch.setenv("BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID", "customfield_888")
+    assert jira_target_repo_custom_field_id_from_env() == "customfield_999"
+    assert jira_branch_custom_field_id_from_env() == "customfield_888"

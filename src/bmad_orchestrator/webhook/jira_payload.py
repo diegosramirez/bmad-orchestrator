@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from bmad_orchestrator.config import jira_target_repo_custom_field_id_from_env
+
 
 @dataclass(frozen=True)
 class JiraWebhookContext:
@@ -40,11 +42,10 @@ def parse_jira_webhook(body: dict[str, Any]) -> JiraWebhookContext | None:
         if not team_id or not isinstance(team_id, str):
             return None
 
-        # Optional: target repository, stored in a Jira custom field.
-        # We currently use customfield_10112.value, which in your payload
-        # carries values like "ds24-growth" (can be mapped to a GitHub repo).
+        # Optional: target repository (Digistore repo / BMAD target field).
         target_repo: str | None = None
-        custom_target = fields.get("customfield_10112")
+        target_fid = jira_target_repo_custom_field_id_from_env()
+        custom_target = fields.get(target_fid)
         if isinstance(custom_target, dict):
             value = custom_target.get("value")
             if isinstance(value, str) and value.strip():

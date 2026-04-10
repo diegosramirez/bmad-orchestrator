@@ -5,7 +5,7 @@ import { useIssueMetadata } from './hooks/useIssueMetadata';
 
 /**
  * Epic issues only: original AI Actions panel (Discovery, Architect, Stories).
- * BMAD comments (/bmad refine|retry) live on the AI Comments panel for Story issues.
+ * Workflow comments (refine|retry) live on the AI Comments panel for Story issues.
  */
 export function EpicPanelApp() {
   const { issueKey, loading, error, issueTypeName, isEpic } = useIssueMetadata();
@@ -45,9 +45,9 @@ export function EpicPanelApp() {
             <Text as="strong">{issueTypeName || 'unknown'}</Text>.
           </Text>
           <Text>
-            For <Text as="strong">Story</Text> issues, use the <Text as="strong">BMAD Story</Text>{' '}
-            panel to run the full dev pipeline, or <Text as="strong">AI Comments</Text> for /bmad
-            refine or retry.
+            For <Text as="strong">Story</Text> issues, use the <Text as="strong">Workflow Story</Text>{' '}
+            panel to run the full dev pipeline, or <Text as="strong">AI Comments</Text> for refine or
+            retry workflow commands.
           </Text>
         </SectionMessage>
       </Stack>

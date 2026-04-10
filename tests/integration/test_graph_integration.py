@@ -13,8 +13,16 @@ from bmad_orchestrator.graph import build_graph, make_initial_state
 from bmad_orchestrator.nodes.code_review import ReviewIssueItem, ReviewResult
 from bmad_orchestrator.nodes.create_or_correct_epic import EpicDraft
 from bmad_orchestrator.nodes.create_story_tasks import StoryDraft, TaskItem
-from bmad_orchestrator.nodes.dev_story import FileOperationList, FilePlan
-from bmad_orchestrator.nodes.party_mode_refinement import RefinedStory
+from bmad_orchestrator.nodes.dev_story import (
+    ChecklistCompletionAssessment,
+    FileOperationList,
+    FilePlan,
+)
+from bmad_orchestrator.nodes.party_mode_refinement import (
+    RefinedStory,
+    _SubtaskItem,
+    _SubtaskList,
+)
 from bmad_orchestrator.services.claude_agent_service import AgentResult
 
 
@@ -44,9 +52,10 @@ def _configure_mocks(
     mock_jira.find_epic_by_team.return_value = []
     mock_jira.create_epic.return_value = {"key": "TEST-1", "summary": "Test Epic"}
     mock_jira.create_story.return_value = {"key": "TEST-2", "summary": "Test Story"}
-    mock_jira.create_task.return_value = {"key": "TEST-3"}
     mock_jira.get_story.return_value = None
     mock_jira.update_story_description.return_value = None
+    mock_jira.story_checklist_text_is_empty.return_value = False
+    mock_jira.get_story_checklist_text.return_value = ""
 
     # Claude service mocks (used for structured-data nodes)
     mock_claude.classify.return_value = "create_new"
@@ -111,6 +120,15 @@ def _structured_side_effect(  # type: ignore[return]
             acceptance_criteria=["Can log in", "Cannot use wrong creds"],
             implementation_notes="Use JWT tokens",
         )
+    if schema.__name__ == "_SubtaskList":
+        return _SubtaskList(
+            tasks=[
+                _SubtaskItem(summary="Integration task 1", description="First"),
+                _SubtaskItem(summary="Integration task 2", description="Second"),
+            ],
+        )
+    if schema.__name__ == "ChecklistCompletionAssessment":
+        return ChecklistCompletionAssessment(completed_task_summaries=[])
     return schema()
 
 

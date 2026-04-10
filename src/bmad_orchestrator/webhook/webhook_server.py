@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,7 +11,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from bmad_orchestrator.config import (
+    jira_branch_custom_field_id_from_env,
+    jira_target_repo_custom_field_id_from_env,
+)
 from bmad_orchestrator.utils.logger import get_logger
+from bmad_orchestrator.webhook.bmad_comment_parse import parse_bmad_comment_command
 from bmad_orchestrator.webhook.dev_story import build_dev_story_workflow_inputs
 from bmad_orchestrator.webhook.discovery import (
     build_discovery_workflow_inputs,
@@ -55,7 +59,7 @@ FORGE_WEBHOOK_SECRET = os.getenv("BMAD_FORGE_WEBHOOK_SECRET") or os.getenv(
 def _normalize_target_repo(raw: str | None) -> str:
     """Normalize target_repo to OWNER/REPO for GitHub CLI.
 
-    Jira customfield_10112.value can be either:
+    Jira target-repo custom field (.value) can be either:
     - "my-test-app" (slug only)
     - "owner/my-test-app" (already normalized)
     """
@@ -680,51 +684,26 @@ async def jira_comment_webhook(request: Request):
             status_code=200,
         )
 
-    try:
-        tokens = shlex.split(comment_body)
-    except ValueError as exc:
+    _, guidance, parse_error = parse_bmad_comment_command(comment_body)
+    if parse_error:
         return JSONResponse(
             content={
                 "ok": False,
                 "saved": str(path),
                 "run_started": False,
-                "message": f"Invalid /bmad command syntax: {exc}",
+                "message": parse_error,
             },
             status_code=400,
         )
-
-    if len(tokens) < 2:
-        return JSONResponse(
-            content={
-                "ok": False,
-                "saved": str(path),
-                "run_started": False,
-                "message": 'Usage: /bmad retry "guidance" or /bmad refine "guidance"',
-            },
-            status_code=400,
-        )
-
-    subcommand = tokens[1]
-    if subcommand not in {"retry", "refine"}:
-        return JSONResponse(
-            content={
-                "ok": False,
-                "saved": str(path),
-                "run_started": False,
-                "message": f"Unknown /bmad subcommand: {subcommand}",
-            },
-            status_code=400,
-        )
-
-    # Guidance: optional third token (in quotes), e.g. /bmad retry "fix the auth"
-    guidance = tokens[2] if len(tokens) >= 3 else ""
 
     issue = body.get("issue") or {}
     issue_key = issue.get("key") or "unknown"
     fields = issue.get("fields") or {}
+    branch_fid = jira_branch_custom_field_id_from_env()
+    target_fid = jira_target_repo_custom_field_id_from_env()
 
-    # Branch from customfield_10145 (BMAD Branch) — required for retry/refine
-    branch_val = fields.get("customfield_10145")
+    # Branch from BMAD Branch field — required for retry/refine
+    branch_val = fields.get(branch_fid)
     branch = (branch_val.strip() if isinstance(branch_val, str) and branch_val else "") or ""
     if not branch:
         return JSONResponse(
@@ -733,7 +712,7 @@ async def jira_comment_webhook(request: Request):
                 "saved": str(path),
                 "run_started": False,
                 "message": (
-                    "Missing branch. Ensure the issue has customfield_10145 (BMAD Branch) set, "
+                    f"Missing branch. Ensure the issue has {branch_fid} (BMAD Branch) set, "
                     "e.g. by running the pipeline once so BMAD can save the branch."
                 ),
             },
@@ -745,9 +724,9 @@ async def jira_comment_webhook(request: Request):
     if isinstance(issue_key, str) and "-" in issue_key:
         team_id = issue_key.split("-", 1)[0]
 
-    # target_repo from customfield_10112.value if present, otherwise fallback to DEFAULT_TARGET_REPO
+    # target_repo from Digistore/target-repo field .value if present, else DEFAULT_TARGET_REPO
     target_repo_raw = ""
-    custom_target = fields.get("customfield_10112")
+    custom_target = fields.get(target_fid)
     if isinstance(custom_target, dict):
         value = custom_target.get("value")
         if isinstance(value, str) and value.strip():

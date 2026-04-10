@@ -10,7 +10,7 @@ import {
   Text,
   TextArea,
 } from '@forge/react';
-import { requestJira } from '@forge/bridge';
+import { requestJira, view } from '@forge/bridge';
 import { useBmadBranch } from '../hooks/useBmadBranch';
 import {
   BMAD_COMMENT_ROW_XCSS,
@@ -26,10 +26,10 @@ const MODE_OPTIONS = [
   { label: 'Retry', value: 'retry' },
 ];
 
-const NO_BRANCH_WARNING_TITLE = 'BMAD branch not available';
+const NO_BRANCH_WARNING_TITLE = 'Workflow branch not available';
 const NO_BRANCH_WARNING_BODY =
-  'You cannot send a message because this issue has no BMAD branch set. ' +
-  'Run "Run development" from the BMAD Story panel first so the branch is saved; ' +
+  'You cannot send a message because this issue has no workflow branch set. ' +
+  'Run "Run development" from the Workflow Story panel first so the branch is saved; ' +
   'then you can use Refine or Retry.';
 
 /**
@@ -64,7 +64,7 @@ export function BmadCommentPanel({ issueKey }) {
       setBanner({
         appearance: 'error',
         title: 'No issue',
-        body: 'Open an issue to post a BMAD comment.',
+        body: 'Open an issue to post a workflow comment.',
       });
       return;
     }
@@ -105,10 +105,15 @@ export function BmadCommentPanel({ issueKey }) {
       }
       guidanceRef.current = '';
       setGuidanceFieldKey((k) => k + 1);
+      try {
+        await view.refresh();
+      } catch {
+        /* Not all host contexts expose refresh; comment was still created. */
+      }
       setBanner({
         appearance: 'success',
         title: 'Comment added',
-        body: 'Jira Automation should pick up the /bmad command and run your workflow.',
+        body: 'Jira Automation should pick up the comment and run your workflow.',
       });
     } catch (e) {
       setBanner({
@@ -132,7 +137,7 @@ export function BmadCommentPanel({ issueKey }) {
       <Text>Action</Text>
 
       {branchError && (
-        <SectionMessage appearance="error" title="Could not load BMAD branch">
+        <SectionMessage appearance="error" title="Could not load workflow branch">
           <Text>{branchError}</Text>
         </SectionMessage>
       )}

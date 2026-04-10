@@ -7,9 +7,15 @@ from typing import Any
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.nodes.code_review import _MEDIUM_OR_ABOVE
-from bmad_orchestrator.nodes.dev_story import _resolve_cwd, _run_all_checks
+from bmad_orchestrator.nodes.dev_story import (
+    _resolve_cwd,
+    _run_all_checks,
+    maybe_update_jira_checklist_after_dev_session,
+)
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
+from bmad_orchestrator.services.claude_service import ClaudeService
+from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.logger import get_logger
@@ -22,6 +28,8 @@ NODE_NAME = "dev_story_fix_loop"
 
 def make_fix_loop_node(
     agent: ClaudeAgentService,
+    claude: ClaudeService,
+    jira: JiraServiceProtocol,
     settings: Settings,
     *,
     on_event: Callable[[str], None] | None = None,
@@ -29,6 +37,14 @@ def make_fix_loop_node(
     system_prompt = build_system_prompt("developer", settings.bmad_install_dir)
 
     def dev_story_fix_loop(state: OrchestratorState) -> dict[str, Any]:
+        story_key = state.get("current_story_id")
+        checklist_md = ""
+        if story_key and story_key != "UNKNOWN":
+            try:
+                checklist_md = jira.get_story_checklist_text(story_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("checklist_read_failed", story_key=story_key, error=str(exc)[:200])
+
         issues = state["code_review_issues"]
         loop_count = state["review_loop_count"]
         story_content = state["story_content"] or ""
@@ -125,12 +141,20 @@ def make_fix_loop_node(
                     f"{example_test}\n\n"
                 )
 
+        checklist_block = ""
+        if checklist_md.strip():
+            checklist_block = (
+                "## Implementation checklist (from Jira)\n"
+                f"{checklist_md}\n\n"
+            )
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
             f"{guidelines_block}"
             f"{obligations_block}"
             f"{example_block}"
+            f"{checklist_block}"
             f"Fix code review issues (loop {loop_count + 1}).\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
@@ -271,6 +295,17 @@ def make_fix_loop_node(
                 "total_cost_usd": new_cost,
                 "execution_log": [log_entry],
             }
+
+        maybe_update_jira_checklist_after_dev_session(
+            jira,
+            claude,
+            settings,
+            story_key,
+            checklist_md,
+            result.result_text,
+            acceptance_criteria,
+            on_event=on_event,
+        )
 
         return {
             "review_loop_count": loop_count + 1,

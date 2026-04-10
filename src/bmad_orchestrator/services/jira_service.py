@@ -10,7 +10,12 @@ from jira import JIRA
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
-from bmad_orchestrator.utils.jira_adf import description_for_jira_api, description_from_jira_api
+from bmad_orchestrator.utils.jira_adf import (
+    description_for_jira_api,
+    description_from_jira_api,
+    is_adf_document,
+    paragraph_custom_field_payload_for_api,
+)
 from bmad_orchestrator.utils.jira_mermaid import (
     markdown_intermediate_without_mermaid_images,
     mermaid_pipeline_enabled,
@@ -99,11 +104,20 @@ def _retry_jira(
                 raise
     raise last_exc  # type: ignore[misc]  # unreachable
 
-# Target app repo (same id on Epic and Story when the field is on both issue types).
-TARGET_REPO_CUSTOM_FIELD_ID = "customfield_10112"
+def _issue_field_value(issue: Any, field_id: str) -> Any:
+    """Read a custom or standard field from a jira Issue (prefer ``raw['fields']``)."""
+    raw_issue = getattr(issue, "raw", None)
+    if isinstance(raw_issue, dict):
+        fields_json = raw_issue.get("fields")
+        if isinstance(fields_json, dict) and field_id in fields_json:
+            return fields_json[field_id]
+    flds = getattr(issue, "fields", None)
+    if flds is not None:
+        return getattr(flds, field_id, None)
+    return None
 
 
-def _customfield_10112_from_raw_issue(issue: Any) -> Any | None:
+def _target_repo_value_from_raw_issue(issue: Any, field_id: str) -> Any | None:
     """Return raw Jira REST value for the target-repo custom field, or None if unset."""
     raw_issue = getattr(issue, "raw", None)
     if not isinstance(raw_issue, dict):
@@ -111,7 +125,7 @@ def _customfield_10112_from_raw_issue(issue: Any) -> Any | None:
     fields_json = raw_issue.get("fields")
     if not isinstance(fields_json, dict):
         return None
-    val = fields_json.get(TARGET_REPO_CUSTOM_FIELD_ID)
+    val = fields_json.get(field_id)
     if val is None:
         return None
     if isinstance(val, str) and not val.strip():
@@ -281,13 +295,16 @@ class JiraService:
         return _issue_to_dict(issue)
 
     def get_epic_customfield_10112_value(self, epic_key: str) -> Any | None:
-        """Return raw API payload for customfield_10112 from the Epic (to copy onto new Stories)."""
+        """Return raw API payload for the Epic target-repo field (copied onto new Stories)."""
         try:
             issue = self._client.issue(epic_key)
             it = getattr(issue.fields, "issuetype", None)
             if not it or getattr(it, "name", None) != "Epic":
                 return None
-            return _customfield_10112_from_raw_issue(issue)
+            return _target_repo_value_from_raw_issue(
+                issue,
+                self.settings.jira_target_repo_custom_field_id,
+            )
         except Exception:
             return None
 
@@ -542,15 +559,84 @@ class JiraService:
     def set_story_branch_field(
         self, story_key: str, branch: str,
     ) -> None:
-        """Store the BMAD git branch in customfield_10145."""
-        _retry_jira(
-            lambda: self._client.issue(story_key).update(
-                fields={"customfield_10145": branch},
-            ),
-            label="set_story_branch_field",
-        )
+        """Store the BMAD git branch in the configured branch custom field."""
+        fid = self.settings.jira_branch_custom_field_id
+
+        def _do() -> None:
+            self._client.issue(story_key).update(fields={fid: branch})
+
+        _retry_jira(_do, label="set_story_branch_field")
         logger.info(
             "story_branch_field_updated",
             story_key=story_key,
             branch=branch,
+        )
+
+    def story_checklist_text_is_empty(self, story_key: str) -> bool:
+        """True if the Checklist Text custom field is unset or has no visible text."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+        try:
+
+            def _fetch() -> Any:
+                return self._client.issue(story_key, fields=f"summary,{fid}")
+
+            issue = _retry_jira(_fetch, label="story_checklist_text_is_empty_fetch")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_checklist_text_read_failed",
+                story_key=story_key,
+                error=str(exc)[:200],
+            )
+            return True
+        val = _issue_field_value(issue, fid)
+        if val is None:
+            return True
+        if isinstance(val, str):
+            return not val.strip()
+        if is_adf_document(val):
+            md = description_from_jira_api(val)
+            return not (md or "").strip()
+        return False
+
+    def get_story_checklist_text(self, story_key: str) -> str:
+        """Return Checklist Text custom field as markdown, or empty string if unset/unreadable."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+        try:
+
+            def _fetch() -> Any:
+                return self._client.issue(story_key, fields=f"summary,{fid}")
+
+            issue = _retry_jira(_fetch, label="get_story_checklist_text_fetch")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_checklist_text_read_failed",
+                story_key=story_key,
+                error=str(exc)[:200],
+            )
+            return ""
+        val = _issue_field_value(issue, fid)
+        if val is None:
+            return ""
+        if isinstance(val, str):
+            return val.strip()
+        if is_adf_document(val):
+            return (description_from_jira_api(val) or "").strip()
+        return ""
+
+    @skip_if_dry_run(fake_return=None)
+    def set_story_checklist_text(self, story_key: str, markdown: str) -> None:
+        """Write implementation tasks as markdown into the Checklist Text custom field."""
+        fid = self.settings.jira_checklist_text_custom_field_id
+
+        def _do() -> None:
+            issue = self._client.issue(story_key, fields=f"summary,{fid}")
+            before = _issue_field_value(issue, fid)
+            payload = paragraph_custom_field_payload_for_api(before, markdown)
+            self._client.issue(story_key).update(fields={fid: payload})
+
+        _retry_jira(_do, label="set_story_checklist_text")
+        logger.info(
+            "story_checklist_text_updated",
+            story_key=story_key,
+            field=fid,
         )

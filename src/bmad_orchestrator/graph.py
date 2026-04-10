@@ -451,10 +451,16 @@ def build_graph(
         "create_github_issue",
         make_create_github_issue_node(github, jira, settings),
     )
-    _node("dev_story", make_dev_story_node(claude_agent, settings, on_event=on_event))
+    _node(
+        "dev_story",
+        make_dev_story_node(claude_agent, claude, jira, settings, on_event=on_event),
+    )
     _node("qa_automation", make_qa_automation_node(claude_agent, settings, on_event=on_event))
     _node("code_review", make_code_review_node(claude_agent, settings, on_event=on_event))
-    _node("dev_story_fix_loop", make_fix_loop_node(claude_agent, settings, on_event=on_event))
+    _node(
+        "dev_story_fix_loop",
+        make_fix_loop_node(claude_agent, claude, jira, settings, on_event=on_event),
+    )
     _node("e2e_automation", make_e2e_automation_node(claude_agent, settings, on_event=on_event))
     _node("e2e_fix_loop", make_e2e_fix_loop_node(claude_agent, settings, on_event=on_event))
     _node("fail_with_state", make_fail_with_state_node(settings))

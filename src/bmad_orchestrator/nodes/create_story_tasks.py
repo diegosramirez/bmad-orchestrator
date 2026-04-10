@@ -11,9 +11,9 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
-from bmad_orchestrator.services.jira_service import TARGET_REPO_CUSTOM_FIELD_ID
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.jira_checklist_text import tasks_to_checklist_markdown
 from bmad_orchestrator.utils.jira_template import (
     epic_has_discovery_section,
     load_template,
@@ -28,13 +28,15 @@ NODE_NAME = "create_story_tasks"
 
 
 def _story_extra_fields_from_epic(
-    jira: JiraServiceProtocol, epic_key: str,
+    jira: JiraServiceProtocol,
+    settings: Settings,
+    epic_key: str,
 ) -> dict[str, Any] | None:
-    """Copy Epic customfield_10112 onto new Stories when the Epic has a value."""
+    """Copy Epic target-repo field onto new Stories when the Epic has a value."""
     cf = jira.get_epic_customfield_10112_value(epic_key)
     if cf is None:
         return None
-    return {TARGET_REPO_CUSTOM_FIELD_ID: cf}
+    return {settings.jira_target_repo_custom_field_id: cf}
 
 
 def _parse_acceptance_criteria(description: str) -> list[str]:
@@ -185,7 +187,7 @@ def make_create_story_tasks_node(
             )
             return {"execution_log": [log_entry]}
 
-        story_extra = _story_extra_fields_from_epic(jira, epic_id)
+        story_extra = _story_extra_fields_from_epic(jira, settings, epic_id)
 
         existing_issues = jira.list_stories_under_epic(epic_id)
         existing_keys = {
@@ -269,11 +271,10 @@ def make_create_story_tasks_node(
             created_keys.append(key)
             existing_keys.add(norm)
 
-            for task in planned.tasks:
-                jira.create_task(
-                    story_key=key,
-                    summary=task.summary[:_JIRA_SUMMARY_MAX],
-                    description=task.description,
+            if planned.tasks:
+                jira.set_story_checklist_text(
+                    key,
+                    tasks_to_checklist_markdown(planned.tasks),
                 )
 
         if not created_keys:
@@ -463,7 +464,7 @@ def make_create_story_tasks_node(
             )
 
         single_story_extra = (
-            _story_extra_fields_from_epic(jira, epic_id)
+            _story_extra_fields_from_epic(jira, settings, epic_id)
             if epic_id != "UNKNOWN"
             else None
         )
@@ -476,15 +477,14 @@ def make_create_story_tasks_node(
             extra_fields=single_story_extra,
         )
 
-        for task in draft.tasks:
-            jira.create_task(
-                story_key=story["key"],
-                summary=task.summary[:_JIRA_SUMMARY_MAX],
-                description=task.description,
+        if draft.tasks:
+            jira.set_story_checklist_text(
+                story["key"],
+                tasks_to_checklist_markdown(draft.tasks),
             )
 
         log_entry["message"] = (
-            f"Created story {story['key']} with {len(draft.tasks)} tasks "
+            f"Created story {story['key']} with {len(draft.tasks)} tasks in Checklist Text "
             f"and {len(draft.acceptance_criteria)} ACs"
         )
 

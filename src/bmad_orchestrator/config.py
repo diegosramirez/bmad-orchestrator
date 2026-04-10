@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import SecretStr, model_validator
+import os
+
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Default per-agent model overrides: Opus for requirement analysis, Haiku for
@@ -39,6 +41,11 @@ class Settings(BaseSettings):
     jira_username: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str = "DUMMY"
+    # Jira custom field IDs (vary per Cloud site). Defaults match legacy BMAD fields.
+    jira_target_repo_custom_field_id: str = "customfield_10112"
+    jira_branch_custom_field_id: str = "customfield_10145"
+    # Checklists for Jira | Free — "Checklist Text" field (Paragraph / multi-line).
+    jira_checklist_text_custom_field_id: str = "customfield_10046"
     # Reserved for future Jira ADF inline media; Mermaid diagrams are attached as PNG only.
     jira_media_collection: str = ""
     # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
@@ -108,6 +115,39 @@ class Settings(BaseSettings):
     # ── Skip nodes ──────────────────────────────────────────────────────────
     skip_nodes: list[str] = []
 
+    @field_validator("jira_target_repo_custom_field_id", mode="before")
+    @classmethod
+    def _target_repo_cf_default(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return "customfield_10112"
+        s = str(v).strip()
+        if not s.startswith("customfield_"):
+            msg = "Jira custom field id must look like customfield_12345"
+            raise ValueError(msg)
+        return s
+
+    @field_validator("jira_branch_custom_field_id", mode="before")
+    @classmethod
+    def _branch_cf_default(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return "customfield_10145"
+        s = str(v).strip()
+        if not s.startswith("customfield_"):
+            msg = "Jira custom field id must look like customfield_12345"
+            raise ValueError(msg)
+        return s
+
+    @field_validator("jira_checklist_text_custom_field_id", mode="before")
+    @classmethod
+    def _checklist_text_cf_default(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return "customfield_10046"
+        s = str(v).strip()
+        if not s.startswith("customfield_"):
+            msg = "Jira custom field id must look like customfield_12345"
+            raise ValueError(msg)
+        return s
+
     @model_validator(mode="after")
     def _apply_default_agent_models(self) -> Settings:
         """Merge user-provided agent_models on top of built-in defaults."""
@@ -141,3 +181,21 @@ class Settings(BaseSettings):
                 msg = f"Slack notifications require: {', '.join(missing)}"
                 raise ValueError(msg)
         return self
+
+
+# Defaults for code paths that do not load full Settings (e.g. FastAPI webhook env-only).
+JIRA_TARGET_REPO_CUSTOM_FIELD_ID_DEFAULT = "customfield_10112"
+JIRA_BRANCH_CUSTOM_FIELD_ID_DEFAULT = "customfield_10145"
+JIRA_CHECKLIST_TEXT_CUSTOM_FIELD_ID_DEFAULT = "customfield_10046"
+
+
+def jira_target_repo_custom_field_id_from_env() -> str:
+    """Read target-repo field id from env (see Settings.jira_target_repo_custom_field_id)."""
+    raw = os.environ.get("BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID", "").strip()
+    return raw or JIRA_TARGET_REPO_CUSTOM_FIELD_ID_DEFAULT
+
+
+def jira_branch_custom_field_id_from_env() -> str:
+    """Read branch field id from env; same default as Settings.jira_branch_custom_field_id."""
+    raw = os.environ.get("BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID", "").strip()
+    return raw or JIRA_BRANCH_CUSTOM_FIELD_ID_DEFAULT

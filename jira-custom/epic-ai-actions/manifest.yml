@@ -1,5 +1,5 @@
 permissions:
-  # Read issue fields (customfield_10112); write comments for /bmad helper.
+  # Read issue fields (target repo + branch; ids configurable via Forge env vars).
   scopes:
     - read:jira-work
     - write:jira-work
@@ -7,7 +7,7 @@ permissions:
     fetch:
       backend:
         # Replace with the public HTTPS origin of your BMAD FastAPI webhook (no path). Redeploy after editing.
-        - 'https://discernably-bastionary-amelia.ngrok-free.dev/'
+        - 'https://service-ai-lemon.vercel.app/'
 
 modules:
   jira:issuePanel:
@@ -16,7 +16,7 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: BMAD Epic
+      title: Workflow Epic
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
     - key: bmad-ai-comments-panel
       resource: comment-apps-main
@@ -30,7 +30,7 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: BMAD Story
+      title: Workflow Story
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
   function:
     - key: resolver
@@ -47,4 +47,4 @@ app:
     name: nodejs24.x
     memoryMB: 256
     architecture: arm64
-  id: ari:cloud:ecosystem::app/a89bf36f-39f5-4369-91fd-282f788edba0
+  id: ari:cloud:ecosystem::app/27b91fad-3b4a-4e18-aa7c-86d437ceca5e
