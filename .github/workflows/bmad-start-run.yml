@@ -67,10 +67,6 @@ on:
         description: "Skip: Architect code review loop"
         type: boolean
         default: false
-      skip_e2e_automation:
-        description: "Skip: E2E tests (Playwright)"
-        type: boolean
-        default: false
       skip_commit_and_push:
         description: "Skip: Git commit and push"
         type: boolean
