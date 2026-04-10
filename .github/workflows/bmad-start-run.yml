@@ -90,6 +90,11 @@ on:
         required: false
         default: ""
         type: string
+      slack_channel:
+        description: "Slack channel or DM user ID to post updates to (overrides BMAD_SLACK_CHANNEL var)"
+        required: false
+        default: ""
+        type: string
       # ── Other flags ──────────────────────────────────────────────────
       branch:
         description: "Existing branch to continue from (e.g. bmad/sam1/SAM1-54-improve-dashboard)"
@@ -144,9 +149,9 @@ jobs:
       GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
 
       # ── Slack (optional) ───────────────────────────────────────────────
-      BMAD_SLACK_NOTIFY: ${{ vars.BMAD_SLACK_NOTIFY || 'false' }}
       BMAD_SLACK_BOT_TOKEN: ${{ secrets.BMAD_SLACK_BOT_TOKEN }}
-      BMAD_SLACK_CHANNEL: ${{ vars.BMAD_SLACK_CHANNEL }}
+      BMAD_SLACK_NOTIFY: ${{ inputs.slack_thread_ts != '' || inputs.slack_channel != '' || vars.BMAD_SLACK_NOTIFY == 'true' }}
+      BMAD_SLACK_CHANNEL: ${{ inputs.slack_channel != '' && inputs.slack_channel || vars.BMAD_SLACK_CHANNEL }}
       BMAD_SLACK_VERBOSE: ${{ inputs.slack_verbose }}
       BMAD_SLACK_THREAD_TS: ${{ inputs.slack_thread_ts }}
 
