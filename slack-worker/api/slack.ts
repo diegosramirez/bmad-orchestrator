@@ -689,7 +689,7 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       action: "run",
       teamId,
       prompt,
-      verbose: verbose || !!dmChannel, // always verbose when coming from DM so updates appear
+      verbose: verbose,
       skipNodes,
       branch: "",
       targetRepo,
@@ -932,9 +932,6 @@ async function handleDirectMessage(event: any): Promise<void> {
   // run or retry — dispatch and reply in thread
   parsed.slackThreadTs = userTs;
   if (!parsed.targetRepo) parsed.targetRepo = process.env.DEFAULT_TARGET_REPO || "";
-
-  // Default to verbose in DM mode so updates land in the thread
-  parsed.verbose = true;
 
   const actionLabel = parsed.action === "retry" ? "Retry" : "Run";
   const parts = [`🚀 *${actionLabel} starting…*`, `Team: \`${parsed.teamId}\``];
