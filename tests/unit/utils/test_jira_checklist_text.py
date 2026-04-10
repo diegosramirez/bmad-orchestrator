@@ -52,3 +52,32 @@ def test_mark_checklist_items_done_unknown_summary_ignored() -> None:
 def test_mark_checklist_items_done_empty_completed_returns_unchanged() -> None:
     md = "* [ ] **A**"
     assert mark_checklist_items_done(md, []) == md
+
+
+def test_mark_checklist_jira_open_italic_to_done() -> None:
+    md = (
+        "- [open] *Create Web Worker* — Implement scheduler\n"
+        "- [open] *Build cache* — IndexedDB\n"
+    )
+    out = mark_checklist_items_done(md, ["Create Web Worker"])
+    assert "- [done] *Create Web Worker* — Implement scheduler" in out
+    assert "- [open] *Build cache*" in out
+
+
+def test_mark_checklist_jira_open_bold_to_done() -> None:
+    md = "- [open] **Alpha** — desc\n- [done] **Beta**"
+    out = mark_checklist_items_done(md, ["Alpha"])
+    assert "- [done] **Alpha** — desc" in out
+    assert "- [done] **Beta**" in out
+
+
+def test_mark_checklist_dash_bullet_checkbox() -> None:
+    md = "- [ ] **Todo** — tail"
+    out = mark_checklist_items_done(md, ["Todo"])
+    assert "- [x] **Todo** — tail" in out
+
+
+def test_mark_checklist_jira_open_case_insensitive_state() -> None:
+    md = "- [OPEN] *Task*"
+    out = mark_checklist_items_done(md, ["Task"])
+    assert "- [done] *Task*" in out

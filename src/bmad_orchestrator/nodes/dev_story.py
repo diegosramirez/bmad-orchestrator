@@ -107,8 +107,9 @@ def maybe_update_jira_checklist_after_dev_session(
     user_msg = (
         "From the Jira implementation checklist and the development session output below, "
         "list which checklist items are FULLY completed in this session.\n\n"
-        "Each checklist line has a bold **summary** — return those summary strings exactly "
-        "as they appear in the checklist (or close enough to match the same line).\n"
+        "Each checklist line has a task title: either **bold** or *italic* wrapping, often "
+        "with [open]/[done] or [ ]/[x] — return those title strings exactly as they appear "
+        "in the checklist (or close enough to match the same line).\n"
         "Do not include items that are only partially done or not addressed.\n\n"
         f"## Checklist (from Jira)\n{checklist_markdown}\n\n"
         f"## Acceptance criteria\n{ac_lines or '(none)'}\n\n"

@@ -5,9 +5,21 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Lines from ``tasks_to_checklist_markdown``: * [ ] or * [x] **summary** — optional tail
-_CHECKLIST_LINE = re.compile(
-    r"^(\*)\s+\[([ xX])\]\s+(\*\*)(.+?)(\*\*)(.*)$",
+# BMAD / markdown checkbox: ``-`` or ``*`` bullet, ``[ ]`` / ``[x]``, ``**summary**``
+_CHECKLIST_LINE_CHECKBOX = re.compile(
+    r"^([-*])\s+\[([ xX])\]\s+(\*\*)(.+?)(\*\*)(.*)$",
+)
+
+# Jira \"Checklist Text\" plugin style: ``[open]`` / ``[done]`` with ``**summary**``
+_CHECKLIST_LINE_JIRA_OPEN_BOLD = re.compile(
+    r"^([-*])\s+\[(open|done)\]\s+(\*\*)(.+?)(\*\*)(.*)$",
+    re.IGNORECASE,
+)
+
+# Same plugin with italic single-asterisk title: ``- [open] *summary* — tail``
+_CHECKLIST_LINE_JIRA_OPEN_ITALIC = re.compile(
+    r"^([-*])\s+\[(open|done)\]\s+\*(.+?)\*(.*)$",
+    re.IGNORECASE,
 )
 
 
@@ -18,10 +30,47 @@ def _normalize_summary_key(summary: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def mark_checklist_items_done(markdown: str, completed_summaries: list[str]) -> str:
-    """Turn ``[ ]`` into ``[x]`` where the bold summary matches *completed_summaries*.
+def _mark_checklist_line(line: str, done_keys: set[str]) -> str | None:
+    """Return the updated line if it is a checklist row to mark done; else None."""
+    s = line.rstrip()
 
-    Unknown names are ignored. Lines already ``[x]`` are left as-is.
+    m = _CHECKLIST_LINE_JIRA_OPEN_BOLD.match(s)
+    if m:
+        bullet, state, o1, summary, o2, tail = m.groups()
+        key = _normalize_summary_key(summary)
+        if state.lower() == "done" or key not in done_keys:
+            return None
+        return f"{bullet} [done] {o1}{summary}{o2}{tail}"
+
+    m = _CHECKLIST_LINE_JIRA_OPEN_ITALIC.match(s)
+    if m:
+        bullet, state, summary, tail = m.groups()
+        key = _normalize_summary_key(summary)
+        if state.lower() == "done" or key not in done_keys:
+            return None
+        return f"{bullet} [done] *{summary}*{tail}"
+
+    m = _CHECKLIST_LINE_CHECKBOX.match(s)
+    if m:
+        bullet, box, o1, summary, o2, tail = m.groups()
+        key = _normalize_summary_key(summary)
+        if box.strip().lower() == "x" or key not in done_keys:
+            return None
+        return f"{bullet} [x] {o1}{summary}{o2}{tail}"
+
+    return None
+
+
+def mark_checklist_items_done(markdown: str, completed_summaries: list[str]) -> str:
+    """Mark matching checklist rows as done.
+
+    Supports:
+
+    - BMAD output: ``* [ ] **summary**`` → ``* [x] **summary**`` (``-`` bullet allowed).
+    - Jira Checklist Text: ``- [open] *summary*`` or ``- [open] **summary**`` → ``[done]``,
+      preserving italic/bold wrappers.
+
+    Unknown summaries are ignored. Already completed lines are left as-is.
     """
     if not markdown.strip() or not completed_summaries:
         return markdown
@@ -32,18 +81,8 @@ def mark_checklist_items_done(markdown: str, completed_summaries: list[str]) -> 
 
     out_lines: list[str] = []
     for line in markdown.splitlines():
-        m = _CHECKLIST_LINE.match(line.rstrip())
-        if not m:
-            out_lines.append(line)
-            continue
-        star, box, o1, summary, o2, tail = m.groups()
-        key = _normalize_summary_key(summary)
-        if box.strip().lower() == "x" or key not in done_keys:
-            out_lines.append(line)
-            continue
-        # Unchecked and in done_keys → mark checked
-        new_line = f"{star} [x] {o1}{summary}{o2}{tail}"
-        out_lines.append(new_line)
+        new_line = _mark_checklist_line(line, done_keys)
+        out_lines.append(new_line if new_line is not None else line)
     return "\n".join(out_lines)
 
 
