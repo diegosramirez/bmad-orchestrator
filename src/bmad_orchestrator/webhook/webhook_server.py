@@ -502,9 +502,10 @@ async def stories_run(request: Request):
 
 @app.post("/bmad/dev-run")
 async def dev_run(request: Request):
-    """Forge panel: run dev pipeline on an existing Story (detect → PR), skipping epic/story prep.
+    """Forge panel: dev pipeline on a Story (detect → PR).
 
-    Expects JSON ``{"issue_key": "PROJ-123", "target_repo": "optional"}`` and Forge secret header.
+    Skips epic/story prep and E2E. Expects JSON ``{"issue_key": "PROJ-123",
+    "target_repo": "optional"}`` and Forge secret header.
     """
     if not FORGE_WEBHOOK_SECRET:
         return JSONResponse(

@@ -13,7 +13,8 @@ def build_dev_story_workflow_inputs(
     """Workflow inputs for a full dev pipeline on an existing Story.
 
     Skips epic validation, epic create/update, epic architect, story/task creation,
-    and party refinement. Runs detect_commands through create_pull_request (inline).
+    party refinement, and E2E automation (Playwright). Runs detect_commands through
+    create_pull_request (inline).
     """
     # prompt = story key: CLI treats Jira-shaped prompt as --story-key and loads story.
     return {
@@ -30,7 +31,7 @@ def build_dev_story_workflow_inputs(
         "skip_dev_story": "false",
         "skip_qa_automation": "false",
         "skip_code_review": "false",
-        "skip_e2e_automation": "false",
+        "skip_e2e_automation": "true",
         "skip_commit_and_push": "false",
         "skip_create_pull_request": "false",
         "skip_epic_architect": "true",

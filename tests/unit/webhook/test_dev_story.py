@@ -24,6 +24,6 @@ def test_build_dev_story_workflow_inputs() -> None:
     assert inputs["skip_dev_story"] == "false"
     assert inputs["skip_qa_automation"] == "false"
     assert inputs["skip_code_review"] == "false"
-    assert inputs["skip_e2e_automation"] == "false"
+    assert inputs["skip_e2e_automation"] == "true"
     assert inputs["skip_commit_and_push"] == "false"
     assert inputs["skip_create_pull_request"] == "false"

@@ -263,6 +263,8 @@ def make_review_router(
             if loop_count < settings.max_review_loops:
                 return "dev_story_fix_loop"
             return "fail_with_state"
+        if "e2e_automation" in settings.skip_nodes:
+            return "e2e_skip"
         # Skip E2E if too much time has elapsed (Playwright install + test
         # can easily consume 10+ minutes, causing 30m timeout).
         _E2E_MIN_REMAINING_S = 900  # need at least 15 min for E2E + commit
