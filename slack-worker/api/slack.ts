@@ -585,6 +585,24 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
     return;
   }
 
+  // DM button → open run wizard pre-filled with typed text
+  if (action.action_id === "open_run_modal_dm") {
+    let prefill: RunModalState = {};
+    try {
+      const parsed = JSON.parse(action.value || "{}");
+      prefill = { prompt: parsed.prompt || "", teamId: parsed.teamId || process.env.DEFAULT_TEAM_ID || "SAM1" };
+    } catch { /* use empty prefill */ }
+    const result = await slackApi("views.open", {
+      trigger_id: payload.trigger_id,
+      view: buildRunModal("inline", prefill),
+    });
+    if (!result.ok) {
+      console.error("views.open failed for open_run_modal_dm:", JSON.stringify(result));
+    }
+    res.status(200).send("");
+    return;
+  }
+
   // Both retry and refine follow the same pattern: parse meta → open modal
   let modalView: Record<string, unknown> | null = null;
   if (action.action_id === "bmad_retry") {
@@ -837,58 +855,39 @@ async function handleDirectMessage(event: any): Promise<void> {
     });
   };
 
-  // ── Parse: try structured command first, fall back to bare prompt ──────
+  // ── Parse: try structured command first, fall back to modal prompt ──────
   const parsed = parseCommand(text);
 
   if ("error" in parsed) {
-    // Not a structured command — check if it looks like a real prompt
-    // (at least 10 chars and multiple words) vs casual chat
-    const wordCount = text.split(/\s+/).length;
-    if (text.length < 10 || wordCount < 3) {
-      await reply(
-        "👋 Hi! I'm the BMAD Orchestrator. To start a pipeline run, describe what you want to build.\n\n"
-        + "*Examples:*\n"
-        + '`Add a health check endpoint that returns uptime and status`\n'
-        + '`run SAM1 "Add user authentication with JWT"`\n'
-        + "`help` — show all commands",
-      );
-      return;
-    }
-
-    // Looks like a real prompt → treat as a run with default team
+    // Any unrecognised text → offer the run wizard modal with the text pre-filled.
+    // (Slack requires a trigger_id to open modals, which only comes from button
+    // clicks — so we post a button and the modal opens on click.)
     const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
-    const cmd: ParsedCommand = {
-      action: "run",
-      teamId: defaultTeam,
-      prompt: text,
-      verbose: true,
-      skipNodes: [],
-      branch: "",
-      targetRepo: process.env.DEFAULT_TARGET_REPO || "",
-      slackThreadTs: userTs,
-    };
-
-    // Create a thread with run details
-    await reply(
-      `🚀 *Starting run…*\nTeam: \`${cmd.teamId}\`\nPrompt: "${cmd.prompt}"`,
-      userTs,
-    );
-
-    try {
-      const ok = await dispatchWorkflow(cmd);
-      if (!ok) {
-        await reply("❌ Failed to dispatch workflow. Check GitHub token permissions.", userTs);
-        return;
-      }
-      const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
-      await reply(
-        `✅ Dispatched! <https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View workflow runs>`,
-        userTs,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      await reply(`❌ Error: ${msg}`, userTs);
-    }
+    await slackApi("chat.postMessage", {
+      channel,
+      text: "Open the run wizard to configure and start a pipeline run:",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Got it! Open the wizard to review options and kick off a run.`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              style: "primary",
+              text: { type: "plain_text", text: "Open Run Wizard" },
+              action_id: "open_run_modal_dm",
+              value: JSON.stringify({ prompt: text, teamId: defaultTeam }),
+            },
+          ],
+        },
+      ],
+    });
     return;
   }
 
