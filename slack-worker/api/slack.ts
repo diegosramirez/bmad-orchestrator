@@ -11,6 +11,7 @@ interface ParsedCommand {
   branch: string;
   targetRepo: string;
   slackThreadTs?: string;
+  slackChannel?: string;
   executionMode?: string;
   autoExecuteIssue?: boolean;
   codeAgent?: string;
@@ -57,8 +58,9 @@ async function slackApi(method: string, body: Record<string, unknown>): Promise<
 
 // ── Command parser ───────────────────────────────────────────────────────────
 
-const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
+const HELP_TEXT = `*BMAD Orchestrator — Commands*
 
+*Slash commands (any channel):*
 \`/bmad\` — Open the run wizard (interactive form)
 \`/bmad run <team> "<prompt>"\` — Start a new orchestrator run
 \`/bmad run <team> "<prompt>" --verbose\` — Start with verbose Slack updates
@@ -67,6 +69,14 @@ const HELP_TEXT = `*BMAD Orchestrator — Slash Commands*
 \`/bmad retry <team> <branch> "<guidance>"\` — Retry a failed run on an existing branch
 \`/bmad status\` — Link to GitHub Actions runs
 \`/bmad help\` — Show this message
+
+*DM the bot (under Apps → BMAD Orchestrator):*
+Just type your prompt and I'll start a run with the default team.
+\`Add user dashboard with analytics\` — Starts a run
+\`run SAM1 "Add SSO login"\` — Explicit team + prompt
+\`retry SAM1 bmad/sam1/SAM1-54 "fix tests"\` — Retry a failed branch
+\`status\` — Link to workflow runs
+\`help\` — Show this message
 
 *Examples:*
 \`/bmad run SAM1 "Add user dashboard with analytics"\`
@@ -171,6 +181,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
 
   if (cmd.branch) inputs.branch = cmd.branch;
   if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
+  if (cmd.slackChannel) inputs.slack_channel = cmd.slackChannel;
   if (cmd.executionMode) inputs.execution_mode = cmd.executionMode;
   if (cmd.autoExecuteIssue) inputs.auto_execute_issue = "true";
   if (cmd.codeAgent) inputs.code_agent = cmd.codeAgent;
@@ -576,6 +587,28 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
     return;
   }
 
+  // DM button → open run wizard pre-filled with typed text
+  if (action.action_id === "open_run_modal_dm") {
+    let prefill: RunModalState = {};
+    let dmChannel = payload.channel?.id || "";
+    try {
+      const parsed = JSON.parse(action.value || "{}");
+      prefill = { prompt: parsed.prompt || "", teamId: parsed.teamId || process.env.DEFAULT_TEAM_ID || "SAM1" };
+    } catch { /* use empty prefill */ }
+    const modal = buildRunModal("inline", prefill);
+    // Store DM channel so the submission can thread replies back here
+    (modal as any).private_metadata = JSON.stringify({ dm_channel: dmChannel });
+    const result = await slackApi("views.open", {
+      trigger_id: payload.trigger_id,
+      view: modal,
+    });
+    if (!result.ok) {
+      console.error("views.open failed for open_run_modal_dm:", JSON.stringify(result));
+    }
+    res.status(200).send("");
+    return;
+  }
+
   // Both retry and refine follow the same pattern: parse meta → open modal
   let modalView: Record<string, unknown> | null = null;
   if (action.action_id === "bmad_retry") {
@@ -633,17 +666,38 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const autoExecuteIssue = autoExecuteOptions.some((o: any) => o.value === "auto_execute");
     const codeAgent = values.code_agent?.value?.selected_option?.value || undefined;
 
+    // If the modal was opened from a DM, private_metadata contains the DM channel.
+    // Post an initial thread-root message there so workflow updates land in-thread.
+    let dmChannel = "";
+    let slackThreadTs: string | undefined;
+    try {
+      const meta = JSON.parse(payload.view?.private_metadata || "{}");
+      dmChannel = meta.dm_channel || "";
+    } catch { /* ok */ }
+
+    if (dmChannel) {
+      try {
+        const initMsg = await slackApi("chat.postMessage", {
+          channel: dmChannel,
+          text: `🚀 *Run starting…*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"`,
+        });
+        if (initMsg.ok) slackThreadTs = initMsg.ts;
+      } catch { /* best-effort */ }
+    }
+
     const cmd: ParsedCommand = {
       action: "run",
       teamId,
       prompt,
-      verbose,
+      verbose: verbose || !!dmChannel, // always verbose when coming from DM so updates appear
       skipNodes,
       branch: "",
       targetRepo,
       executionMode,
       autoExecuteIssue,
       codeAgent,
+      slackThreadTs,
+      slackChannel: dmChannel || undefined,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent
@@ -654,19 +708,17 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       // fall through with ok=false
     }
 
-    // Send DM confirmation to user
-    const userId = payload.user?.id;
-    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
-    const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
-    const statusText = ok
-      ? `*Run dispatched!*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"\n<${actionsUrl}|View workflow runs>`
-      : "Failed to dispatch workflow. Check GitHub token permissions.";
-
-    if (userId) {
-      try {
-        await slackApi("chat.postMessage", { channel: userId, text: statusText });
-      } catch {
-        // best-effort
+    if (!ok) {
+      // Post failure notice to wherever the user will see it
+      const notifyChannel = dmChannel || payload.user?.id;
+      if (notifyChannel) {
+        try {
+          await slackApi("chat.postMessage", {
+            channel: notifyChannel,
+            text: "❌ Failed to dispatch workflow. Check GitHub token permissions.",
+            ...(slackThreadTs ? { thread_ts: slackThreadTs } : {}),
+          });
+        } catch { /* best-effort */ }
       }
     }
 
@@ -807,6 +859,108 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
   res.status(200).send("");
 }
 
+// ── DM (Events API) handler ─────────────────────────────────────────────────
+
+async function handleDirectMessage(event: any): Promise<void> {
+  // Ignore bot's own messages and message edits/deletes
+  if (event.bot_id || event.subtype) return;
+
+  const text = (event.text || "").trim();
+  const channel = event.channel;  // DM channel ID
+  const userTs = event.ts;        // message timestamp — used as thread parent
+
+  if (!text || !channel) return;
+
+  // Helper: reply in the DM thread
+  const reply = async (msg: string, threadTs?: string) => {
+    await slackApi("chat.postMessage", {
+      channel,
+      text: msg,
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+    });
+  };
+
+  // ── Parse: try structured command first, fall back to modal prompt ──────
+  const parsed = parseCommand(text);
+
+  if ("error" in parsed) {
+    // Any unrecognised text → offer the run wizard modal with the text pre-filled.
+    // (Slack requires a trigger_id to open modals, which only comes from button
+    // clicks — so we post a button and the modal opens on click.)
+    const defaultTeam = process.env.DEFAULT_TEAM_ID || "SAM1";
+    await slackApi("chat.postMessage", {
+      channel,
+      text: "Open the run wizard to configure and start a pipeline run:",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Got it! Open the wizard to review options and kick off a run.`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              style: "primary",
+              text: { type: "plain_text", text: "Open Run Wizard" },
+              action_id: "open_run_modal_dm",
+              value: JSON.stringify({ prompt: text, teamId: defaultTeam }),
+            },
+          ],
+        },
+      ],
+    });
+    return;
+  }
+
+  // ── Structured commands ─────────────────────────────────────────────────
+
+  if (parsed.action === "help") {
+    await reply(HELP_TEXT);
+    return;
+  }
+
+  if (parsed.action === "status") {
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    await reply(`<https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View BMAD Orchestrator runs>`);
+    return;
+  }
+
+  // run or retry — dispatch and reply in thread
+  parsed.slackThreadTs = userTs;
+  if (!parsed.targetRepo) parsed.targetRepo = process.env.DEFAULT_TARGET_REPO || "";
+
+  // Default to verbose in DM mode so updates land in the thread
+  parsed.verbose = true;
+
+  const actionLabel = parsed.action === "retry" ? "Retry" : "Run";
+  const parts = [`🚀 *${actionLabel} starting…*`, `Team: \`${parsed.teamId}\``];
+  if (parsed.prompt) parts.push(`Prompt: "${parsed.prompt}"`);
+  if (parsed.branch) parts.push(`Branch: \`${parsed.branch}\``);
+  if (parsed.skipNodes.length) parts.push(`Skip: ${parsed.skipNodes.join(", ")}`);
+
+  await reply(parts.join("\n"), userTs);
+
+  try {
+    const ok = await dispatchWorkflow(parsed);
+    if (!ok) {
+      await reply("❌ Failed to dispatch workflow. Check GitHub token permissions.", userTs);
+      return;
+    }
+    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
+    await reply(
+      `✅ Dispatched! <https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml|View workflow runs>`,
+      userTs,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    await reply(`❌ Error: ${msg}`, userTs);
+  }
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 function readRawBody(req: any): Promise<string> {
@@ -839,9 +993,49 @@ export default async function handler(req: any, res: any): Promise<void> {
     return;
   }
 
+  // ── Events API (JSON body) ──────────────────────────────────────────────
+  // Slack Events API sends JSON, not form-encoded. Detect by trying to parse.
+  let jsonBody: any = null;
+  try {
+    jsonBody = JSON.parse(rawBody);
+  } catch {
+    // Not JSON — fall through to form-encoded handling below
+  }
+
+  if (jsonBody) {
+    // URL verification challenge (one-time setup handshake)
+    if (jsonBody.type === "url_verification") {
+      res.status(200).json({ challenge: jsonBody.challenge });
+      return;
+    }
+
+    // Slack retries — acknowledge and skip
+    if (req.headers["x-slack-retry-num"]) {
+      res.status(200).send("");
+      return;
+    }
+
+    // Event callback (DM messages, etc.)
+    if (jsonBody.type === "event_callback") {
+      const event = jsonBody.event;
+
+      // Process BEFORE responding — Vercel kills the function after res.send()
+      if (event?.type === "message" && event?.channel_type === "im") {
+        try {
+          await handleDirectMessage(event);
+        } catch (err) {
+          console.error("handleDirectMessage error:", err);
+        }
+      }
+
+      res.status(200).send("");
+      return;
+    }
+  }
+
+  // ── Form-encoded payloads (slash commands, interactive components) ──────
   const params = new URLSearchParams(rawBody);
 
-  // ── Route by payload type ────────────────────────────────────────────────
   // Interactive payloads (button clicks, modal submissions) come as a JSON
   // string in a "payload" form field.
   const payloadStr = params.get("payload");
