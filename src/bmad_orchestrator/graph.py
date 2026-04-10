@@ -324,16 +324,33 @@ def _wrap_with_slack_notifications(
         else:
             text = f":white_check_mark: *{label}* completed"
 
+        effective_ts: str | None = None
         if thread_ts is None:
             # First step — create root message (run header), store ts
             header = f":rocket: *BMAD Run* — [{team_id}] {story_id}"
             ts = slack.post_message(f"{header}\n{text}", blocks=blocks)
             if ts:
                 thread_ts_holder[0] = ts
-                return {**out, "slack_thread_ts": ts}
+                effective_ts = ts
         else:
             slack.post_thread_reply(thread_ts, text, blocks=blocks)
+            effective_ts = thread_ts
 
+        # After stories are created, post a Jira epic link to the thread
+        if node_name == "create_story_tasks" and not failure and not out.get("_skipped"):
+            epic_id = out.get("current_epic_id") or state.get("current_epic_id")
+            jira_url = (settings.jira_base_url or "").rstrip("/")
+            if epic_id and jira_url and effective_ts:
+                try:
+                    slack.post_thread_reply(
+                        effective_ts,
+                        f":paperclip: *Jira Epic:* <{jira_url}/browse/{epic_id}|{epic_id}>",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if effective_ts is not None and thread_ts is None:
+            return {**out, "slack_thread_ts": effective_ts}
         return out
 
     return _wrapped

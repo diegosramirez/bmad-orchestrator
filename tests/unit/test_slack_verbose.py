@@ -218,6 +218,114 @@ class TestWrapWithSlackNotificationsRefine:
         assert blocks is None
 
 
+class TestWrapWithSlackNotificationsJiraEpicLink:
+    """Tests for the Jira epic link posted after create_story_tasks."""
+
+    def _make_settings(self, **overrides: object) -> Settings:
+        base = {
+            "anthropic_api_key": "sk-test",
+            "dummy_jira": True,
+            "dummy_github": True,
+            "slack_notify": True,
+            "slack_bot_token": "xoxb-test",
+            "slack_channel": "#test",
+            "jira_base_url": "https://jira.example.com",
+        }
+        base.update(overrides)
+        return Settings(**base)  # type: ignore[arg-type]
+
+    def test_jira_epic_link_posted_after_create_story_tasks(self) -> None:
+        """After create_story_tasks, a Jira epic link is posted as an extra thread reply."""
+        slack = MagicMock()
+        settings = self._make_settings()
+
+        def story_node(state: dict) -> dict:
+            return {"current_story_id": "PROJ-2"}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "create_story_tasks", story_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts-root",
+            "team_id": "PROJ",
+            "input_prompt": "test",
+            "current_epic_id": "PROJ-1",
+        }
+        wrapped(state)
+
+        # First call: step-completed reply; second call: Jira epic link
+        assert slack.post_thread_reply.call_count == 2
+        link_call = slack.post_thread_reply.call_args_list[1]
+        assert link_call[0][0] == "ts-root"
+        assert "PROJ-1" in link_call[0][1]
+        assert "https://jira.example.com/browse/PROJ-1" in link_call[0][1]
+
+    def test_jira_epic_link_not_posted_without_jira_base_url(self) -> None:
+        """No epic link when jira_base_url is not configured."""
+        slack = MagicMock()
+        settings = self._make_settings(jira_base_url=None)
+
+        def story_node(state: dict) -> dict:
+            return {"current_story_id": "PROJ-2"}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "create_story_tasks", story_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts-root",
+            "team_id": "PROJ",
+            "input_prompt": "test",
+            "current_epic_id": "PROJ-1",
+        }
+        wrapped(state)
+
+        # Only the step-completed reply, no epic link
+        slack.post_thread_reply.assert_called_once()
+
+    def test_jira_epic_link_not_posted_for_other_nodes(self) -> None:
+        """Epic link is only posted for create_story_tasks, not other nodes."""
+        slack = MagicMock()
+        settings = self._make_settings()
+
+        def ok_node(state: dict) -> dict:
+            return {}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "dev_story", ok_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts-root",
+            "team_id": "PROJ",
+            "input_prompt": "test",
+            "current_epic_id": "PROJ-1",
+        }
+        wrapped(state)
+
+        slack.post_thread_reply.assert_called_once()
+
+    def test_jira_epic_link_swallows_slack_error(self) -> None:
+        """A Slack failure on the epic link post does not crash the pipeline."""
+        slack = MagicMock()
+        slack.post_thread_reply.side_effect = [None, RuntimeError("Slack down")]
+        settings = self._make_settings()
+
+        def story_node(state: dict) -> dict:
+            return {"current_story_id": "PROJ-2"}
+
+        wrapped = _wrap_with_slack_notifications(
+            slack, settings, "create_story_tasks", story_node, [None],
+        )
+        state = {
+            "slack_thread_ts": "ts-root",
+            "team_id": "PROJ",
+            "input_prompt": "test",
+            "current_epic_id": "PROJ-1",
+        }
+        # Should NOT raise even though second post_thread_reply raises
+        wrapped(state)
+        assert slack.post_thread_reply.call_count == 2
+
+
 class TestWrapWithSlackNotificationsThreading:
     """Tests for Slack thread creation and continuation."""
 
