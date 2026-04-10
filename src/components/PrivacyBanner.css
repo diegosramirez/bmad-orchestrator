@@ -1,0 +1,179 @@
+.privacy-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.privacy-banner--top {
+  top: 0;
+  border-bottom: 2px solid #007bff;
+}
+
+.privacy-banner--bottom {
+  bottom: 0;
+  border-top: 2px solid #007bff;
+}
+
+.privacy-banner--light {
+  background: #fff;
+  color: #333;
+}
+
+.privacy-banner--dark {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+.privacy-banner--loading {
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.privacy-banner__content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.privacy-banner__message {
+  flex: 1;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.privacy-banner__message strong {
+  font-weight: 600;
+}
+
+.privacy-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.privacy-banner__button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.privacy-banner__button--accept {
+  background: #007bff;
+  color: #fff;
+}
+
+.privacy-banner__button--accept:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.privacy-banner__button--decline {
+  background: #6c757d;
+  color: #fff;
+}
+
+.privacy-banner__button--decline:hover:not(:disabled) {
+  background: #545b62;
+}
+
+.privacy-banner__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.privacy-banner__settings-link {
+  color: inherit;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0;
+}
+
+.privacy-banner__settings-link:hover {
+  text-decoration: none;
+}
+
+/* Dark theme adjustments */
+.privacy-banner--dark .privacy-banner__button--accept {
+  background: #0d6efd;
+}
+
+.privacy-banner--dark .privacy-banner__button--accept:hover:not(:disabled) {
+  background: #0b5ed7;
+}
+
+.privacy-banner--dark .privacy-banner__button--decline {
+  background: #495057;
+}
+
+.privacy-banner--dark .privacy-banner__button--decline:hover:not(:disabled) {
+  background: #343a40;
+}
+
+.privacy-banner--dark .privacy-banner__settings-link {
+  color: #adb5bd;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .privacy-banner {
+    padding: 1rem;
+  }
+
+  .privacy-banner__content {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .privacy-banner__actions {
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+  }
+
+  .privacy-banner__button {
+    flex: 1;
+    padding: 0.75rem 1rem;
+  }
+}
+
+/* Loading state */
+.privacy-banner--loading .privacy-banner__button {
+  position: relative;
+}
+
+.privacy-banner--loading .privacy-banner__button:after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: privacy-banner-spin 1s linear infinite;
+}
+
+@keyframes privacy-banner-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
