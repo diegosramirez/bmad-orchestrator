@@ -11,6 +11,7 @@ interface ParsedCommand {
   branch: string;
   targetRepo: string;
   slackThreadTs?: string;
+  slackChannel?: string;
   executionMode?: string;
   autoExecuteIssue?: boolean;
   codeAgent?: string;
@@ -180,6 +181,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
 
   if (cmd.branch) inputs.branch = cmd.branch;
   if (cmd.slackThreadTs) inputs.slack_thread_ts = cmd.slackThreadTs;
+  if (cmd.slackChannel) inputs.slack_channel = cmd.slackChannel;
   if (cmd.executionMode) inputs.execution_mode = cmd.executionMode;
   if (cmd.autoExecuteIssue) inputs.auto_execute_issue = "true";
   if (cmd.codeAgent) inputs.code_agent = cmd.codeAgent;
@@ -588,13 +590,17 @@ async function handleBlockActions(payload: any, res: any): Promise<void> {
   // DM button → open run wizard pre-filled with typed text
   if (action.action_id === "open_run_modal_dm") {
     let prefill: RunModalState = {};
+    let dmChannel = payload.channel?.id || "";
     try {
       const parsed = JSON.parse(action.value || "{}");
       prefill = { prompt: parsed.prompt || "", teamId: parsed.teamId || process.env.DEFAULT_TEAM_ID || "SAM1" };
     } catch { /* use empty prefill */ }
+    const modal = buildRunModal("inline", prefill);
+    // Store DM channel so the submission can thread replies back here
+    (modal as any).private_metadata = JSON.stringify({ dm_channel: dmChannel });
     const result = await slackApi("views.open", {
       trigger_id: payload.trigger_id,
-      view: buildRunModal("inline", prefill),
+      view: modal,
     });
     if (!result.ok) {
       console.error("views.open failed for open_run_modal_dm:", JSON.stringify(result));
@@ -660,17 +666,38 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
     const autoExecuteIssue = autoExecuteOptions.some((o: any) => o.value === "auto_execute");
     const codeAgent = values.code_agent?.value?.selected_option?.value || undefined;
 
+    // If the modal was opened from a DM, private_metadata contains the DM channel.
+    // Post an initial thread-root message there so workflow updates land in-thread.
+    let dmChannel = "";
+    let slackThreadTs: string | undefined;
+    try {
+      const meta = JSON.parse(payload.view?.private_metadata || "{}");
+      dmChannel = meta.dm_channel || "";
+    } catch { /* ok */ }
+
+    if (dmChannel) {
+      try {
+        const initMsg = await slackApi("chat.postMessage", {
+          channel: dmChannel,
+          text: `🚀 *Run starting…*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"`,
+        });
+        if (initMsg.ok) slackThreadTs = initMsg.ts;
+      } catch { /* best-effort */ }
+    }
+
     const cmd: ParsedCommand = {
       action: "run",
       teamId,
       prompt,
-      verbose,
+      verbose: verbose || !!dmChannel, // always verbose when coming from DM so updates appear
       skipNodes,
       branch: "",
       targetRepo,
       executionMode,
       autoExecuteIssue,
       codeAgent,
+      slackThreadTs,
+      slackChannel: dmChannel || undefined,
     };
 
     // Dispatch BEFORE responding — Vercel kills the function after res is sent
@@ -681,19 +708,17 @@ async function handleViewSubmission(payload: any, res: any): Promise<void> {
       // fall through with ok=false
     }
 
-    // Send DM confirmation to user
-    const userId = payload.user?.id;
-    const ghRepo = process.env.GITHUB_REPO || "unknown/repo";
-    const actionsUrl = `https://github.com/${ghRepo}/actions/workflows/bmad-start-run.yml`;
-    const statusText = ok
-      ? `*Run dispatched!*\nTeam: \`${teamId}\`\nPrompt: "${prompt}"\n<${actionsUrl}|View workflow runs>`
-      : "Failed to dispatch workflow. Check GitHub token permissions.";
-
-    if (userId) {
-      try {
-        await slackApi("chat.postMessage", { channel: userId, text: statusText });
-      } catch {
-        // best-effort
+    if (!ok) {
+      // Post failure notice to wherever the user will see it
+      const notifyChannel = dmChannel || payload.user?.id;
+      if (notifyChannel) {
+        try {
+          await slackApi("chat.postMessage", {
+            channel: notifyChannel,
+            text: "❌ Failed to dispatch workflow. Check GitHub token permissions.",
+            ...(slackThreadTs ? { thread_ts: slackThreadTs } : {}),
+          });
+        } catch { /* best-effort */ }
       }
     }
 
