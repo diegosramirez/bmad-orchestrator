@@ -130,7 +130,6 @@ export function buildDevStoryWorkflowInputs(
     skip_dev_story: "false",
     skip_qa_automation: "false",
     skip_code_review: "false",
-    skip_e2e_automation: "true",
     skip_commit_and_push: "false",
     skip_create_pull_request: "false",
     skip_epic_architect: "true",
