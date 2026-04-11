@@ -157,3 +157,12 @@ def test_e2e_router_failing_exhausted_routes_to_commit(settings):
         e2e_loop_count=1,
     )
     assert router(state) == "commit_and_push"
+
+
+def test_e2e_router_skipped_routes_to_commit(settings):
+    """When e2e_automation is in skip_nodes the router bypasses the fix loop."""
+    s = settings.model_copy(update={"skip_nodes": ["e2e_automation"]})
+    router = make_e2e_router(s)
+    # State as it would be after a skip node: nothing updated
+    state = make_state(e2e_tests_passing=None, e2e_loop_count=0)
+    assert router(state) == "commit_and_push"

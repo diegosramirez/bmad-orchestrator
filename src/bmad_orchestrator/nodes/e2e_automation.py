@@ -167,6 +167,8 @@ def make_e2e_router(
     """
 
     def route(state: OrchestratorState) -> str:
+        if "e2e_automation" in settings.skip_nodes:
+            return "commit_and_push"
         if state.get("e2e_tests_passing") is True:
             return "commit_and_push"
         if state["e2e_loop_count"] < settings.max_e2e_loops:
