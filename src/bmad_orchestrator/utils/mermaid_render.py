@@ -1,4 +1,8 @@
-"""Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc)."""
+"""Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc).
+
+Default: light ``base`` theme (``%%{init: ...}%%``) when the source has no init block,
+and opaque white PNG background for ``mmdc`` (``-b white``).
+"""
 
 from __future__ import annotations
 
@@ -16,6 +20,18 @@ from bmad_orchestrator.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _PNG_SIG: Final[bytes] = b"\x89PNG\r\n\x1a\n"
+
+# Prepended when the source has no %%{init: ...}%% so PNGs use a light theme (readable on white).
+_LIGHT_INIT_PREFIX = '%%{init: {"theme": "base"}}%%\n'
+_HAS_MERMAID_INIT = re.compile(r"(?m)^\s*%%\{\s*init\s*:", re.IGNORECASE)
+
+
+def _mermaid_source_with_light_theme(source: str) -> str:
+    """Return Mermaid source with default light theme unless user already set init."""
+    text = (source or "").strip()
+    if not text or _HAS_MERMAID_INIT.search(text):
+        return text
+    return _LIGHT_INIT_PREFIX + text
 
 
 def png_dimensions(png_bytes: bytes) -> tuple[int, int]:
@@ -41,11 +57,15 @@ def render_mermaid_to_png(settings: Settings, source: str) -> tuple[bytes | None
     if len(text) > settings.mermaid_max_source_chars:
         return None, "mermaid source exceeds configured max length"
 
+    themed = _mermaid_source_with_light_theme(text)
+    if len(themed) > settings.mermaid_max_source_chars:
+        return None, "mermaid source exceeds configured max length"
+
     renderer = settings.mermaid_renderer.lower()
     if renderer == "kroki":
-        return _render_kroki(settings, text)
+        return _render_kroki(settings, themed)
     if renderer == "mmdc":
-        return _render_mmdc(settings, text)
+        return _render_mmdc(settings, themed)
     return None, f"unknown mermaid renderer: {renderer}"
 
 
@@ -93,7 +113,7 @@ def _render_mmdc(settings: Settings, text: str) -> tuple[bytes | None, str | Non
             f_in.flush()
         try:
             proc = subprocess.run(
-                [exe, "-i", str(in_path), "-o", str(out_path), "-b", "transparent"],
+                [exe, "-i", str(in_path), "-o", str(out_path), "-b", "white"],
                 capture_output=True,
                 text=True,
                 timeout=float(settings.mermaid_mmdc_timeout_seconds),

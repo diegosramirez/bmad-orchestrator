@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -73,6 +74,30 @@ def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
     assert out == _PNG_1X1
+    posted = mock_client.post.call_args.kwargs.get("content") or mock_client.post.call_args[0][1]
+    assert b'%%{init: {"theme": "base"}}%%' in posted
+
+
+def test_render_kroki_skips_init_when_user_has_init(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _settings(mermaid_renderer="kroki")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = _PNG_1X1
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = None
+    mock_client.post.return_value = mock_resp
+    monkeypatch.setattr(
+        "bmad_orchestrator.utils.mermaid_render.httpx.Client",
+        lambda **_k: mock_client,
+    )
+    user = '%%{init: {"theme": "dark"}}%%\ngraph TD; A-->B'
+    out, err = render_mermaid_to_png(s, user)
+    assert err is None
+    posted = mock_client.post.call_args.kwargs.get("content") or mock_client.post.call_args[0][1]
+    decoded = posted.decode("utf-8")
+    assert decoded.strip().startswith('%%{init: {"theme": "dark"}}%%')
+    assert decoded.count('%%{init:') == 1
 
 
 def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,6 +106,7 @@ def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(mermaid_renderer="mmdc")
 
     def fake_run(cmd: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
+        assert "-b" in cmd and "white" in cmd
         out_idx = cmd.index("-o") + 1
         out_path = cmd[out_idx]
         with open(out_path, "wb") as f:
@@ -95,6 +121,30 @@ def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
     assert out == _PNG_1X1
+
+
+def test_render_mmdc_writes_prefixed_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    s = _settings(mermaid_renderer="mmdc")
+    written: list[str] = []
+
+    def fake_run(cmd: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
+        in_idx = cmd.index("-i") + 1
+        in_path = cmd[in_idx]
+        written.append(Path(in_path).read_text(encoding="utf-8"))
+        out_idx = cmd.index("-o") + 1
+        out_path = cmd[out_idx]
+        Path(out_path).write_bytes(_PNG_1X1)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(
+        "bmad_orchestrator.utils.mermaid_render.subprocess.run",
+        fake_run,
+    )
+    out, err = render_mermaid_to_png(s, "graph TD; A-->B")
+    assert err is None
+    assert written and written[0].startswith('%%{init: {"theme": "base"}}%%')
 
 
 def test_render_kroki_bad_status(monkeypatch: pytest.MonkeyPatch) -> None:
