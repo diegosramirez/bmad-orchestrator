@@ -155,6 +155,45 @@ def test_step_status_suffix_terminal_and_continuing():
     assert _step_status_suffix("dev_story") == "⏩ Process continuing..."
 
 
+def test_step_status_suffix_create_pull_request_merged_success_with_branch_and_pr(settings):
+    """Merged state adds GitHub tree URL and PR link after success headline."""
+    from bmad_orchestrator.graph import _github_branch_tree_url, _step_status_suffix
+
+    merged = {
+        "branch_name": "feat/foo-bar",
+        "pr_url": "https://github.com/org/repo/pull/99",
+        "failure_state": None,
+    }
+    text = _step_status_suffix("create_pull_request", settings, merged)
+    assert "completed successfully" in text
+    assert "**Branch:**" in text
+    assert "https://github.com/org/repo/tree/feat%2Ffoo-bar" in text
+    assert "**PR:** https://github.com/org/repo/pull/99" in text
+    assert _github_branch_tree_url(settings, None) is None
+
+
+def test_step_status_suffix_create_pull_request_merged_failure_headline(settings):
+    """When failure_state is set, headline explains draft PR; still list branch + PR."""
+    from bmad_orchestrator.graph import _step_status_suffix
+
+    merged = {
+        "branch_name": "bmad/x",
+        "pr_url": "https://github.com/org/repo/pull/1",
+        "failure_state": "Pipeline failed after 2 loop(s).",
+    }
+    text = _step_status_suffix("create_pull_request", settings, merged)
+    assert "draft PR includes unresolved pipeline issues" in text
+    assert "completed successfully" not in text
+    assert "**Branch:**" in text and "**PR:**" in text
+
+
+def test_github_branch_tree_url_malformed_repo(settings):
+    from bmad_orchestrator.graph import _github_branch_tree_url
+
+    bad = settings.model_copy(update={"github_repo": "not-a-slash"})
+    assert _github_branch_tree_url(bad, "main") is None
+
+
 def test_execution_log_indicates_skip_and_strip_trailing_status():
     from bmad_orchestrator.graph import _execution_log_indicates_skip, _strip_trailing_status
 
@@ -171,6 +210,17 @@ def test_execution_log_indicates_skip_and_strip_trailing_status():
     assert _strip_trailing_status("no status suffix") == "no status suffix"
     assert _strip_trailing_status("z\n\nProcess finished.") == "z"
     assert _strip_trailing_status("w\n\n⏭️ Process continuing...") == "w"
+
+    multiline = (
+        "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: X\n\n"
+        "🎉 Process completed successfully\n"
+        "**Branch:** https://github.com/org/repo/tree/main\n"
+        "**PR:** https://github.com/org/repo/pull/1"
+    )
+    stripped = _strip_trailing_status(multiline)
+    assert "Step completed: X" in stripped
+    assert "completed successfully" not in stripped
+    assert "**Branch:**" not in stripped
 
 
 def test_route_after_create_or_correct_epic(settings):
@@ -381,6 +431,52 @@ def test_wrap_step_notifications_first_step_creates_comment_and_updates(settings
         "⏩ Process continuing..."
     )
     jira.update_comment.assert_called_with("SAM1-51", "comment-123", expected_body)
+
+
+def test_wrap_step_notifications_create_pull_request_includes_branch_and_pr_links(settings):
+    """Terminal create_pull_request step shows branch tree URL, PR URL, and correct headline."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 4, 13, 12, 0, tzinfo=UTC)
+
+    jira = MagicMock()
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+
+    def fake_create_pr(state):
+        return {
+            "execution_log": [],
+            "pr_url": "https://github.com/org/repo/pull/42",
+        }
+
+    wrapped = _wrap_with_step_notifications(
+        jira,
+        settings.model_copy(update={"dry_run": False}),
+        "create_pull_request",
+        fake_create_pr,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body=(
+            "🚀 Process started\n\n"
+            "[13 Apr 2026 - 11:00] ✅ Step completed: Commit and push\n\n"
+            "⏩ Process continuing..."
+        ),
+        branch_name="bmad/growth-123-feature",
+        failure_state="Pipeline failed after 2 loop(s). Tests are FAILING.",
+    )
+    wrapped(state)
+    body = jira.update_comment.call_args_list[0][0][2]
+    assert "draft PR includes unresolved pipeline issues" in body
+    assert "https://github.com/org/repo/tree/bmad%2Fgrowth-123-feature" in body
+    assert "**PR:** https://github.com/org/repo/pull/42" in body
 
 
 def test_wrap_step_notifications_later_step_only_updates_comment(settings):

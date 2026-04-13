@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
@@ -99,10 +101,58 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
     return _skip
 
 
-def _step_status_suffix(node_name: str, settings: Settings | None = None) -> str:
+_PR_SUCCESS_HEAD = "🎉 Process completed successfully"
+_PR_FAILURE_HEAD = "Process finished — draft PR includes unresolved pipeline issues."
+
+_MULTILINE_STATUS_TAIL = re.compile(
+    r"^\n\n(?:"
+    + re.escape(_PR_FAILURE_HEAD)
+    + "|"
+    + re.escape(_PR_SUCCESS_HEAD)
+    + r")(?:\n\*\*Branch:\*\* [^\n]+)?(?:\n\*\*PR:\*\* [^\n]+)?$"
+)
+
+
+def _github_branch_tree_url(settings: Settings | None, branch_name: str | None) -> str | None:
+    """Return https://github.com/{owner}/{repo}/tree/{ref} when repo and branch are known."""
+    if not settings or not branch_name or not settings.github_repo:
+        return None
+    owner, sep, repo = settings.github_repo.partition("/")
+    if not sep or not repo.strip():
+        return None
+    encoded = quote(branch_name, safe="")
+    return f"https://github.com/{owner}/{repo}/tree/{encoded}"
+
+
+def _branch_pr_link_lines(settings: Settings | None, merged: Mapping[str, Any]) -> list[str]:
+    """Markdown lines **Branch:** / **PR:** for Jira step comments."""
+    lines: list[str] = []
+    branch_name = merged.get("branch_name")
+    if branch_name:
+        url = _github_branch_tree_url(settings, str(branch_name))
+        lines.append(f"**Branch:** {url or branch_name}")
+    pr_url = merged.get("pr_url")
+    if pr_url:
+        lines.append(f"**PR:** {pr_url}")
+    return lines
+
+
+def _step_status_suffix(
+    node_name: str,
+    settings: Settings | None = None,
+    merged: Mapping[str, Any] | None = None,
+) -> str:
     """Return trailing status (Process continuing / completed / finished)."""
-    if node_name in ("create_pull_request", "epic_architect"):
-        return "🎉 Process completed successfully"
+    if node_name == "create_pull_request":
+        if merged is not None:
+            head = _PR_FAILURE_HEAD if merged.get("failure_state") else _PR_SUCCESS_HEAD
+            extra = _branch_pr_link_lines(settings, merged)
+            if extra:
+                return head + "\n" + "\n".join(extra)
+            return head
+        return _PR_SUCCESS_HEAD
+    if node_name == "epic_architect":
+        return _PR_SUCCESS_HEAD
     if node_name == "fail_with_state":
         return "Process finished."
     if (
@@ -110,7 +160,7 @@ def _step_status_suffix(node_name: str, settings: Settings | None = None) -> str
         and settings.execution_mode == "discovery"
         and node_name == "create_or_correct_epic"
     ):
-        return "🎉 Process completed successfully"
+        return _PR_SUCCESS_HEAD
     return "⏩ Process continuing..."
 
 
@@ -131,11 +181,17 @@ def _execution_log_indicates_skip(out: dict[str, Any]) -> bool:
 
 
 def _strip_trailing_status(body: str) -> str:
-    """Remove the trailing status line so we can append a new step then a new status."""
+    """Remove the trailing status block so we can append a new step then a new status."""
+    last_nn = body.rfind("\n\n")
+    if last_nn >= 0:
+        tail = body[last_nn:]
+        if _MULTILINE_STATUS_TAIL.match(tail):
+            return body[:last_nn].rstrip()
+
     for status in (
         "⏩ Process continuing...",
         "⏭️ Process continuing...",
-        "🎉 Process completed successfully",
+        _PR_SUCCESS_HEAD,
         "Process finished.",
     ):
         if body.endswith("\n\n" + status):
@@ -158,7 +214,6 @@ def _wrap_with_step_notifications(
         comment_id = state.get("step_notification_comment_id")
         current_body = state.get("step_notification_comment_body") or ""
         label = NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
-        status = _step_status_suffix(node_name, settings)
 
         if not notify_key or settings.dry_run:
             return node_fn(state)
@@ -179,6 +234,8 @@ def _wrap_with_step_notifications(
             if new_comment_id is None:
                 return node_fn(state)
             out = node_fn(state)
+            merged: dict[str, Any] = {**dict(state), **out}
+            status = _step_status_suffix(node_name, settings, merged)
             skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
             step_line = _format_step_completed_line(label, skipped=skipped)
             body = body_init + "\n\n" + step_line + "\n\n" + status
@@ -197,6 +254,8 @@ def _wrap_with_step_notifications(
 
         # Later steps: strip previous status, append step + new status
         out = node_fn(state)
+        merged = {**dict(state), **out}
+        status = _step_status_suffix(node_name, settings, merged)
         skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
         base = _strip_trailing_status(current_body)
         step_line = _format_step_completed_line(label, skipped=skipped)
