@@ -102,7 +102,7 @@ def _make_skip_node(name: str) -> Callable[[OrchestratorState], dict[str, Any]]:
 
 
 _PR_SUCCESS_HEAD = "🎉 Process completed successfully"
-_PR_FAILURE_HEAD = "Process finished — draft PR includes unresolved pipeline issues."
+_PR_FAILURE_HEAD = "ℹ️ Process finished — draft PR includes unresolved pipeline issues."
 
 _MULTILINE_STATUS_TAIL = re.compile(
     r"^\n\n(?:"
@@ -120,20 +120,31 @@ def _github_branch_tree_url(settings: Settings | None, branch_name: str | None) 
     owner, sep, repo = settings.github_repo.partition("/")
     if not sep or not repo.strip():
         return None
-    encoded = quote(branch_name, safe="")
+    encoded = quote(branch_name, safe="/")
     return f"https://github.com/{owner}/{repo}/tree/{encoded}"
 
 
+def _pr_link_label(pr_url: str) -> str:
+    """Short label for PR markdown link (e.g. PR #99)."""
+    m = re.search(r"/pull/(\d+)", pr_url)
+    return f"PR #{m.group(1)}" if m else "Pull request"
+
+
 def _branch_pr_link_lines(settings: Settings | None, merged: Mapping[str, Any]) -> list[str]:
-    """Markdown lines **Branch:** / **PR:** for Jira step comments."""
+    """Markdown lines with [label](url) for ADF link conversion in Jira comments."""
     lines: list[str] = []
     branch_name = merged.get("branch_name")
     if branch_name:
-        url = _github_branch_tree_url(settings, str(branch_name))
-        lines.append(f"**Branch:** {url or branch_name}")
+        bn = str(branch_name)
+        url = _github_branch_tree_url(settings, bn)
+        if url:
+            lines.append(f"**Branch:** [{bn}]({url})")
+        else:
+            lines.append(f"**Branch:** {bn}")
     pr_url = merged.get("pr_url")
     if pr_url:
-        lines.append(f"**PR:** {pr_url}")
+        pu = str(pr_url)
+        lines.append(f"**PR:** [{_pr_link_label(pu)}]({pu})")
     return lines
 
 

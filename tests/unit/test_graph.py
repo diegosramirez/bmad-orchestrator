@@ -167,8 +167,9 @@ def test_step_status_suffix_create_pull_request_merged_success_with_branch_and_p
     text = _step_status_suffix("create_pull_request", settings, merged)
     assert "completed successfully" in text
     assert "**Branch:**" in text
-    assert "https://github.com/org/repo/tree/feat%2Ffoo-bar" in text
-    assert "**PR:** https://github.com/org/repo/pull/99" in text
+    assert "https://github.com/org/repo/tree/feat/foo-bar" in text
+    assert "[feat/foo-bar](https://github.com/org/repo/tree/feat/foo-bar)" in text
+    assert "**PR:** [PR #99](https://github.com/org/repo/pull/99)" in text
     assert _github_branch_tree_url(settings, None) is None
 
 
@@ -214,8 +215,8 @@ def test_execution_log_indicates_skip_and_strip_trailing_status():
     multiline = (
         "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: X\n\n"
         "🎉 Process completed successfully\n"
-        "**Branch:** https://github.com/org/repo/tree/main\n"
-        "**PR:** https://github.com/org/repo/pull/1"
+        "**Branch:** [main](https://github.com/org/repo/tree/main)\n"
+        "**PR:** [PR #1](https://github.com/org/repo/pull/1)"
     )
     stripped = _strip_trailing_status(multiline)
     assert "Step completed: X" in stripped
@@ -475,8 +476,12 @@ def test_wrap_step_notifications_create_pull_request_includes_branch_and_pr_link
     wrapped(state)
     body = jira.update_comment.call_args_list[0][0][2]
     assert "draft PR includes unresolved pipeline issues" in body
-    assert "https://github.com/org/repo/tree/bmad%2Fgrowth-123-feature" in body
-    assert "**PR:** https://github.com/org/repo/pull/42" in body
+    assert "https://github.com/org/repo/tree/bmad/growth-123-feature" in body
+    assert (
+        "**Branch:** [bmad/growth-123-feature]"
+        "(https://github.com/org/repo/tree/bmad/growth-123-feature)"
+    ) in body
+    assert "**PR:** [PR #42](https://github.com/org/repo/pull/42)" in body
 
 
 def test_wrap_step_notifications_later_step_only_updates_comment(settings):
