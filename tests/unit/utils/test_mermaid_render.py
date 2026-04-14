@@ -125,6 +125,9 @@ def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_run(cmd: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
         assert "-b" in cmd and "white" in cmd
+        assert "-w" in cmd and cmd[cmd.index("-w") + 1] == "1600"
+        assert "-H" in cmd and cmd[cmd.index("-H") + 1] == "1200"
+        assert "-s" in cmd and cmd[cmd.index("-s") + 1] == "1.5"
         assert "-p" in cmd
         assert any("mmdc-puppeteer-ci.json" in part for part in cmd)
         out_idx = cmd.index("-o") + 1

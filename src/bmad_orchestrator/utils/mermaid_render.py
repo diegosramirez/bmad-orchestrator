@@ -3,8 +3,8 @@
 Default: light ``base`` theme plus ``themeVariables`` (white-friendly colors) when the source
 has no ``%%{init: ...}%%``. For Kroki, the same tuning is sent again via JSON
 ``diagram_options`` (flat ``theme-variables-*`` keys per Kroki's Mermaid naming rules).
-``mmdc`` still uses ``-b white`` for an opaque bitmap background, and passes the bundled
-``data/mmdc-puppeteer-ci.json`` to ``-p`` when that file exists (Linux CI / Chromium sandbox).
+``mmdc`` uses ``-b white``, ``-w``/``-H``/``-s`` from settings (defaults: 1600×1200, scale 1.5),
+and the bundled ``data/mmdc-puppeteer-ci.json`` as ``-p`` when present (Linux CI / Chromium).
 """
 
 from __future__ import annotations
@@ -160,7 +160,26 @@ def _render_mmdc(settings: Settings, text: str) -> tuple[bytes | None, str | Non
             f_in.write(text)
             f_in.flush()
         try:
-            cmd: list[str] = [exe, "-i", str(in_path), "-o", str(out_path), "-b", "white"]
+            w, h, sc = (
+                settings.mermaid_mmdc_width,
+                settings.mermaid_mmdc_height,
+                settings.mermaid_mmdc_scale,
+            )
+            cmd: list[str] = [
+                exe,
+                "-i",
+                str(in_path),
+                "-o",
+                str(out_path),
+                "-b",
+                "white",
+                "-w",
+                str(w),
+                "-H",
+                str(h),
+                "-s",
+                str(sc),
+            ]
             puppet_cfg = _mmdc_puppeteer_config_file()
             if puppet_cfg is not None:
                 cmd.extend(["-p", str(puppet_cfg)])

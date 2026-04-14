@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Default per-agent model overrides: Opus for requirement analysis, Haiku for
@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     kroki_url: str = "https://kroki.io"
     mermaid_kroki_timeout_seconds: float = 30.0
     mmdc_path: str = "mmdc"
+    # mmdc -w/-H/-s (viewport + Puppeteer scale); larger = bigger PNG for Jira attachments.
+    mermaid_mmdc_width: int = Field(default=1600, ge=200, le=8192)
+    mermaid_mmdc_height: int = Field(default=1200, ge=200, le=8192)
+    mermaid_mmdc_scale: float = Field(default=1.5, ge=0.25, le=4.0)
     mermaid_mmdc_timeout_seconds: float = 60.0
     mermaid_max_source_chars: int = 500_000
 
