@@ -14,3 +14,5 @@ def test_discovery_prompt_contains_validation_and_structure_markers() -> None:
     assert "Scope" in text
     assert "Not enough information to run Discovery" in text
     assert "insufficient_info_message" in text or "JSON" in text
+    assert "Epic-level brevity" in text
+    assert "between 3 and 7" in text.lower() or "3 and 7" in text
