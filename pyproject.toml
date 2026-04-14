@@ -35,6 +35,7 @@ packages = ["src/bmad_orchestrator"]
 [tool.hatch.build.targets.wheel.force-include]
 ".claude/skills" = "bmad_orchestrator/personas/data"
 "src/bmad_orchestrator/templates" = "bmad_orchestrator/templates"
+"src/bmad_orchestrator/data/mmdc-puppeteer-ci.json" = "bmad_orchestrator/data/mmdc-puppeteer-ci.json"
 
 [dependency-groups]
 dev = [

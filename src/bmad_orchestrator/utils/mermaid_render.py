@@ -3,7 +3,8 @@
 Default: light ``base`` theme plus ``themeVariables`` (white-friendly colors) when the source
 has no ``%%{init: ...}%%``. For Kroki, the same tuning is sent again via JSON
 ``diagram_options`` (flat ``theme-variables-*`` keys per Kroki's Mermaid naming rules).
-``mmdc`` still uses ``-b white`` for an opaque bitmap background.
+``mmdc`` still uses ``-b white`` for an opaque bitmap background, and passes the bundled
+``data/mmdc-puppeteer-ci.json`` to ``-p`` when that file exists (Linux CI / Chromium sandbox).
 """
 
 from __future__ import annotations
@@ -23,6 +24,17 @@ from bmad_orchestrator.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _PNG_SIG: Final[bytes] = b"\x89PNG\r\n\x1a\n"
+
+# Bundled Puppeteer JSON for mmdc -p (Chromium --no-sandbox on Linux CI / GitHub Actions).
+_MMDC_PUPPETEER_CONFIG: Final[Path] = (
+    Path(__file__).resolve().parent.parent / "data" / "mmdc-puppeteer-ci.json"
+)
+
+
+def _mmdc_puppeteer_config_file() -> Path | None:
+    """Return path to bundled config if present on disk; else None (skip -p)."""
+    p = _MMDC_PUPPETEER_CONFIG
+    return p if p.is_file() else None
 
 # Shared Mermaid themeVariables (camelCase per Mermaid); used in %%{init}%% and Kroki options.
 _LIGHT_THEME_VARIABLES: Final[dict[str, str]] = {
@@ -148,8 +160,12 @@ def _render_mmdc(settings: Settings, text: str) -> tuple[bytes | None, str | Non
             f_in.write(text)
             f_in.flush()
         try:
+            cmd: list[str] = [exe, "-i", str(in_path), "-o", str(out_path), "-b", "white"]
+            puppet_cfg = _mmdc_puppeteer_config_file()
+            if puppet_cfg is not None:
+                cmd.extend(["-p", str(puppet_cfg)])
             proc = subprocess.run(
-                [exe, "-i", str(in_path), "-o", str(out_path), "-b", "white"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=float(settings.mermaid_mmdc_timeout_seconds),
