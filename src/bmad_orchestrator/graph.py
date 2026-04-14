@@ -212,6 +212,63 @@ def _strip_trailing_status(body: str) -> str:
     return body
 
 
+def _step_comment_author_footer(author_display_name: str) -> str:
+    """Markdown block appended at the end of the step-notification comment."""
+    return f"\n\n---\n**Autor:** {author_display_name}"
+
+
+def _should_append_author_to_step_comment(
+    node_name: str,
+    settings: Settings,
+    status: str,
+) -> bool:
+    """True when the run is finishing and the step comment should include Autor."""
+    if node_name == "fail_with_state":
+        # Pipeline continues to commit / PR after this node.
+        return False
+    if node_name == "create_github_issue":
+        # github-agent mode ends here; status suffix is still "continuing".
+        return True
+    st = status.strip()
+    if (
+        settings.execution_mode == "stories_breakdown"
+        and node_name == "party_mode_refinement"
+    ):
+        return True
+    if settings.execution_mode == "discovery" and node_name == "detect_commands":
+        return True
+    if st.startswith(("⏩ Process continuing", "⏭️ Process continuing")):
+        return False
+    return True
+
+
+def _apply_step_comment_author_footer(
+    body: str,
+    jira: Any,
+    settings: Settings,
+    notify_key: str,
+    node_name: str,
+    status: str,
+) -> str:
+    if not _should_append_author_to_step_comment(node_name, settings, status):
+        return body
+    try:
+        raw = jira.get_issue_author_display_name(notify_key)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "step_notification_author_lookup_failed",
+            story_key=notify_key,
+        )
+        return body
+    if not isinstance(raw, str) or not raw.strip():
+        logger.warning(
+            "step_notification_author_unresolved",
+            story_key=notify_key,
+        )
+        return body
+    return body + _step_comment_author_footer(raw.strip())
+
+
 def _wrap_with_step_notifications(
     jira: Any,
     settings: Settings,
@@ -250,6 +307,9 @@ def _wrap_with_step_notifications(
             skipped = _execution_log_indicates_skip(out) or bool(out.get("_skipped"))
             step_line = _format_step_completed_line(label, skipped=skipped)
             body = body_init + "\n\n" + step_line + "\n\n" + status
+            body = _apply_step_comment_author_footer(
+                body, jira, settings, notify_key, node_name, status,
+            )
             try:
                 jira.update_comment(notify_key, new_comment_id, body)
             except Exception:  # noqa: BLE001
@@ -271,6 +331,9 @@ def _wrap_with_step_notifications(
         base = _strip_trailing_status(current_body)
         step_line = _format_step_completed_line(label, skipped=skipped)
         body = base + "\n" + step_line + "\n\n" + status
+        body = _apply_step_comment_author_footer(
+            body, jira, settings, notify_key, node_name, status,
+        )
         try:
             jira.update_comment(notify_key, comment_id, body)
         except Exception:  # noqa: BLE001

@@ -555,6 +555,43 @@ class JiraService:
             comment_id=comment_id,
         )
 
+    def get_issue_author_display_name(self, issue_key: str) -> str | None:
+        """Return assignee display name, or reporter if unassigned; None if unavailable."""
+
+        def _user_display_name(raw: Any) -> str | None:
+            if raw is None:
+                return None
+            if isinstance(raw, dict):
+                dn = raw.get("displayName")
+                return dn.strip() if isinstance(dn, str) and dn.strip() else None
+            dn = getattr(raw, "displayName", None)
+            return dn.strip() if isinstance(dn, str) and dn.strip() else None
+
+        try:
+
+            def _fetch() -> Any:
+                return self._client.issue(issue_key, fields="assignee,reporter")
+
+            issue = _retry_jira(_fetch, label="get_issue_author_display_name_fetch")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jira_author_display_name_fetch_failed",
+                issue_key=issue_key,
+                error=str(exc)[:200],
+            )
+            return None
+        fields = getattr(issue, "fields", None)
+        if fields is None:
+            return None
+        if isinstance(fields, dict):
+            assignee = fields.get("assignee")
+            reporter = fields.get("reporter")
+        else:
+            assignee = getattr(fields, "assignee", None)
+            reporter = getattr(fields, "reporter", None)
+        chosen = _user_display_name(assignee) or _user_display_name(reporter)
+        return chosen
+
     @skip_if_dry_run(fake_return=None)
     def set_story_branch_field(
         self, story_key: str, branch: str,

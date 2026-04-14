@@ -571,6 +571,52 @@ def test_retry_jira_fails_fast_on_permanent():
     assert len(calls) == 1  # no retry
 
 
+# ── get_issue_author_display_name ─────────────────────────────────────────────
+
+
+def test_get_issue_author_display_name_prefers_assignee(jira_svc):
+    svc, client = jira_svc
+    issue = MagicMock()
+    issue.fields.assignee = MagicMock(displayName="Alice A")
+    issue.fields.reporter = MagicMock(displayName="Bob B")
+    client.issue.return_value = issue
+    assert svc.get_issue_author_display_name("X-1") == "Alice A"
+    client.issue.assert_called_once_with("X-1", fields="assignee,reporter")
+
+
+def test_get_issue_author_display_name_falls_back_to_reporter(jira_svc):
+    svc, client = jira_svc
+    issue = MagicMock()
+    issue.fields.assignee = None
+    issue.fields.reporter = MagicMock(displayName="Bob B")
+    client.issue.return_value = issue
+    assert svc.get_issue_author_display_name("X-2") == "Bob B"
+
+
+def test_get_issue_author_display_name_returns_none_when_empty(jira_svc):
+    svc, client = jira_svc
+    issue = MagicMock()
+    issue.fields.assignee = None
+    issue.fields.reporter = MagicMock(displayName="")
+    client.issue.return_value = issue
+    assert svc.get_issue_author_display_name("X-3") is None
+
+
+def test_get_issue_author_display_name_returns_none_on_fetch_error(jira_svc):
+    svc, client = jira_svc
+    client.issue.side_effect = Exception("API down")  # noqa: TRY002
+    assert svc.get_issue_author_display_name("X-4") is None
+
+
+def test_get_issue_author_display_name_accepts_dict_style_fields(jira_svc):
+    """REST may expose fields as a mapping."""
+    svc, client = jira_svc
+    issue = MagicMock()
+    issue.fields = {"assignee": None, "reporter": {"displayName": "Dict Reporter"}}
+    client.issue.return_value = issue
+    assert svc.get_issue_author_display_name("X-5") == "Dict Reporter"
+
+
 # ── find_epic_by_team resilience ──────────────────────────────────────────────
 
 

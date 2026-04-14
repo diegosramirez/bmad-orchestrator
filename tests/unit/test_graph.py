@@ -448,6 +448,7 @@ def test_wrap_step_notifications_create_pull_request_includes_branch_and_pr_link
             return cls(2026, 4, 13, 12, 0, tzinfo=UTC)
 
     jira = MagicMock()
+    jira.get_issue_author_display_name.return_value = "Jamie Author"
     graph.datetime = _FixedDatetime  # type: ignore[assignment]
 
     def fake_create_pr(state):
@@ -482,6 +483,8 @@ def test_wrap_step_notifications_create_pull_request_includes_branch_and_pr_link
         "(https://github.com/org/repo/tree/bmad/growth-123-feature)"
     ) in body
     assert "**PR:** [PR #42](https://github.com/org/repo/pull/42)" in body
+    assert body.endswith("**Autor:** Jamie Author")
+    jira.get_issue_author_display_name.assert_called_once_with("SAM1-51")
 
 
 def test_wrap_step_notifications_later_step_only_updates_comment(settings):
@@ -708,3 +711,125 @@ def test_wrap_step_notifications_survives_jira_update_exception(settings):
     # Should not raise
     result = wrapped(state)
     assert "step_notification_comment_body" in result
+
+
+def test_wrap_step_notifications_fail_with_state_does_not_append_author(settings):
+    """fail_with_state shows Process finished but pipeline continues; do not append Autor."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 3, 10, 14, 35, tzinfo=UTC)
+
+    jira = MagicMock()
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+
+    def fake_node(state):
+        return {"execution_log": []}
+
+    wrapped = _wrap_with_step_notifications(
+        jira, settings.model_copy(update={"dry_run": False}),
+        "fail_with_state", fake_node,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body=(
+            "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Validate environment\n\n"
+            "⏩ Process continuing..."
+        ),
+    )
+    wrapped(state)
+    body = jira.update_comment.call_args_list[0][0][2]
+    assert "Process finished." in body
+    assert "**Autor:**" not in body
+    jira.get_issue_author_display_name.assert_not_called()
+
+
+def test_wrap_step_notifications_author_lookup_exception_omits_footer(settings):
+    """If get_issue_author_display_name raises, comment still updates without Autor."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 4, 13, 12, 0, tzinfo=UTC)
+
+    jira = MagicMock()
+    jira.get_issue_author_display_name.side_effect = RuntimeError("lookup failed")
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+
+    def fake_create_pr(state):
+        return {"execution_log": [], "pr_url": "https://github.com/org/repo/pull/1"}
+
+    wrapped = _wrap_with_step_notifications(
+        jira,
+        settings.model_copy(update={"dry_run": False}),
+        "create_pull_request",
+        fake_create_pr,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body=(
+            "🚀 Process started\n\n"
+            "[13 Apr 2026 - 11:00] ✅ Step completed: Commit and push\n\n"
+            "⏩ Process continuing..."
+        ),
+        branch_name="bmad/feature",
+    )
+    wrapped(state)
+    body = jira.update_comment.call_args_list[0][0][2]
+    assert "🎉 Process completed successfully" in body
+    assert "**Autor:**" not in body
+
+
+def test_wrap_step_notifications_terminal_without_author_name_omits_footer(settings):
+    """When Jira returns no display name, omit Autor block (no crash)."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    from bmad_orchestrator import graph
+    from bmad_orchestrator.graph import _wrap_with_step_notifications
+
+    class _FixedDatetime(datetime):  # type: ignore[misc]
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 4, 13, 12, 0, tzinfo=UTC)
+
+    jira = MagicMock()
+    jira.get_issue_author_display_name.return_value = None
+    graph.datetime = _FixedDatetime  # type: ignore[assignment]
+
+    def fake_create_pr(state):
+        return {"execution_log": [], "pr_url": "https://github.com/org/repo/pull/1"}
+
+    wrapped = _wrap_with_step_notifications(
+        jira,
+        settings.model_copy(update={"dry_run": False}),
+        "create_pull_request",
+        fake_create_pr,
+    )
+    state = make_state(
+        notify_jira_story_key="SAM1-51",
+        step_notification_comment_id="comment-456",
+        step_notification_comment_body=(
+            "🚀 Process started\n\n"
+            "[13 Apr 2026 - 11:00] ✅ Step completed: Commit and push\n\n"
+            "⏩ Process continuing..."
+        ),
+        branch_name="bmad/feature",
+    )
+    wrapped(state)
+    body = jira.update_comment.call_args_list[0][0][2]
+    assert "🎉 Process completed successfully" in body
+    assert "**Autor:**" not in body
