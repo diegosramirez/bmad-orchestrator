@@ -1,5 +1,5 @@
 /**
- * Read BMAD target repo slug from Jira issue custom field (same semantics as webhook_server).
+ * Read BMAD target repo slug from Jira issue custom field (same semantics as slack-worker + JiraService).
  */
 import api, { route } from '@forge/api';
 
@@ -32,7 +32,7 @@ export function parseTargetRepoFromIssueFields(fields) {
 
 /**
  * Fetches the issue as the current user and returns the target repo slug, or '' on failure.
- * Empty string means the webhook will fall back to DEFAULT_TARGET_REPO.
+ * Empty string means the worker will fall back to DEFAULT_TARGET_REPO.
  */
 export async function fetchTargetRepoSlugFromIssue(issueKey) {
   if (!issueKey || typeof issueKey !== 'string') {

@@ -1,5 +1,5 @@
 /**
- * GitHub workflow_dispatch input maps for Forge panel flows (parity with Python webhook).
+ * GitHub workflow_dispatch input maps for Forge panel flows (parity with former Python webhook).
  */
 export function teamIdFromIssueKey(issueKey: string, defaultTeamId: string): string {
   if (issueKey.includes("-")) return issueKey.split("-", 1)[0];

@@ -4,7 +4,7 @@ import { fetchTargetRepoSlugFromIssue } from './jiraTargetRepo';
 const resolver = new Resolver();
 
 /**
- * Base URL and secret for BMAD FastAPI webhooks (Discovery + Epic Architect).
+ * Base URL and secret for the BMAD slack-worker (Vercel) Forge routes (/bmad/*-run).
  * Prefer BMAD_FORGE_*; BMAD_DISCOVERY_* kept for compatibility.
  */
 function forgeWebhookConfig() {

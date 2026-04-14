@@ -1,10 +1,10 @@
-# Jira Comment Webhook — Retry / Refine from Comments
+# Jira comment trigger — Retry / Refine from Comments
 
-Trigger BMAD retry or refine runs from Jira by posting a comment that starts with `/bmad`. The webhook server reads the branch from the story's **BMAD Branch** custom field (default `customfield_10145`; override with `BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID`) and dispatches the same GitHub Actions workflow used by Slack.
+Trigger BMAD retry or refine runs from Jira by posting a comment that starts with `/bmad`. The **slack-worker** handler (`slack-worker/`, deployed on Vercel) reads the branch from the story's **BMAD Branch** custom field (default `customfield_10145`; override with `BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID`) and dispatches the same GitHub Actions workflow used by Slack.
 
 ## Endpoint
 
-- **URL:** `POST /bmad/jira-comment-webhook`
+- **URL:** `POST /bmad/jira-comment-webhook` (Vercel rewrite → `/api/jira-comment`)
 - **Body:** JSON from Jira Automation (see below).
 
 ## Supported commands
@@ -19,13 +19,13 @@ The **guidance** text is optional but must be in quotes when present, e.g. `"fix
 ## Requirements
 
 1. **BMAD Branch field** (`BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID`, default `customfield_10145`)  
-   The issue must have this field set to the git branch name (e.g. `bmad/sam1/SAM1-61-as-a-new-user-i-want-to-re-enter-my-pass`). BMAD fills it automatically after the **commit and push** step when you run the pipeline (via the manual automation button or the issue webhook). If the field is empty, the comment webhook returns 400 and does not start a run.
+   The issue must have this field set to the git branch name (e.g. `bmad/sam1/SAM1-61-as-a-new-user-i-want-to-re-enter-my-pass`). BMAD fills it automatically after the **commit and push** step when you run the pipeline (via the manual automation button or the Jira issue webhook). If the field is empty, the handler returns 400 and does not start a run.
 
 2. **Target repo field** (`BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID`, default `customfield_10112`)  
-   Optional. If present (e.g. `value: "my-test-app"`), the webhook builds `target_repo` as `{BMAD_GITHUB_OWNER}/{value}`. Otherwise it uses `DEFAULT_TARGET_REPO` from the server environment.
+   Optional. If present (e.g. `value: "my-test-app"`), the worker builds `target_repo` as `{BMAD_GITHUB_OWNER}/{value}`. Otherwise it uses `DEFAULT_TARGET_REPO` from the deployment environment.
 
 3. **Jira Automation payload**  
-   The webhook expects the comment trigger to send a JSON body that includes:
+   The handler expects the comment trigger to send a JSON body that includes:
    - `issue.key`, `issue.id`
    - Target repo field (default `customfield_10112`) — slug
    - Branch field (default `customfield_10145`) — BMAD Branch
@@ -64,7 +64,7 @@ The **guidance** text is optional but must be in quotes when present, e.g. `"fix
 - Refine with guidance:  
   `/bmad refine "add loading states and error boundaries"`
 
-Comments that do **not** start with `/bmad` are ignored (saved to disk, no workflow dispatched).
+Comments that do **not** start with `/bmad` are ignored (no workflow dispatched).
 
 ## Response
 

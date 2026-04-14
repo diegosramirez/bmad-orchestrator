@@ -1,6 +1,6 @@
 # epic-ai-actions (Jira issue panel)
 
-Forge UI Kit app: issue panels on Jira (Epic actions, Story development, comment helpers). Dispatches the BMAD orchestrator via your self-hosted FastAPI webhook, which triggers GitHub Actions.
+Forge UI Kit app: issue panels on Jira (Epic actions, Story development, comment helpers). Dispatches the BMAD orchestrator via the **slack-worker** deployment (Vercel: `slack-worker/` in this repo), which triggers GitHub Actions.
 
 | Panel | Scope | What it does |
 |-------|--------|----------------|
@@ -17,11 +17,11 @@ Forge UI Kit app: issue panels on Jira (Epic actions, Story development, comment
 ## Requirements
 
 - [Forge CLI](https://developer.atlassian.com/platform/forge/set-up-forge/) and an Atlassian developer account
-- A **public HTTPS** URL for the BMAD webhook server (e.g. reverse proxy or tunnel in development)
+- A **public HTTPS** origin for the **slack-worker** Vercel deployment (same value you set as `BMAD_FORGE_WEBHOOK_URL` in Forge)
 
-## Configure the BMAD webhook server
+## Configure the BMAD slack-worker (Vercel)
 
-On the machine running `webhook_server.py`, set:
+On the Vercel project for `slack-worker/`, set the same variables you would have used for the old Python webhook (see `slack-worker/README.md` in this repo). Typical entries:
 
 | Variable | Purpose |
 |----------|---------|
@@ -32,22 +32,22 @@ On the machine running `webhook_server.py`, set:
 | `BMAD_FORGE_WEBHOOK_SECRET` | Shared secret for Forge (preferred) |
 | `BMAD_DISCOVERY_WEBHOOK_SECRET` | Legacy fallback if `BMAD_FORGE_WEBHOOK_SECRET` is unset |
 
-Endpoints:
+Endpoints (unchanged paths; served by Vercel, not `webhook_server.py`):
 
 - Discovery: `POST /bmad/discovery-run` — JSON `{"issue_key":"PROJ-123","target_repo":"optional"}` (the Forge resolver reads the target-repo field, default `customfield_10112`, and sends `target_repo` when set)
 - Epic Architect: `POST /bmad/architect-run` — same shape
 - Stories: `POST /bmad/stories-run` — same shape
 - Story development: `POST /bmad/dev-run` — same shape (Story key as `issue_key`; `execution_mode` `inline` with epic/story-creation nodes skipped)
 
-Header (all endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the server.
+Header (all endpoints): `X-BMAD-Forge-Secret` with the same secret value as on the worker.
 
-**Duplicate run guard:** Before dispatching, the server checks GitHub for an active `bmad-start-run.yml` run for the current `issue_key`. It matches `inputs.prompt` when the GitHub API returns workflow inputs; otherwise it matches the run’s **`display_title`** (the workflow sets `run-name` to `BMAD Orchestrator {prompt} — {execution_mode} — Start Run`, so the Jira key appears in the title). If a match exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
+**Duplicate run guard:** Before dispatching, the worker checks GitHub for an active `bmad-start-run.yml` run for the current `issue_key`. It matches `inputs.prompt` when the GitHub API returns workflow inputs; otherwise it matches the run’s **`display_title`** (the workflow sets `run-name` to `BMAD Orchestrator {prompt} — {execution_mode} — Start Run`, so the Jira key appears in the title). If a match exists, the endpoint returns **409** with `code: "run_in_progress"` and does not start another run. The Forge panel shows an informational banner (not an error).
 
 ## Configure this Forge app
 
 ### 1. Egress (manifest)
 
-Edit [`manifest.yml`](manifest.yml) under `permissions.external.fetch.backend` and replace `https://webhook.example.com` with the **origin only** of your FastAPI server (scheme + host, no path). Example: `https://bmad-hooks.mycompany.com`.
+Edit [`manifest.yml`](manifest.yml) under `permissions.external.fetch.backend` and replace the placeholder with the **origin only** of your slack-worker deployment (scheme + host, no path). Example: `https://your-app.vercel.app`.
 
 Redeploy after any change:
 
@@ -72,7 +72,7 @@ forge variables set --environment development BMAD_FORGE_WEBHOOK_SECRET 'your-sh
 You may keep using `BMAD_DISCOVERY_WEBHOOK_URL` and `BMAD_DISCOVERY_WEBHOOK_SECRET` instead; the resolver accepts either name (see `src/resolvers/index.js`).
 
 - URL: origin only (no trailing slash, no path; resolvers append `/bmad/discovery-run`, `/bmad/architect-run`, `/bmad/stories-run`, or `/bmad/dev-run`).
-- Secret: must match `BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET` on the server.
+- Secret: must match `BMAD_FORGE_WEBHOOK_SECRET` or `BMAD_DISCOVERY_WEBHOOK_SECRET` on the Vercel project.
 - Target-repo / branch field IDs: optional `BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID` and `BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID` (same names as the Python orchestrator `.env`); defaults match `customfield_10112` and `customfield_10145`.
 
 After changing variables or permissions, redeploy and reinstall if prompted:

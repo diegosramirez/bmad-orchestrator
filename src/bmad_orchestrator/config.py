@@ -187,7 +187,7 @@ class Settings(BaseSettings):
         return self
 
 
-# Defaults for code paths that do not load full Settings (e.g. FastAPI webhook env-only).
+# Defaults for code paths that do not load full Settings (e.g. Jira field id env helpers).
 JIRA_TARGET_REPO_CUSTOM_FIELD_ID_DEFAULT = "customfield_10112"
 JIRA_BRANCH_CUSTOM_FIELD_ID_DEFAULT = "customfield_10145"
 JIRA_CHECKLIST_TEXT_CUSTOM_FIELD_ID_DEFAULT = "customfield_10046"

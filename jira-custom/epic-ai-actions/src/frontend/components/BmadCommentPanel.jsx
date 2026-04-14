@@ -33,7 +33,7 @@ const NO_BRANCH_WARNING_BODY =
   'then you can use Refine or Retry.';
 
 /**
- * Posts a Jira comment starting with /bmad (refine or retry) for Automation + webhook.
+ * Posts a Jira comment starting with /bmad (refine or retry) for Automation + slack-worker.
  * Guidance is plain text; buildBmadCommentLine wraps it in double quotes in the command.
  */
 export function BmadCommentPanel({ issueKey }) {
