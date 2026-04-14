@@ -29,13 +29,15 @@ AGENT_FILE_MAP: dict[str, list[str]] = {
 
 # v6.2+ skill directory names containing the agent manifest for each persona.
 # Used to disambiguate when multiple bmad-skill-manifest.yaml files exist.
+# v6.3+: bmad-agent-qa, bmad-agent-sm, bmad-agent-quick-flow-solo-dev were
+# consolidated into bmad-agent-dev (Amelia).
 _AGENT_SKILL_DIRS: dict[str, str] = {
     "architect":    "bmad-agent-architect",
     "designer":     "bmad-agent-ux-designer",
     "developer":    "bmad-agent-dev",
-    "qa":           "bmad-agent-qa",
-    "e2e_tester":   "bmad-agent-qa",
-    "scrum_master": "bmad-agent-sm",
+    "qa":           "bmad-agent-dev",
+    "e2e_tester":   "bmad-agent-dev",
+    "scrum_master": "bmad-agent-dev",
     "pm":           "bmad-agent-pm",
 }
 
@@ -46,9 +48,9 @@ AGENT_DISPLAY_NAMES: dict[str, str] = {
     "designer": "Sally (Designer)",
     "developer": "Amelia (Developer)",
     "developer_party": "Amelia (Developer — Party Mode)",
-    "qa": "Quinn (QA)",
-    "e2e_tester": "Quinn (E2E Tester)",
-    "scrum_master": "Bob (Scrum Master)",
+    "qa": "Amelia (Developer — QA Mode)",
+    "e2e_tester": "Amelia (Developer — E2E Mode)",
+    "scrum_master": "Amelia (Developer — SM Mode)",
     "pm": "Alex (PM)",
     "build-expert": "Build Expert",
 }
