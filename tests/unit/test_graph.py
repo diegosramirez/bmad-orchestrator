@@ -483,7 +483,7 @@ def test_wrap_step_notifications_create_pull_request_includes_branch_and_pr_link
         "(https://github.com/org/repo/tree/bmad/growth-123-feature)"
     ) in body
     assert "**PR:** [PR #42](https://github.com/org/repo/pull/42)" in body
-    assert body.endswith("**Autor:** Jamie Author")
+    assert body.endswith("**Author:** Jamie Author")
     jira.get_issue_author_display_name.assert_called_once_with("SAM1-51")
 
 
@@ -714,7 +714,7 @@ def test_wrap_step_notifications_survives_jira_update_exception(settings):
 
 
 def test_wrap_step_notifications_fail_with_state_does_not_append_author(settings):
-    """fail_with_state shows Process finished but pipeline continues; do not append Autor."""
+    """fail_with_state shows Process finished but pipeline continues; do not append Author."""
     from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
@@ -747,12 +747,12 @@ def test_wrap_step_notifications_fail_with_state_does_not_append_author(settings
     wrapped(state)
     body = jira.update_comment.call_args_list[0][0][2]
     assert "Process finished." in body
-    assert "**Autor:**" not in body
+    assert "**Author:**" not in body
     jira.get_issue_author_display_name.assert_not_called()
 
 
 def test_wrap_step_notifications_author_lookup_exception_omits_footer(settings):
-    """If get_issue_author_display_name raises, comment still updates without Autor."""
+    """If get_issue_author_display_name raises, comment still updates without Author."""
     from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
@@ -790,11 +790,11 @@ def test_wrap_step_notifications_author_lookup_exception_omits_footer(settings):
     wrapped(state)
     body = jira.update_comment.call_args_list[0][0][2]
     assert "🎉 Process completed successfully" in body
-    assert "**Autor:**" not in body
+    assert "**Author:**" not in body
 
 
 def test_wrap_step_notifications_terminal_without_author_name_omits_footer(settings):
-    """When Jira returns no display name, omit Autor block (no crash)."""
+    """When Jira returns no display name, omit Author block (no crash)."""
     from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
@@ -832,4 +832,4 @@ def test_wrap_step_notifications_terminal_without_author_name_omits_footer(setti
     wrapped(state)
     body = jira.update_comment.call_args_list[0][0][2]
     assert "🎉 Process completed successfully" in body
-    assert "**Autor:**" not in body
+    assert "**Author:**" not in body

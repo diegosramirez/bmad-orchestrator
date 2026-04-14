@@ -214,7 +214,7 @@ def _strip_trailing_status(body: str) -> str:
 
 def _step_comment_author_footer(author_display_name: str) -> str:
     """Markdown block appended at the end of the step-notification comment."""
-    return f"\n\n**Autor:** {author_display_name}"
+    return f"\n\n**Author:** {author_display_name}"
 
 
 def _should_append_author_to_step_comment(
@@ -222,7 +222,7 @@ def _should_append_author_to_step_comment(
     settings: Settings,
     status: str,
 ) -> bool:
-    """True when the run is finishing and the step comment should include Autor."""
+    """True when the run is finishing and the step comment should include Author."""
     if node_name == "fail_with_state":
         # Pipeline continues to commit / PR after this node.
         return False
