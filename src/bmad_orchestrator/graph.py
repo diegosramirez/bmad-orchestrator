@@ -172,6 +172,17 @@ def _step_status_suffix(
         and node_name == "create_or_correct_epic"
     ):
         return _PR_SUCCESS_HEAD
+    if (
+        settings is not None
+        and settings.execution_mode == "stories_breakdown"
+        and node_name == "party_mode_refinement"
+    ):
+        if merged is not None and (
+            bool(merged.get("_skipped"))
+            or _execution_log_indicates_skip({"execution_log": merged.get("execution_log")})
+        ):
+            return "⏩ Process continuing..."
+        return _PR_SUCCESS_HEAD
     return "⏩ Process continuing..."
 
 

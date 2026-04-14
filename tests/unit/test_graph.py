@@ -145,6 +145,27 @@ def test_step_status_suffix_discovery_create_epic_completed(settings):
     assert _step_status_suffix("create_or_correct_epic", settings) == "⏩ Process continuing..."
 
 
+def test_step_status_suffix_stories_breakdown_party_mode_completed(settings):
+    """Forge Generate Stories: graph ends at party_mode_refinement; Jira shows success."""
+    from bmad_orchestrator.graph import _PR_SUCCESS_HEAD, _step_status_suffix
+
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    assert _step_status_suffix("party_mode_refinement", sb, {}) == _PR_SUCCESS_HEAD
+    assert _step_status_suffix("party_mode_refinement", settings) == "⏩ Process continuing..."
+
+
+def test_step_status_suffix_stories_breakdown_party_mode_skipped_still_continuing(settings):
+    """Skipped party mode must not claim process completed."""
+    from bmad_orchestrator.graph import _step_status_suffix
+
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    merged_skip = {
+        "execution_log": [{"message": "Skipped (--skip-nodes)"}],
+    }
+    suffix = _step_status_suffix("party_mode_refinement", sb, merged_skip)
+    assert suffix == "⏩ Process continuing..."
+
+
 def test_step_status_suffix_terminal_and_continuing():
     """PR / epic_architect / fail_with_state / default dev node suffixes."""
     from bmad_orchestrator.graph import _step_status_suffix
@@ -740,7 +761,8 @@ def test_wrap_step_notifications_fail_with_state_does_not_append_author(settings
         notify_jira_story_key="SAM1-51",
         step_notification_comment_id="comment-456",
         step_notification_comment_body=(
-            "🚀 Process started\n\n[10 Mar 2026 - 14:32] ✅ Step completed: Validate environment\n\n"
+            "🚀 Process started\n\n"
+            "[10 Mar 2026 - 14:32] ✅ Step completed: Validate environment\n\n"
             "⏩ Process continuing..."
         ),
     )
