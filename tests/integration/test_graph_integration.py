@@ -18,11 +18,7 @@ from bmad_orchestrator.nodes.dev_story import (
     FileOperationList,
     FilePlan,
 )
-from bmad_orchestrator.nodes.party_mode_refinement import (
-    RefinedStory,
-    _SubtaskItem,
-    _SubtaskList,
-)
+from bmad_orchestrator.nodes.party_mode_refinement import RefinedStory, _SubtaskList
 from bmad_orchestrator.services.claude_agent_service import AgentResult
 
 
@@ -123,8 +119,8 @@ def _structured_side_effect(  # type: ignore[return]
     if schema.__name__ == "_SubtaskList":
         return _SubtaskList(
             tasks=[
-                _SubtaskItem(summary="Integration task 1", description="First"),
-                _SubtaskItem(summary="Integration task 2", description="Second"),
+                TaskItem(summary="Integration task 1", description="First"),
+                TaskItem(summary="Integration task 2", description="Second"),
             ],
         )
     if schema.__name__ == "ChecklistCompletionAssessment":

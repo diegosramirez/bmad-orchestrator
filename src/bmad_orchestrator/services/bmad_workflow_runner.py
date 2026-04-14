@@ -104,7 +104,7 @@ def load_create_story_context(settings: Settings) -> str:
         return (
             "BMAD create-story: Create a story with acceptance "
             "criteria, tasks, dependencies, QA scope, and "
-            "definition of done. Tasks must be concrete."
+            "definition of done. Tasks must be concrete and short (Jira checklist rows)."
         )
     return combined
 
@@ -266,7 +266,9 @@ class BmadWorkflowRunner:
             "Return ONLY the requested JSON structure "
             "(summary, description, acceptance_criteria, tasks, "
             "dependencies, qa_scope, definition_of_done). "
-            "Tasks must be concrete and implementable."
+            "Tasks must be concrete and implementable. Each task is stored in Jira Checklist Text: "
+            "keep `summary` and `description` short so each checklist row reads in about two lines "
+            "in Jira (title + brief phrase), not long paragraphs."
         )
         ctx_block = (
             f"Target project context:\n{project_context}\n\n" if project_context else ""
@@ -275,6 +277,8 @@ class BmadWorkflowRunner:
             "Produce a complete user story: summary (As a... I want... so that...), description, "
             "at least 2 concrete acceptance criteria, at least 2 implementable tasks, "
             "dependencies (list), qa_scope (list), definition_of_done (list). "
+            "For tasks: each `summary` is a short checklist title; each `description` is one brief "
+            "phrase — scannable in ~2 lines per row in Jira; put elaboration in the story and ACs. "
         )
         if jira_template:
             desc_instruction += (

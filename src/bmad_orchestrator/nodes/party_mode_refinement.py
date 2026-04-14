@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from bmad_orchestrator.config import Settings
-from bmad_orchestrator.nodes.create_story_tasks import _parse_acceptance_criteria
+from bmad_orchestrator.nodes.create_story_tasks import TaskItem, _parse_acceptance_criteria
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
@@ -58,17 +58,10 @@ class RefinedStory(BaseModel):
         return parse_stringified_list(v)
 
 
-class _SubtaskItem(BaseModel):
-    """Single subtask for webhook-generated list (mirrors create_story_tasks.TaskItem)."""
-
-    summary: str
-    description: str
-
-
 class _SubtaskList(BaseModel):
     """List of subtasks to create when story has none (webhook or stories_breakdown)."""
 
-    tasks: list[_SubtaskItem] = Field(min_length=1)
+    tasks: list[TaskItem] = Field(min_length=1)
 
     @field_validator("tasks", mode="before")
     @classmethod
@@ -357,9 +350,11 @@ def make_party_mode_node(
                         system_prompt=aggregator_prompt_tasks,
                         user_message=(
                             "From this refined story, produce 2 to 6 concrete implementation tasks "
-                            "that a developer would execute. Each task: summary (short), "
-                            "description (what to do). These will be stored in the story's "
-                            "Checklist Text field (not as Jira subtasks).\n\n"
+                            "that a developer would execute. Each task uses `summary` (short bold "
+                            "title in Jira) and `description` (one brief phrase). Together they must "
+                            "stay short enough to read as about two lines per row in Checklist Text — "
+                            "no paragraphs; put detail in the story and ACs. These are stored in the "
+                            "story's Checklist Text field (not as Jira subtasks).\n\n"
                             f"Refined description:\n{refined.updated_description}\n\n"
                             f"Acceptance criteria:\n"
                             + "\n".join(f"- {ac}" for ac in refined.acceptance_criteria)
