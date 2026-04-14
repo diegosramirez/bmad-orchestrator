@@ -8,6 +8,7 @@ import pytest
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.mermaid_render import (
+    _kroki_diagram_options_for_light_theme,
     has_mermaid_fences,
     png_dimensions,
     render_mermaid_to_png,
@@ -55,6 +56,14 @@ def test_render_mermaid_off_returns_error() -> None:
     assert err is not None
 
 
+def test_kroki_diagram_options_flat_theme_variables() -> None:
+    o = _kroki_diagram_options_for_light_theme()
+    assert o["theme"] == "base"
+    assert o["theme-variables-background"] == "#ffffff"
+    assert o["theme-variables-main-bkg"] == "#ffffff"
+    assert o["theme-variables-primary-text-color"] == "#000000"
+
+
 def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(mermaid_renderer="kroki")
     mock_resp = MagicMock()
@@ -74,11 +83,16 @@ def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
     assert out == _PNG_1X1
-    posted = mock_client.post.call_args.kwargs.get("content") or mock_client.post.call_args[0][1]
-    assert posted.startswith(b"%%{init: ")
-    assert b'"theme":"base"' in posted
-    assert b'"background":"#ffffff"' in posted
-    assert b"themeVariables" in posted
+    body = mock_client.post.call_args.kwargs["json"]
+    src = body["diagram_source"]
+    assert src.startswith("%%{init: ")
+    assert '"theme":"base"' in src
+    assert '"background":"#ffffff"' in src
+    assert "themeVariables" in src
+    opts = body["diagram_options"]
+    assert opts["theme"] == "base"
+    assert opts["theme-variables-background"] == "#ffffff"
+    assert opts["theme-variables-main-bkg"] == "#ffffff"
 
 
 def test_render_kroki_skips_init_when_user_has_init(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,10 +111,11 @@ def test_render_kroki_skips_init_when_user_has_init(monkeypatch: pytest.MonkeyPa
     user = '%%{init: {"theme": "dark"}}%%\ngraph TD; A-->B'
     out, err = render_mermaid_to_png(s, user)
     assert err is None
-    posted = mock_client.post.call_args.kwargs.get("content") or mock_client.post.call_args[0][1]
-    decoded = posted.decode("utf-8")
+    body = mock_client.post.call_args.kwargs["json"]
+    decoded = body["diagram_source"]
     assert decoded.strip().startswith('%%{init: {"theme": "dark"}}%%')
-    assert decoded.count('%%{init:') == 1
+    assert decoded.count("%%{init:") == 1
+    assert body["diagram_options"]["theme"] == "base"
 
 
 def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:

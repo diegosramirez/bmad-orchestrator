@@ -1,7 +1,8 @@
 """Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc).
 
-Default: light ``base`` theme plus ``themeVariables`` (white canvas) in ``%%{init: ...}%%``
-when the source has no init block — helps Kroki/Jira where transparent PNGs look dark.
+Default: light ``base`` theme plus ``themeVariables`` (white-friendly colors) when the source
+has no ``%%{init: ...}%%``. For Kroki, the same tuning is sent again via JSON
+``diagram_options`` (flat ``theme-variables-*`` keys per Kroki's Mermaid naming rules).
 ``mmdc`` still uses ``-b white`` for an opaque bitmap background.
 """
 
@@ -23,19 +24,37 @@ logger = get_logger(__name__)
 
 _PNG_SIG: Final[bytes] = b"\x89PNG\r\n\x1a\n"
 
-# Prepended when the source has no %%{init: ...}%% — light theme + white-friendly variables
-# (Kroki has no mmdc -b white; themeVariables improve diagram/viewer contrast).
+# Shared Mermaid themeVariables (camelCase per Mermaid); used in %%{init}%% and Kroki options.
+_LIGHT_THEME_VARIABLES: Final[dict[str, str]] = {
+    "background": "#ffffff",
+    "mainBkg": "#ffffff",
+    "secondaryColor": "#f7f7f7",
+    "tertiaryColor": "#ffffff",
+    "primaryTextColor": "#000000",
+    "lineColor": "#000000",
+    "primaryBorderColor": "#cccccc",
+}
+
+_CAMEL_TO_KEBAB = re.compile(r"(?<=[a-z0-9])([A-Z])")
+
+
+def _camel_to_kebab_lower(name: str) -> str:
+    """e.g. mainBkg -> main-bkg (Kroki theme-variables-* suffix)."""
+    return _CAMEL_TO_KEBAB.sub(r"-\1", name).lower()
+
+
+def _kroki_diagram_options_for_light_theme() -> dict[str, str]:
+    """Flat diagram_options for Kroki POST JSON (see kroki.io diagram-options / Mermaid)."""
+    opts: dict[str, str] = {"theme": "base"}
+    for key, value in _LIGHT_THEME_VARIABLES.items():
+        opts[f"theme-variables-{_camel_to_kebab_lower(key)}"] = value
+    return opts
+
+
+# Prepended when the source has no %%{init: ...}%% — light theme + white-friendly variables.
 _LIGHT_INIT_OBJECT: Final[dict[str, object]] = {
     "theme": "base",
-    "themeVariables": {
-        "background": "#ffffff",
-        "mainBkg": "#ffffff",
-        "secondaryColor": "#f7f7f7",
-        "tertiaryColor": "#ffffff",
-        "primaryTextColor": "#000000",
-        "lineColor": "#000000",
-        "primaryBorderColor": "#cccccc",
-    },
+    "themeVariables": dict(_LIGHT_THEME_VARIABLES),
 }
 _LIGHT_INIT_PREFIX: Final[str] = (
     "%%{init: " + json.dumps(_LIGHT_INIT_OBJECT, separators=(",", ":")) + "}%%\n"
@@ -89,13 +108,13 @@ def render_mermaid_to_png(settings: Settings, source: str) -> tuple[bytes | None
 def _render_kroki(settings: Settings, text: str) -> tuple[bytes | None, str | None]:
     base = (settings.kroki_url or "https://kroki.io").rstrip("/")
     url = f"{base}/mermaid/png"
+    payload = {
+        "diagram_source": text,
+        "diagram_options": _kroki_diagram_options_for_light_theme(),
+    }
     try:
         with httpx.Client(timeout=settings.mermaid_kroki_timeout_seconds) as client:
-            r = client.post(
-                url,
-                content=text.encode("utf-8"),
-                headers={"Content-Type": "text/plain"},
-            )
+            r = client.post(url, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("mermaid_kroki_http_error", error=str(exc))
         return None, f"kroki request failed: {exc}"
