@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # Reserved for future Jira ADF inline media; Mermaid diagrams are attached as PNG only.
     jira_media_collection: str = ""
     # Mermaid to PNG for Jira descriptions: off | kroki | mmdc (needs issue key + attachment).
-    mermaid_renderer: str = "kroki"
+    mermaid_renderer: str = "mmdc"
     kroki_url: str = "https://kroki.io"
     mermaid_kroki_timeout_seconds: float = 30.0
     mmdc_path: str = "mmdc"
