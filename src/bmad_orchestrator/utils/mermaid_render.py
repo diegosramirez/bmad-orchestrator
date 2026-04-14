@@ -1,11 +1,13 @@
 """Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc).
 
-Default: light ``base`` theme (``%%{init: ...}%%``) when the source has no init block,
-and opaque white PNG background for ``mmdc`` (``-b white``).
+Default: light ``base`` theme plus ``themeVariables`` (white canvas) in ``%%{init: ...}%%``
+when the source has no init block — helps Kroki/Jira where transparent PNGs look dark.
+``mmdc`` still uses ``-b white`` for an opaque bitmap background.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import tempfile
@@ -21,8 +23,23 @@ logger = get_logger(__name__)
 
 _PNG_SIG: Final[bytes] = b"\x89PNG\r\n\x1a\n"
 
-# Prepended when the source has no %%{init: ...}%% so PNGs use a light theme (readable on white).
-_LIGHT_INIT_PREFIX = '%%{init: {"theme": "base"}}%%\n'
+# Prepended when the source has no %%{init: ...}%% — light theme + white-friendly variables
+# (Kroki has no mmdc -b white; themeVariables improve diagram/viewer contrast).
+_LIGHT_INIT_OBJECT: Final[dict[str, object]] = {
+    "theme": "base",
+    "themeVariables": {
+        "background": "#ffffff",
+        "mainBkg": "#ffffff",
+        "secondaryColor": "#f7f7f7",
+        "tertiaryColor": "#ffffff",
+        "primaryTextColor": "#000000",
+        "lineColor": "#000000",
+        "primaryBorderColor": "#cccccc",
+    },
+}
+_LIGHT_INIT_PREFIX: Final[str] = (
+    "%%{init: " + json.dumps(_LIGHT_INIT_OBJECT, separators=(",", ":")) + "}%%\n"
+)
 _HAS_MERMAID_INIT = re.compile(r"(?m)^\s*%%\{\s*init\s*:", re.IGNORECASE)
 
 

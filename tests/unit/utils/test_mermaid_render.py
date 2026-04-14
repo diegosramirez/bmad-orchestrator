@@ -75,7 +75,10 @@ def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert err is None
     assert out == _PNG_1X1
     posted = mock_client.post.call_args.kwargs.get("content") or mock_client.post.call_args[0][1]
-    assert b'%%{init: {"theme": "base"}}%%' in posted
+    assert posted.startswith(b"%%{init: ")
+    assert b'"theme":"base"' in posted
+    assert b'"background":"#ffffff"' in posted
+    assert b"themeVariables" in posted
 
 
 def test_render_kroki_skips_init_when_user_has_init(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -144,7 +147,9 @@ def test_render_mmdc_writes_prefixed_source(monkeypatch: pytest.MonkeyPatch) -> 
     )
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
-    assert written and written[0].startswith('%%{init: {"theme": "base"}}%%')
+    assert written and written[0].startswith("%%{init: ")
+    assert '"theme":"base"' in written[0]
+    assert '"background":"#ffffff"' in written[0]
 
 
 def test_render_kroki_bad_status(monkeypatch: pytest.MonkeyPatch) -> None:
