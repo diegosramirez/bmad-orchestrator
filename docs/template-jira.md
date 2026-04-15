@@ -67,6 +67,7 @@ This is the **PLG "Straight Line to Value" principle**: reduce steps between sig
 *(Tabla compacta: trigger, nombre de evento, propiedades mínimas.)*
 
 | When it fires (trigger) | Event name | Required properties |
+| --- | --- | --- |
 | Welcome gate is rendered | `viewed_welcome_gate` | (unchanged vs baseline) |
 | User opts out | `opt_out_clicked` | `feature`, `version`, `page` |
 | User clicks CTA | `cta_clicked` | As in tracking spec |
@@ -76,6 +77,7 @@ This is the **PLG "Straight Line to Value" principle**: reduce steps between sig
 *(**Detalle fino** en la columna BDD: cada fila = un escenario comprobable. Dos columnas para que la tabla siga siendo usable en Jira. Evidencia en staging/producción: comentario del ticket, subtarea de QA o enlace, no hace falta repetirla por fila.)*
 
 | Scenario | Given / When / Then (fine-grained) |
+| --- | --- |
 | Welcome gate visibility | **Given** a new eligible user **when** they complete sign-up **then** they are redirected per Intervention and (if applicable) see the gate only per Mechanics. |
 | CTA redirect | **Given** the gate is visible **when** the user clicks the primary CTA **then** the app navigates to `/product/create` (or specified route). |
 | Dismiss and persistence | **Given** the gate is visible **when** the user dismisses it **then** state persists per Mechanics and the user reaches the expected next screen. |
