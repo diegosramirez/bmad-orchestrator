@@ -26,7 +26,7 @@ The dashboard (blank slate) is the largest activation killer. Sending users dire
 **Success Threshold**
 
 > *(Un bloque de cita con el KPI o umbral acordado.)*
-> +5–10% improvement in product creation start rate over the existing welcome screen.
++5–10% improvement in product creation start rate over the existing welcome screen.
 
 **Rationale**
 
@@ -48,10 +48,10 @@ This is the **PLG "Straight Line to Value" principle**: reduce steps between sig
 
 * New vendors with no products yet; not in the discarded cohort.
 
-**Primary flow**
+**Flow**
 
-1. User lands after sign-up → redirect to `/product/create` (or agreed route).
-2. If welcome gate is shown → CTA advances; dismiss persists state as specified.
+* User lands after sign-up → redirect to `/product/create` (or agreed route).
+* If welcome gate is shown → CTA advances; dismiss persists state as specified.
 
 **Branches**
 
