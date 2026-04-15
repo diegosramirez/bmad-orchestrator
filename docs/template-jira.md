@@ -1,69 +1,48 @@
-**Shortest Path to Value: Redirect Sign-Ups Directly to Product Creation Page**
+# 🚀 Story: [Story Title]
 
-**Hypothesis** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Párrafos descriptivos con la lógica del experimento)*
-The dashboard (blank slate) is the largest activation killer. Sending users directly to product creation eliminates the ambiguity of "what do I do now?". 
-The success of the first Welcome Page experiment led us to some new designs...
+### **Hypothesis & Rationale**
+> **Context:** [Brief description of the problem or user need].
+> **Expected Value:** [Business outcome or specific improvement in user experience].
 
-**Intervention** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Lista de viñetas con los cambios técnicos a realizar)*
-* Regardless of validation status, redirect new vendors directly to `/product/create`.
-* Keep the email-validation mandatory banner blocking the final submission.
 
-**Data to Collect**  (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Lista de viñetas con métricas de éxito)*
-* Product creation start rate
-* Product creation completion rate
-* ... (etc)
-
-**Success Threshold**   (subtitulo, va en negritas y la letra es mas grande que el contenido)
-> *(Bloque de cita/blockquote para resaltar el KPI objetivo)*
-> +5-10% improvement in product creation start rate over the existing welcome screen.
-
-**Rationale** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Explicación conceptual de Product-Led Growth)*
-This is the **PLG "Straight Line to Value" principle**...
+### **Intervention (The "What")**
+* **Technical Change:** [High-level description of the system/UI modification].
+* **Constraints:** [Specific business rules or technical limitations].
+* **Visual Reference:** [Link to Figma / Design Document] 🎨
 
 
 
-**Designs**  (subtitulo, va en negritas y la letra es mas grande que el contenido)
-* **Enlace:** [New-Landing-Page-Experience — External-Exam-He...](https://www.figma.com)
-* **Elemento Visual:** Se observa un preview de imagen con bordes redondeados.
-* **Botón de Acción:** `[Connect to Figma]` (Botón azul con bordes redondeados).
+### **Mechanics (The "How")**
+| Scenario | Condition / Logic | Resulting Action |
+| **Primary Flow** | [If X event occurs] | [Execute Y action] |
+| **Persistence** | [If state is X] | [Save/Update in DB or LocalStorage] |
+| **Exception** | [If X fails or Y is missing] | [Fallback behavior / Error handling] |
 
 
 
-**Mechanics**     
-**Who sees it:**
-* Usuarios específicos (Nuevos sin productos / No descartados).
-
-**Flow:**
-* **Condicionales de usuario:** * Si hace click en CTA -> Redirigir a `/product/creation`.
-    * Si hace click en Cerrar -> Guardar flag en `localStorage` o `DB`.
-
-**Returning users:**
-* Lógica de persistencia de la pantalla de bienvenida.
+### **Acceptance Criteria (AC)**
+* [ ] **Functionality:** [Clear description of the expected behavior].
+* [ ] **Integrity:** [Data validation or system state verification].
+* [ ] **UX/UI:** [Compliance with design specs and responsiveness].
+* [ ] **Analytics:** [Confirmation that tracking events fire correctly].
 
 
 
-**Tracking** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Estructura de tabla con 3 columnas para analítica)*
-
-| When it Fires (Trigger) | Event Name (ID) | Required Properties (Meta) |
-| Welcome gate is rendered | `viewed_welcome_gate` | (no changes) |
-| User opts-out | `Opt-Out Clicked` | feature, version, page |
-| User clicks CTA | `CTA Clicked` | (vacio) |
+### **Tracking & Analytics**
+| Event Name (ID) | Trigger (When it fires) | Required Properties (Metadata) |
+| `[event_name]` | [User action or system trigger] | [Key-value pairs to include] |
+| `[event_name]` | [User action or system trigger] | [Key-value pairs to include] |
 
 
 
-**Acceptance Criteria** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Tabla compleja de 4 columnas con celdas de color verde en la última columna para "Production Status")*
+### **Technical QA & Status**
+| Test Scenario | Expected Result | Production Status |
+| [Test Name] | [Success criteria for the test] | 🟡 Pending |
+| [Edge Case] | [Behavior during error or outlier] | ⚪ N/A |
 
-| Scenario | Criteria (BDD) | QA | Production (Status) |
-| **Welcome-Gate Shown** | **Given** [User] **When** [Action] **Then** [Result] | (Vacio) | Confirmed by video |
-| **CTA Redirects...** | **Given** [Visibility] **When** [Click] **Then** [Redirect] | (Vacio) | Confirmed by video |
-| **Dismiss Loads...** | **Given** [Gate visible] **When** [Dismiss] **Then** [Dashboard] | (Vacio) | Confirmed by video |
-| **Feature Flag...** | **Given** [Flag ON/OFF] **Then** [Toggle Behavior] | (Vacio) | Expected behaviour |
-| **Event Tracking** | **Given** [Interaction] **Then** [Fire events] | (Vacio) | Shown by tracking results |
-| **Design & Resp.** | **Given** [Viewports] **Then** [Match Figma] | (Vacio) | Shown by testing results |
 
+
+### **Implementation Notes**
+* **Affected Files:** [e.g., `country.service.ts`, `auth.interceptor.ts`]
+* **Endpoints/Services:** [e.g., `GET /v1/products`, `ProductService`]
+* **Dependencies:** [e.g., Feature flag name, specific library version]
