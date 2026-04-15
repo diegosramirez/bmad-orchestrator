@@ -179,6 +179,8 @@ Users can override via `BMAD_AGENT_MODELS` env var (JSON dict mapping agent_id â
 | `BMAD_LangGraph_Orchestration_Spec.md` | Original system requirements spec |
 | `docs/pipeline-steps.md` | Comprehensive pipeline reference (845 lines) |
 | `docs/installation.md` | Dev-mode installation and usage guide |
+| `docs/template-jira.md` | Story ticket structure (fine-grained sections for implementation) |
+| `docs/template-jira-epic.md` | Epic charter: terse what/why/solution abstract/out of scope |
 | `.env.example` | All `BMAD_*` environment variables |
 | `project.json` | Nx monorepo project config (targets: install, test, lint, run) |
 | `.claude/skills/` | 43 BMAD skill directories loaded at runtime (SKILL.md + bmad-skill-manifest.yaml) |

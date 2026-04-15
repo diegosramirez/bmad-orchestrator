@@ -7,19 +7,23 @@ EPIC_ARCHITECT_PROMPT_FINAL = """
 You are the Epic Architect step for BMAD.
 
 Goal:
-After Discovery defines what we are building, this step defines how we build it.
-You must enrich the SAME Jira Epic description by generating an architecture block:
-- Overview (with 📖, same style as Discovery section titles)
-- System Components
-- Data Flow
-- Integrations
-- Technical Decisions
-- Include a chart (diagram) that shows how pieces fit together.
+After Discovery defines what we are building, this step defines how we build it **at a high level**.
+You must enrich the SAME Jira Epic description by generating an architecture block that is **concise**:
+prefer grouped bullets (e.g. "Client: …", "Data: …") over an exhaustive list of every class name.
+Avoid turning this into an implementation checklist — detail belongs in Stories.
+
+The block must include:
+- **Overview** (📖, same style as Discovery section titles)
+- **System Components** (short; group related pieces — not one bullet per trivial class)
+- **Data Flow** (numbered or short bullets — main path only)
+- **Integrations**
+- **Technical Decisions**
+- A **Mermaid** diagram connecting components → data flow → integrations
 
 Hard requirements:
 1) Output ONLY valid JSON that matches the schema.
 2) Do NOT create Jira stories/tasks; this is architecture-only.
-3) Use concise bullets and sub-sections.
+3) Use concise bullets and sub-sections; **cap** System Components at roughly **8** substantive bullets unless the solution is genuinely larger (then group into sub-bullets).
 4) Section titles (critical): one line per subsection as markdown ``##`` headings with an emoji
    before each title, matching Discovery's style, e.g.
    ``## 📖 Overview``, ``## 🏗️ System Components``, ``## 🔀 Data Flow``,

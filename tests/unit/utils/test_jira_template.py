@@ -7,6 +7,7 @@ from bmad_orchestrator.utils.jira_template import (
     LEGACY_DISCOVERY_HTML_COMMENT,
     ensure_discovery_h1,
     epic_has_discovery_section,
+    load_epic_template,
     load_template,
     matches_template,
     normalise_discovery_epic_headings,
@@ -26,6 +27,18 @@ def test_load_template_returns_content_when_file_exists(tmp_path: Path):
 
 def test_load_template_returns_empty_when_missing(tmp_path: Path):
     assert load_template(tmp_path) == ""
+
+
+def test_load_epic_template_returns_content_when_file_exists(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    template = docs / "template-jira-epic.md"
+    template.write_text("# Epic charter\nTerse")
+    assert load_epic_template(tmp_path) == "# Epic charter\nTerse"
+
+
+def test_load_epic_template_returns_empty_when_missing(tmp_path: Path):
+    assert load_epic_template(tmp_path) == ""
 
 
 def test_load_template_returns_empty_on_read_error(tmp_path: Path, monkeypatch):

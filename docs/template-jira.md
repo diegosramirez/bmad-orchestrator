@@ -1,3 +1,5 @@
+> **Alcance:** Este archivo define el formato para tickets de **Historia (Story)** en Jira — detalle fino para implementación y QA. Las **Epics** usan el charter de alto nivel en `docs/template-jira-epic.md` (qué / por qué / solución abstracta / fuera de alcance / pocas aceptaciones globales).
+
 > **Objetivo del formato:** En las historias se mantiene **detalle fino** (*fine-grained*) para legibilidad operativa: el ingeniero debe saber **qué implementar y cómo validarlo** sin que el ticket sea ilegible. Prioriza listas y tablas escaneables; la narrativa de producto va breve; enlaza documentación larga fuera del cuerpo cuando aplique.
 
 **Shortest Path to Value: Redirect Sign-Ups Directly to Product Creation Page**

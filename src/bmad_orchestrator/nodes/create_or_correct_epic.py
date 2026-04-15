@@ -15,6 +15,7 @@ from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.discovery_epic_prompt import DISCOVERY_EPIC_PROMPT_FINAL
 from bmad_orchestrator.utils.jira_template import (
     ensure_discovery_h1,
+    load_epic_template,
     load_template,
     normalise_discovery_epic_headings,
     normalise_jira_headings,
@@ -214,22 +215,31 @@ def make_create_or_correct_epic_node(
                 )
             return {"current_epic_id": existing_epic_id, "execution_log": [log_entry]}
 
-        jira_template = load_template()
+        epic_template = load_epic_template()
+        story_template = load_template()
         epic_format_instruction = (
-            "Produce a concise epic summary (one line) and a clear description "
-            "explaining the problem being solved and the expected outcome."
+            "Produce a concise one-line epic summary and a TERSE epic description "
+            "(high-level charter). "
+            "Answer: what we are building, why it matters, general solution direction (abstract), "
+            "what is explicitly out of scope, and only essential acceptance themes — "
+            "not dozens of detailed requirements. "
+            "Do NOT use the fine-grained Story template (**Hypothesis**, **Intervention**, …); "
+            "that format is for Story tickets, not Epics."
         )
-        if jira_template:
+        if epic_template:
             epic_format_instruction += (
-                " The description MUST follow the Jira template: use these section titles in order "
-                "as bold markdown (e.g. **Hypothesis**), never as '1.', 'a.', 'i.': "
-                "**Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
-                "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**. "
-                "Use only bold headings and '-' bullet lists or tables."
+                " Follow the epic template reference below for structure, tone, and brevity."
+            )
+        elif story_template:
+            epic_format_instruction += (
+                " No epic template file was found; use `# Discovery` with short `##` subsections "
+                "(Overview, Goals, User Value, Scope, Functional Requirements, "
+                "Acceptance Criteria, Out of Scope) and keep each section brief — "
+                "do not mirror story-level sections."
             )
         if bmad_runner:
             draft = bmad_runner.run_create_epics_and_stories(
-                team_id, prompt, EpicDraft, jira_template=jira_template or ""
+                team_id, prompt, EpicDraft, jira_template=epic_template or story_template or ""
             )
         else:
             user_msg = (
@@ -239,8 +249,14 @@ def make_create_or_correct_epic_node(
                 f"Request: {prompt}\n\n"
                 f"{epic_format_instruction}"
             )
-            if jira_template:
-                user_msg += f"\n\nReference template structure:\n{jira_template[:4000]}"
+            ref = epic_template or story_template
+            if ref:
+                label = (
+                    "Epic template reference"
+                    if epic_template
+                    else "Template reference (legacy)"
+                )
+                user_msg += f"\n\n## {label}:\n{ref[:4000]}"
             draft = claude.complete_structured(
                 system_prompt=system_prompt,
                 user_message=user_msg,

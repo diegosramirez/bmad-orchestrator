@@ -45,7 +45,17 @@ DO NOT generate the Epic if there is not enough information.
 
 ## STEP 2 — GENERATE EPIC (ONLY if input is valid)
 
-Rewrite and enrich the ticket using this structure.
+Rewrite and enrich the ticket using this structure. The Epic is a **short charter**, not a full specification:
+do **not** list dozens of requirements; keep each section brief and scannable.
+
+**Brevity limits (enforce):**
+- **Overview:** 1–2 short paragraphs maximum.
+- **Goals:** at most **5** bullets; each one line.
+- **User Value:** 1 short paragraph.
+- **Scope (High-Level Features):** at most **7** bullets; user- or outcome-focused, not technical tasks.
+- **Functional Requirements:** at most **10** short lines (`User can…` / `System should…`); no implementation tasks (no "Create API", "Add Angular service" as standalone FRs).
+- **Acceptance Criteria:** at most **7** bullets — **absolute needs** only, not exhaustive test cases.
+- **Out of Scope:** keep concise; use bullets.
 
 **Headings (critical):**
 - The description MUST start with a single top-level markdown heading on its own line:

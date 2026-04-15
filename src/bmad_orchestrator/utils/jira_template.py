@@ -53,9 +53,29 @@ def _template_path(app_root: Path | None = None) -> Path:
     return app_root / "docs" / "template-jira.md"
 
 
+def _epic_template_path(app_root: Path | None = None) -> Path:
+    """Return the path to docs/template-jira-epic.md relative to the orchestrator app root."""
+    if app_root is not None:
+        return app_root / "docs" / "template-jira-epic.md"
+    utils_dir = Path(__file__).resolve().parent
+    app_root = utils_dir.parent.parent.parent
+    return app_root / "docs" / "template-jira-epic.md"
+
+
 def load_template(app_root: Path | None = None) -> str:
     """Load docs/template-jira.md and return its content. Returns empty string if missing."""
     path = _template_path(app_root)
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def load_epic_template(app_root: Path | None = None) -> str:
+    """Load docs/template-jira-epic.md (terse epic charter). Returns empty string if missing."""
+    path = _epic_template_path(app_root)
     if not path.exists():
         return ""
     try:
