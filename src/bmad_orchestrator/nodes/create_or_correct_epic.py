@@ -217,7 +217,10 @@ def make_create_or_correct_epic_node(
         jira_template = load_template()
         epic_format_instruction = (
             "Produce a concise epic summary (one line) and a clear description "
-            "explaining the problem being solved and the expected outcome."
+            "explaining the problem being solved and the expected outcome. "
+            "Primary readers are leadership and PM: plain language, scannable in a few minutes. "
+            "Do not list exhaustive test cases or implementation tasks here—those belong on "
+            "Stories."
         )
         if jira_template:
             epic_format_instruction += (
@@ -225,7 +228,10 @@ def make_create_or_correct_epic_node(
                 "as bold markdown (e.g. **Hypothesis**), never as '1.', 'a.', 'i.': "
                 "**Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
                 "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**. "
-                "Use only bold headings and '-' bullet lists or tables."
+                "Use only bold headings and '-' bullet lists or tables. "
+                "Keep EACH template section brief: at most ~3 short paragraphs or ~5 bullets per "
+                "section unless the section is inherently one line (e.g. title). "
+                "Epic-level acceptance means strategic outcomes only—not every edge case."
             )
         if bmad_runner:
             draft = bmad_runner.run_create_epics_and_stories(

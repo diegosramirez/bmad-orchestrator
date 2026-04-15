@@ -140,6 +140,7 @@ def test_run_create_story_calls_claude(runner, mock_claude, monkeypatch, tmp_pat
     call_kwargs = mock_claude.complete_structured.call_args.kwargs
     assert "PUG-437" in call_kwargs["user_message"]
     assert "ctx" in call_kwargs["user_message"]
+    assert "developers" in call_kwargs["system_prompt"].lower()
 
 
 def test_run_create_story_no_project_context(runner, mock_claude, monkeypatch, tmp_path):

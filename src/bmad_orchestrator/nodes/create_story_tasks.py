@@ -111,7 +111,11 @@ class StoryDraft(BaseModel):
         description="Jira story summary. Must be under 255 characters.",
     )
     description: str
-    acceptance_criteria: list[str] = Field(min_length=2)
+    acceptance_criteria: list[str] = Field(
+        min_length=2,
+        max_length=8,
+        description="Fine-grained, testable AC for developers (epic stays high-level).",
+    )
     tasks: list[TaskItem] = Field(min_length=2)
     dependencies: list[str] = Field(
         default_factory=list,
@@ -152,7 +156,7 @@ class PlannedStoryItem(BaseModel):
 
     summary: str = Field(max_length=_JIRA_SUMMARY_MAX)
     description: str
-    acceptance_criteria: list[str] = Field(min_length=2)
+    acceptance_criteria: list[str] = Field(min_length=2, max_length=8)
     tasks: list[TaskItem] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     qa_scope: list[str] = Field(default_factory=list)
@@ -247,6 +251,9 @@ def make_create_story_tasks_node(
         user_msg = (
             f"{ctx_block}"
             "You are breaking down ONE Jira Epic into multiple USER STORIES for BMAD.\n\n"
+            "**Audience: developers and QA.** The Epic is high-level for leadership/PM; each story "
+            "must carry **fine-grained**, verifiable acceptance criteria and optional checklist "
+            "tasks for implementation.\n\n"
             "Rules:\n"
             "- Each story must be a vertical, end-to-end slice one agent can implement (not "
             "separate frontend-only / backend-only tickets).\n"
@@ -256,6 +263,9 @@ def make_create_story_tasks_node(
             "story summary listed below (same intent).\n"
             "- Each story: summary as 'As a ... I want ... so that ...', concrete description, "
             "at least 2 acceptance criteria.\n"
+            "- Acceptance criteria per story: **observable, testable** behaviors that "
+            "**break down** the epic for this slice — do not copy the epic wholesale; "
+            "typically **4–8** AC lines.\n"
             "- Tasks are optional; include only when they add value (concrete sub-steps).\n"
             "- If you include tasks: each is for Jira Checklist Text — a short bold title "
             "(summary) plus one brief phrase (description); readable in ~2 lines in Jira, "
@@ -401,6 +411,8 @@ def make_create_story_tasks_node(
             user_msg = (
                 f"{ctx_block}"
                 "You are executing the BMAD `/bmad-create-story` workflow for this team.\n"
+                "**Audience: developers and QA** — fine-grained acceptance criteria and checklist "
+                "tasks belong here; the Epic remains high-level.\n"
                 "Create a well-formed user story for the following work request.\n\n"
                 f"Epic: {epic_id}\n"
                 f"Team: {team_id}\n"
@@ -408,7 +420,10 @@ def make_create_story_tasks_node(
                 "Requirements:\n"
                 "- Summary must be a single 'As a ... I want ... so that ...' sentence\n"
                 f"{story_format_instruction}"
-                "- Acceptance criteria must be concrete and verifiable (INVEST criteria)\n"
+                "- Acceptance criteria must be concrete, verifiable, and **specific to this "
+                "story** "
+                "(INVEST). They must **refine** epic scope into testable behavior — do not restate "
+                "the entire epic. Aim for **typically 4–8** AC lines (schema allows up to 8).\n"
                 "- Tasks populate Jira Checklist Text: each has a short `summary` (bold title) and "
                 "a brief `description` (one short phrase). The whole row must stay scannable in "
                 "~2 lines — no multi-sentence paragraphs; details belong in the story and ACs.\n"

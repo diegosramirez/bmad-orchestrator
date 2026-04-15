@@ -266,6 +266,8 @@ class BmadWorkflowRunner:
             "Return ONLY the requested JSON structure "
             "(summary, description, acceptance_criteria, tasks, "
             "dependencies, qa_scope, definition_of_done). "
+            "**Audience: developers and QA** — this story is where **fine-grained**, testable "
+            "acceptance criteria and implementation checklists belong (the Epic stays high-level). "
             "Tasks must be concrete and implementable. Each task is stored in Jira Checklist Text: "
             "keep `summary` and `description` short so each checklist row reads in about two lines "
             "in Jira (title + brief phrase), not long paragraphs."
@@ -277,6 +279,11 @@ class BmadWorkflowRunner:
             "Produce a complete user story: summary (As a... I want... so that...), description, "
             "at least 2 concrete acceptance criteria, at least 2 implementable tasks, "
             "dependencies (list), qa_scope (list), definition_of_done (list). "
+            "Acceptance criteria must **refine** the epic into observable, verifiable behavior for "
+            "this slice — do **not** paste or restate the whole epic; add the detail engineers "
+            "need "
+            "(including reasonable edge cases). Aim for **typically 4–8** AC lines total; stay "
+            "focused, not a novel. "
             "For tasks: each `summary` is a short checklist title; each `description` is one brief "
             "phrase — scannable in ~2 lines per row in Jira; put elaboration in the story and ACs. "
         )
@@ -286,7 +293,9 @@ class BmadWorkflowRunner:
                 "as bold markdown (e.g. **Hypothesis**), never as '1.', 'a.', 'i.': "
                 "**Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
                 "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**. "
-                "Use only bold headings and '-' bullet lists or tables."
+                "Use only bold headings and '-' bullet lists or tables. "
+                "Keep each template section concise (short bullets or brief paragraphs per "
+                "section)."
             )
         user_message = (
             f"## Workflow context:\n{workflow_context}\n\n"
