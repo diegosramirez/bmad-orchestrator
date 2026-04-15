@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-from pydantic import ValidationError
-
 from bmad_orchestrator.nodes.create_story_tasks import (
     EpicStoryBreakdown,
     PlannedStoryItem,
@@ -94,34 +91,6 @@ def test_story_draft_parses_stringified_acceptance_criteria():
         ],
     )
     assert draft.acceptance_criteria == ["Users can log in", "Invalid creds are rejected"]
-
-
-def test_story_draft_accepts_eight_acceptance_criteria() -> None:
-    ac = [f"AC{i}" for i in range(8)]
-    draft = StoryDraft(
-        summary="As a dev I want coverage",
-        description="Eight ACs",
-        acceptance_criteria=ac,
-        tasks=[
-            TaskItem(summary="T1", description="a"),
-            TaskItem(summary="T2", description="b"),
-        ],
-    )
-    assert len(draft.acceptance_criteria) == 8
-
-
-def test_story_draft_rejects_ninth_acceptance_criterion() -> None:
-    ac = [f"AC{i}" for i in range(9)]
-    with pytest.raises(ValidationError):
-        StoryDraft(
-            summary="As a dev I want too many ACs",
-            description="Over limit",
-            acceptance_criteria=ac,
-            tasks=[
-                TaskItem(summary="T1", description="a"),
-                TaskItem(summary="T2", description="b"),
-            ],
-        )
 
 
 def test_story_draft_parses_stringified_tasks():

@@ -48,9 +48,6 @@ DO NOT generate the Epic if there is not enough information.
 Rewrite and enrich the ticket using this structure.
 
 **Epic-level brevity (critical):**
-- **Primary audience:** leadership, product managers, and stakeholders who need a **quick,
-  non-technical read** of intent and value. Write in plain language; avoid engineering jargon
-  unless a term is unavoidable (then define it in one short phrase).
 - The epic must stay **human-scannable**: a reader should grasp *what*, *why*,
   *rough scope*, and *non‑negotiable outcomes* in **a few minutes**.
 - **Stories** (created later in the pipeline) carry fine-grained acceptance criteria,
@@ -60,8 +57,7 @@ Rewrite and enrich the ticket using this structure.
 
 **Headings (critical):**
 - The description MUST start with a single top-level markdown heading on its own line:
-  ``# Discovery`` (H1). That is the orchestrator step title for readers of the ticket
-  (stakeholders and engineers).
+  ``# Discovery`` (H1). That is the orchestrator step title for engineers reading the ticket.
 - Under that, use ``##`` subsections with emoji + title text, for example ``## 📖 Overview``,
   ``## 🎯 Goals``, etc. Do **not** use manual tags or HTML comments to separate sections.
 - Do **not** prefix section titles with outline numbers (no ``1.``, ``2.``, ``a.``).
