@@ -327,7 +327,7 @@ def test_get_usage_report_groups_by_agent(settings):
     dev_row = next(r for r in report["rows"] if r["agent"] == "Amelia (Developer)")
     assert dev_row["calls"] == 2
     assert dev_row["input_tokens"] == 200
-    qa_row = next(r for r in report["rows"] if r["agent"] == "Quinn (QA)")
+    qa_row = next(r for r in report["rows"] if r["agent"] == "Amelia (Developer — QA Mode)")
     assert qa_row["calls"] == 1
     assert report["models_mixed"] is False
 
@@ -383,6 +383,6 @@ def test_usage_report_shows_mixed_models(settings):
     report = svc.get_usage_report()
     assert report["models_mixed"] is True
     qa_row = next(
-        r for r in report["rows"] if r["agent"] == "Quinn (QA)"
+        r for r in report["rows"] if r["agent"] == "Amelia (Developer — QA Mode)"
     )
     assert qa_row["model"] == "claude-sonnet-4-20250514"
