@@ -47,14 +47,6 @@ DO NOT generate the Epic if there is not enough information.
 
 Rewrite and enrich the ticket using this structure.
 
-**Epic-level brevity (critical):**
-- The epic must stay **human-scannable**: a reader should grasp *what*, *why*,
-  *rough scope*, and *non‑negotiable outcomes* in **a few minutes**.
-- **Stories** (created later in the pipeline) carry fine-grained acceptance criteria,
-  edge cases, and checklists. This epic must **not** try to be a full requirements document.
-- Prefer **short bullets** over long prose. **Do not** pad with duplicate ideas across sections.
-- If the source material is huge, **summarize** to the limits below—do not copy every line.
-
 **Headings (critical):**
 - The description MUST start with a single top-level markdown heading on its own line:
   ``# Discovery`` (H1). That is the orchestrator step title for engineers reading the ticket.
@@ -67,24 +59,22 @@ Rewrite and enrich the ticket using this structure.
 ---
 
 ## 📖 Overview
-What we are building and **why** (problem / outcome).
-**At most ~8 short sentences** total in this section.
+Explain what we are building and why.
 
 ---
 
 ## 🎯 Goals
-Main objectives only. **At most 5 bullets**, one line each.
+List the main objectives.
 
 ---
 
 ## 👤 User Value
-Who benefits and how (problem solved). **At most ~6 sentences**.
+Explain what problem this solves.
 
 ---
 
 ## 📦 Scope (High-Level Features)
-User-visible outcomes and capabilities—**not** implementation tasks.
-**At most 7 bullets**, one line each.
+List complete features (NOT technical tasks).
 
 GOOD:
 - User can submit a form and data is saved
@@ -95,22 +85,20 @@ BAD:
 
 ---
 
-## ⚙️ Functional Requirements (high level)
-Only **capabilities** the product must deliver at epic level (``User can…``, ``System should…``).
-**At most 7 bullets**, one line each. Omit exhaustive lists—detailed behavior belongs on **Stories**
-later.
+## ⚙️ Functional Requirements
+Use simple sentences:
+- User can...
+- System should...
 
 ---
 
-## ✅ Acceptance Criteria (epic closure)
-**Epic-level only:** the **minimum** conditions to consider this epic done—**between 3 and 7
-bullets**, one line each. These are **not** every test case; avoid duplicating Scope or Functional
-Requirements verbatim.
+## ✅ Acceptance Criteria
+Define success conditions.
 
 ---
 
 ## 🚫 Out of Scope (Optional)
-What this epic **explicitly does not** do. **At most 7 bullets** (optional but recommended).
+(Optional but recommended)
 
 ---
 
@@ -118,10 +106,9 @@ What this epic **explicitly does not** do. **At most 7 bullets** (optional but r
 
 - Use clear and simple English
 - No code
-- No low-level technical details (APIs, schemas, ticket-level tasks)
+- No low-level technical details
 - Focus on outcomes, not implementation
 - Section headers: one ``##`` line each — never numbered list items for headers
-- Keep the **entire** ``# Discovery`` body concise; if in doubt, **cut** rather than add
 
 ---
 
