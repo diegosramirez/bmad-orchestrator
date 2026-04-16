@@ -319,6 +319,21 @@ class DummyJiraService:
             log_path.write_text(body, encoding="utf-8")
             logger.info("dummy_comment_updated", issue_key=issue_key)
 
+    def get_issue_author_display_name(self, issue_key: str) -> str | None:
+        """Assignee display name from dummy frontmatter, else reporter; else None."""
+        for subdir in ("stories", "epics", "tasks"):
+            issue = self._read_issue(subdir, issue_key)
+            if not issue:
+                continue
+            ad = issue.get("assignee_display_name")
+            rd = issue.get("reporter_display_name")
+            if isinstance(ad, str) and ad.strip():
+                return ad.strip()
+            if isinstance(rd, str) and rd.strip():
+                return rd.strip()
+            return None
+        return None
+
     def set_story_branch_field(self, story_key: str, branch: str) -> None:
         """No-op in dummy; real implementation updates the branch custom field."""
         logger.info("dummy_set_story_branch_field", story_key=story_key, branch=branch)

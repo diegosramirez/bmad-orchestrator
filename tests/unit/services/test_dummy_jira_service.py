@@ -304,3 +304,27 @@ class TestChecklistText:
 
     def test_get_story_checklist_text_missing_story(self, svc: DummyJiraService) -> None:
         assert svc.get_story_checklist_text("DUMMY-999") == ""
+
+
+class TestGetIssueAuthorDisplayName:
+    def test_prefers_assignee_over_reporter(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("E", "d", "growth")
+        story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
+        issue = svc._read_issue("stories", story["key"])
+        assert issue is not None
+        issue["reporter_display_name"] = "Reporter R"
+        issue["assignee_display_name"] = "Assignee A"
+        svc._write_issue("stories", issue)
+        assert svc.get_issue_author_display_name(story["key"]) == "Assignee A"
+
+    def test_falls_back_to_reporter(self, svc: DummyJiraService) -> None:
+        epic = svc.create_epic("E", "d", "growth")
+        story = svc.create_story(epic["key"], "S", "d", ["AC"], "growth")
+        issue = svc._read_issue("stories", story["key"])
+        assert issue is not None
+        issue["reporter_display_name"] = "Only Reporter"
+        svc._write_issue("stories", issue)
+        assert svc.get_issue_author_display_name(story["key"]) == "Only Reporter"
+
+    def test_unknown_key_returns_none(self, svc: DummyJiraService) -> None:
+        assert svc.get_issue_author_display_name("DUMMY-999") is None

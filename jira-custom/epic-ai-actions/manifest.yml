@@ -6,7 +6,7 @@ permissions:
   external:
     fetch:
       backend:
-        # Replace with the public HTTPS origin of your BMAD FastAPI webhook (no path). Redeploy after editing.
+        # Public HTTPS origin of your BMAD slack-worker (Vercel) deployment (no path). Redeploy after editing.
         - 'https://service-ai-lemon.vercel.app/'
 
 modules:

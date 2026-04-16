@@ -14,7 +14,7 @@ from bmad_orchestrator.config import Settings
 from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.utils.discovery_epic_prompt import DISCOVERY_EPIC_PROMPT_FINAL
-from bmad_orchestrator.utils.jira_template import load_template
+from bmad_orchestrator.utils.jira_template import load_epic_template, load_template
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -104,7 +104,7 @@ def load_create_story_context(settings: Settings) -> str:
         return (
             "BMAD create-story: Create a story with acceptance "
             "criteria, tasks, dependencies, QA scope, and "
-            "definition of done. Tasks must be concrete."
+            "definition of done. Tasks must be concrete and short (Jira checklist rows)."
         )
     return combined
 
@@ -128,7 +128,7 @@ class BmadWorkflowRunner:
     ) -> Any:
         """Execute BMAD bmad-create-epics-and-stories for a single epic (headless)."""
         if not jira_template:
-            jira_template = load_template()
+            jira_template = load_epic_template() or load_template()
         workflow_context = load_create_epics_and_stories_context(self._settings)
         system_prompt = build_system_prompt("pm", self._settings.bmad_install_dir)
         system_prompt += (
@@ -140,12 +140,13 @@ class BmadWorkflowRunner:
             "(summary, description) for ONE epic."
         )
         desc_instruction = (
-            "Produce a single Jira Epic: one-line summary and clear description. "
-            "The description MUST follow the Jira template: use these section titles in order "
-            "as bold markdown (e.g. **Hypothesis**), never as '1.', 'a.', 'i.': "
-            "**Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
-            "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**. "
-            "Use only bold headings and '-' bullet lists or tables."
+            "Produce a single Jira Epic: one-line summary and a TERSE description "
+            "(high-level charter). "
+            "Cover what we build, why, general solution direction (abstract), out of scope, "
+            "and only non-negotiable acceptance themes — not exhaustive requirements. "
+            "Do NOT use the Story ticket template (**Hypothesis**, **Intervention**, …); "
+            "that is for Stories. If a template reference is included below, follow its brevity "
+            "rules."
         )
         user_message = (
             f"## Workflow context (follow its principles):\n{workflow_context}\n\n"
@@ -266,7 +267,9 @@ class BmadWorkflowRunner:
             "Return ONLY the requested JSON structure "
             "(summary, description, acceptance_criteria, tasks, "
             "dependencies, qa_scope, definition_of_done). "
-            "Tasks must be concrete and implementable."
+            "Tasks must be concrete and implementable. Each task is stored in Jira Checklist Text: "
+            "keep `summary` and `description` short so each checklist row reads in about two lines "
+            "in Jira (title + brief phrase), not long paragraphs."
         )
         ctx_block = (
             f"Target project context:\n{project_context}\n\n" if project_context else ""
@@ -275,6 +278,8 @@ class BmadWorkflowRunner:
             "Produce a complete user story: summary (As a... I want... so that...), description, "
             "at least 2 concrete acceptance criteria, at least 2 implementable tasks, "
             "dependencies (list), qa_scope (list), definition_of_done (list). "
+            "For tasks: each `summary` is a short checklist title; each `description` is one brief "
+            "phrase — scannable in ~2 lines per row in Jira; put elaboration in the story and ACs. "
         )
         if jira_template:
             desc_instruction += (

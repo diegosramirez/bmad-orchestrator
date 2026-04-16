@@ -21,8 +21,6 @@ dependencies = [
     "pyyaml>=6.0.2",
     "questionary>=2.0.0",
     "claude-agent-sdk>=0.1.40",
-    "fastapi>=0.135.1",
-    "uvicorn[standard]>=0.41.0",
     "httpx>=0.27.0",
 ]
 
@@ -35,6 +33,7 @@ packages = ["src/bmad_orchestrator"]
 [tool.hatch.build.targets.wheel.force-include]
 ".claude/skills" = "bmad_orchestrator/personas/data"
 "src/bmad_orchestrator/templates" = "bmad_orchestrator/templates"
+"src/bmad_orchestrator/data/mmdc-puppeteer-ci.json" = "bmad_orchestrator/data/mmdc-puppeteer-ci.json"
 
 [dependency-groups]
 dev = [

@@ -99,7 +99,9 @@ def test_touched_files_listed_in_prompt(settings, mock_agent_service, mock_claud
     assert "src/service.ts" in prompt
 
 
-def test_test_failure_output_included_in_prompt(settings, mock_agent_service, mock_claude, mock_jira):
+def test_test_failure_output_included_in_prompt(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
     """When test_failure_output is set, it should appear in the prompt."""
     node = make_fix_loop_node(mock_agent_service, mock_claude, mock_jira, settings)
     node(make_state(

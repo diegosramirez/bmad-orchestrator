@@ -1,69 +1,88 @@
+> **Alcance:** Este archivo define el formato para tickets de **Historia (Story)** en Jira — detalle fino para implementación y QA. Las **Epics** usan el charter de alto nivel en `docs/template-jira-epic.md` (qué / por qué / solución abstracta / fuera de alcance / pocas aceptaciones globales).
+
+> **Objetivo del formato:** En las historias se mantiene **detalle fino** (*fine-grained*) para legibilidad operativa: el ingeniero debe saber **qué implementar y cómo validarlo** sin que el ticket sea ilegible. Prioriza listas y tablas escaneables; la narrativa de producto va breve; enlaza documentación larga fuera del cuerpo cuando aplique.
+
 **Shortest Path to Value: Redirect Sign-Ups Directly to Product Creation Page**
 
-**Hypothesis** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Párrafos descriptivos con la lógica del experimento)*
-The dashboard (blank slate) is the largest activation killer. Sending users directly to product creation eliminates the ambiguity of "what do I do now?". 
-The success of the first Welcome Page experiment led us to some new designs...
+**Hypothesis**
 
-**Intervention** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Lista de viñetas con los cambios técnicos a realizar)*
+*(1–2 párrafos: problema, por qué importa, qué se prueba.)*
+
+The dashboard (blank slate) is the largest activation killer. Sending users directly to product creation eliminates the ambiguity of "what do I do now?". The success of the first Welcome Page experiment led us to some new designs.
+
+**Intervention**
+
+*(Cambios técnicos o de producto concretos; una viñeta = una acción verificable.)*
+
 * Regardless of validation status, redirect new vendors directly to `/product/create`.
 * Keep the email-validation mandatory banner blocking the final submission.
 
-**Data to Collect**  (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Lista de viñetas con métricas de éxito)*
+**Data to Collect**
+
+*(Métricas o fuentes de datos; suficiente para analítica, sin repetir el dashboard entero aquí.)*
+
 * Product creation start rate
 * Product creation completion rate
-* ... (etc)
+* (añade solo las que esta historia habilita o afecta)
 
-**Success Threshold**   (subtitulo, va en negritas y la letra es mas grande que el contenido)
-> *(Bloque de cita/blockquote para resaltar el KPI objetivo)*
-> +5-10% improvement in product creation start rate over the existing welcome screen.
+**Success Threshold**
 
-**Rationale** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Explicación conceptual de Product-Led Growth)*
-This is the **PLG "Straight Line to Value" principle**...
+> *(Un bloque de cita con el KPI o umbral acordado.)*
++5–10% improvement in product creation start rate over the existing welcome screen.
 
+**Rationale**
 
+*(Opcional y breve: principio de negocio o constraint; evita duplicar lo ya dicho en Hipótesis.)*
 
-**Designs**  (subtitulo, va en negritas y la letra es mas grande que el contenido)
-* **Enlace:** [New-Landing-Page-Experience — External-Exam-He...](https://www.figma.com)
-* **Elemento Visual:** Se observa un preview de imagen con bordes redondeados.
-* **Botón de Acción:** `[Connect to Figma]` (Botón azul con bordes redondeados).
+This is the **PLG "Straight Line to Value" principle**: reduce steps between sign-up and first value.
 
+**Designs**
 
+* **Link:** [New landing — Figma](https://www.figma.com/example)
+* **Visual:** Rounded preview; primary CTA visible above the fold.
+* **Action:** `[Connect to Figma]` or attach exported frames if offline.
 
-**Mechanics**     
-**Who sees it:**
-* Usuarios específicos (Nuevos sin productos / No descartados).
+**Mechanics**
 
-**Flow:**
-* **Condicionales de usuario:** * Si hace click en CTA -> Redirigir a `/product/creation`.
-    * Si hace click en Cerrar -> Guardar flag en `localStorage` o `DB`.
+*(Segmentación, flujo paso a paso y ramas; numerar ayuda más que una sola viñeta anidada.)*
 
-**Returning users:**
-* Lógica de persistencia de la pantalla de bienvenida.
+**Who sees it**
 
+* New vendors with no products yet; not in the discarded cohort.
 
+**Flow**
 
-**Tracking** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Estructura de tabla con 3 columnas para analítica)*
+* User lands after sign-up → redirect to `/product/create` (or agreed route).
+* If welcome gate is shown → CTA advances; dismiss persists state as specified.
 
-| When it Fires (Trigger) | Event Name (ID) | Required Properties (Meta) |
-| Welcome gate is rendered | `viewed_welcome_gate` | (no changes) |
-| User opts-out | `Opt-Out Clicked` | feature, version, page |
-| User clicks CTA | `CTA Clicked` | (vacio) |
+**Branches**
 
+* **CTA:** navigate to `/product/create` (match Intervention).
+* **Dismiss:** persist flag in `localStorage` or DB (specify which).
 
+**Returning users**
 
-**Acceptance Criteria** (subtitulo, va en negritas y la letra es mas grande que el contenido)
-*(Tabla compleja de 4 columnas con celdas de color verde en la última columna para "Production Status")*
+* Persist welcome-screen dismissal so repeat visits match product rules (define in one line).
 
-| Scenario | Criteria (BDD) | QA | Production (Status) |
-| **Welcome-Gate Shown** | **Given** [User] **When** [Action] **Then** [Result] | (Vacio) | Confirmed by video |
-| **CTA Redirects...** | **Given** [Visibility] **When** [Click] **Then** [Redirect] | (Vacio) | Confirmed by video |
-| **Dismiss Loads...** | **Given** [Gate visible] **When** [Dismiss] **Then** [Dashboard] | (Vacio) | Confirmed by video |
-| **Feature Flag...** | **Given** [Flag ON/OFF] **Then** [Toggle Behavior] | (Vacio) | Expected behaviour |
-| **Event Tracking** | **Given** [Interaction] **Then** [Fire events] | (Vacio) | Shown by tracking results |
-| **Design & Resp.** | **Given** [Viewports] **Then** [Match Figma] | (Vacio) | Shown by testing results |
+**Tracking**
 
+*(Tabla compacta: trigger, nombre de evento, propiedades mínimas.)*
+
+| When it fires (trigger) | Event name | Required properties |
+| --- | --- | --- |
+| Welcome gate is rendered | `viewed_welcome_gate` | (unchanged vs baseline) |
+| User opts out | `opt_out_clicked` | `feature`, `version`, `page` |
+| User clicks CTA | `cta_clicked` | As in tracking spec |
+
+**Acceptance Criteria**
+
+*(**Detalle fino** en la columna BDD: cada fila = un escenario comprobable. Dos columnas para que la tabla siga siendo usable en Jira. Evidencia en staging/producción: comentario del ticket, subtarea de QA o enlace, no hace falta repetirla por fila.)*
+
+| Scenario | Given / When / Then (fine-grained) |
+| --- | --- |
+| Welcome gate visibility | **Given** a new eligible user **when** they complete sign-up **then** they are redirected per Intervention and (if applicable) see the gate only per Mechanics. |
+| CTA redirect | **Given** the gate is visible **when** the user clicks the primary CTA **then** the app navigates to `/product/create` (or specified route). |
+| Dismiss and persistence | **Given** the gate is visible **when** the user dismisses it **then** state persists per Mechanics and the user reaches the expected next screen. |
+| Feature flag | **Given** the flag is ON vs OFF **then** behavior matches the flag matrix (link or bullet list if non-trivial). |
+| Analytics | **Given** each listed interaction **then** the corresponding event fires with required properties from Tracking. |
+| Design / responsive | **Given** target viewports **then** UI matches linked designs within agreed tolerance. |

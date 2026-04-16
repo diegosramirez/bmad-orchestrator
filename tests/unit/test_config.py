@@ -192,3 +192,60 @@ def test_jira_custom_field_id_from_env_overrides(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID", "customfield_888")
     assert jira_target_repo_custom_field_id_from_env() == "customfield_999"
     assert jira_branch_custom_field_id_from_env() == "customfield_888"
+
+
+def test_jira_branch_custom_field_id_must_start_with_customfield() -> None:
+    with pytest.raises(ValueError, match="customfield"):
+        Settings(
+            anthropic_api_key="k",  # type: ignore[arg-type]
+            jira_base_url="https://x.atlassian.net",
+            jira_username="u",
+            jira_api_token="t",  # type: ignore[arg-type]
+            jira_project_key="P",
+            github_repo="o/r",
+            jira_branch_custom_field_id="not-a-field",
+        )
+
+
+def test_jira_custom_field_ids_whitespace_falls_back_to_defaults() -> None:
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        github_repo="o/r",
+        jira_target_repo_custom_field_id="   ",
+        jira_branch_custom_field_id="  ",
+        jira_checklist_text_custom_field_id="\t",
+    )
+    assert s.jira_target_repo_custom_field_id == "customfield_10112"
+    assert s.jira_branch_custom_field_id == "customfield_10145"
+    assert s.jira_checklist_text_custom_field_id == "customfield_10046"
+
+
+def test_slack_notify_requires_bot_token_and_channel() -> None:
+    with pytest.raises(ValueError, match="Slack notifications require"):
+        Settings(
+            anthropic_api_key="k",  # type: ignore[arg-type]
+            jira_base_url="https://x.atlassian.net",
+            jira_username="u",
+            jira_api_token="t",  # type: ignore[arg-type]
+            jira_project_key="P",
+            github_repo="o/r",
+            slack_notify=True,
+        )
+
+
+def test_dummy_github_sets_placeholder_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Override any BMAD_GITHUB_REPO from the process environment or .env file load.
+    monkeypatch.setenv("BMAD_GITHUB_REPO", "")
+    s = Settings(
+        anthropic_api_key="k",  # type: ignore[arg-type]
+        jira_base_url="https://x.atlassian.net",
+        jira_username="u",
+        jira_api_token="t",  # type: ignore[arg-type]
+        jira_project_key="P",
+        dummy_github=True,
+    )
+    assert s.github_repo == "local/dummy-repo"

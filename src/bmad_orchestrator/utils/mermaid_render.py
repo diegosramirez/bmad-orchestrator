@@ -1,7 +1,15 @@
-"""Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc)."""
+"""Render Mermaid source to PNG bytes (Kroki HTTP or local mmdc).
+
+Default: light ``base`` theme plus ``themeVariables`` (white-friendly colors) when the source
+has no ``%%{init: ...}%%``. For Kroki, the same tuning is sent again via JSON
+``diagram_options`` (flat ``theme-variables-*`` keys per Kroki's Mermaid naming rules).
+``mmdc`` uses ``-b white``, ``-w``/``-H``/``-s`` from settings (defaults: 1600×1200, scale 1.5),
+and the bundled ``data/mmdc-puppeteer-ci.json`` as ``-p`` when present (Linux CI / Chromium).
+"""
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import tempfile
@@ -16,6 +24,62 @@ from bmad_orchestrator.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _PNG_SIG: Final[bytes] = b"\x89PNG\r\n\x1a\n"
+
+# Bundled Puppeteer JSON for mmdc -p (Chromium --no-sandbox on Linux CI / GitHub Actions).
+_MMDC_PUPPETEER_CONFIG: Final[Path] = (
+    Path(__file__).resolve().parent.parent / "data" / "mmdc-puppeteer-ci.json"
+)
+
+
+def _mmdc_puppeteer_config_file() -> Path | None:
+    """Return path to bundled config if present on disk; else None (skip -p)."""
+    p = _MMDC_PUPPETEER_CONFIG
+    return p if p.is_file() else None
+
+# Shared Mermaid themeVariables (camelCase per Mermaid); used in %%{init}%% and Kroki options.
+_LIGHT_THEME_VARIABLES: Final[dict[str, str]] = {
+    "background": "#ffffff",
+    "mainBkg": "#ffffff",
+    "secondaryColor": "#f7f7f7",
+    "tertiaryColor": "#ffffff",
+    "primaryTextColor": "#000000",
+    "lineColor": "#000000",
+    "primaryBorderColor": "#cccccc",
+}
+
+_CAMEL_TO_KEBAB = re.compile(r"(?<=[a-z0-9])([A-Z])")
+
+
+def _camel_to_kebab_lower(name: str) -> str:
+    """e.g. mainBkg -> main-bkg (Kroki theme-variables-* suffix)."""
+    return _CAMEL_TO_KEBAB.sub(r"-\1", name).lower()
+
+
+def _kroki_diagram_options_for_light_theme() -> dict[str, str]:
+    """Flat diagram_options for Kroki POST JSON (see kroki.io diagram-options / Mermaid)."""
+    opts: dict[str, str] = {"theme": "base"}
+    for key, value in _LIGHT_THEME_VARIABLES.items():
+        opts[f"theme-variables-{_camel_to_kebab_lower(key)}"] = value
+    return opts
+
+
+# Prepended when the source has no %%{init: ...}%% — light theme + white-friendly variables.
+_LIGHT_INIT_OBJECT: Final[dict[str, object]] = {
+    "theme": "base",
+    "themeVariables": dict(_LIGHT_THEME_VARIABLES),
+}
+_LIGHT_INIT_PREFIX: Final[str] = (
+    "%%{init: " + json.dumps(_LIGHT_INIT_OBJECT, separators=(",", ":")) + "}%%\n"
+)
+_HAS_MERMAID_INIT = re.compile(r"(?m)^\s*%%\{\s*init\s*:", re.IGNORECASE)
+
+
+def _mermaid_source_with_light_theme(source: str) -> str:
+    """Return Mermaid source with default light theme unless user already set init."""
+    text = (source or "").strip()
+    if not text or _HAS_MERMAID_INIT.search(text):
+        return text
+    return _LIGHT_INIT_PREFIX + text
 
 
 def png_dimensions(png_bytes: bytes) -> tuple[int, int]:
@@ -41,24 +105,28 @@ def render_mermaid_to_png(settings: Settings, source: str) -> tuple[bytes | None
     if len(text) > settings.mermaid_max_source_chars:
         return None, "mermaid source exceeds configured max length"
 
+    themed = _mermaid_source_with_light_theme(text)
+    if len(themed) > settings.mermaid_max_source_chars:
+        return None, "mermaid source exceeds configured max length"
+
     renderer = settings.mermaid_renderer.lower()
     if renderer == "kroki":
-        return _render_kroki(settings, text)
+        return _render_kroki(settings, themed)
     if renderer == "mmdc":
-        return _render_mmdc(settings, text)
+        return _render_mmdc(settings, themed)
     return None, f"unknown mermaid renderer: {renderer}"
 
 
 def _render_kroki(settings: Settings, text: str) -> tuple[bytes | None, str | None]:
     base = (settings.kroki_url or "https://kroki.io").rstrip("/")
     url = f"{base}/mermaid/png"
+    payload = {
+        "diagram_source": text,
+        "diagram_options": _kroki_diagram_options_for_light_theme(),
+    }
     try:
         with httpx.Client(timeout=settings.mermaid_kroki_timeout_seconds) as client:
-            r = client.post(
-                url,
-                content=text.encode("utf-8"),
-                headers={"Content-Type": "text/plain"},
-            )
+            r = client.post(url, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("mermaid_kroki_http_error", error=str(exc))
         return None, f"kroki request failed: {exc}"
@@ -92,8 +160,31 @@ def _render_mmdc(settings: Settings, text: str) -> tuple[bytes | None, str | Non
             f_in.write(text)
             f_in.flush()
         try:
+            w, h, sc = (
+                settings.mermaid_mmdc_width,
+                settings.mermaid_mmdc_height,
+                settings.mermaid_mmdc_scale,
+            )
+            cmd: list[str] = [
+                exe,
+                "-i",
+                str(in_path),
+                "-o",
+                str(out_path),
+                "-b",
+                "white",
+                "-w",
+                str(w),
+                "-H",
+                str(h),
+                "-s",
+                str(sc),
+            ]
+            puppet_cfg = _mmdc_puppeteer_config_file()
+            if puppet_cfg is not None:
+                cmd.extend(["-p", str(puppet_cfg)])
             proc = subprocess.run(
-                [exe, "-i", str(in_path), "-o", str(out_path), "-b", "transparent"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=float(settings.mermaid_mmdc_timeout_seconds),

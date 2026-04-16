@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.utils.mermaid_render import (
+    _kroki_diagram_options_for_light_theme,
     has_mermaid_fences,
     png_dimensions,
     render_mermaid_to_png,
@@ -54,6 +56,14 @@ def test_render_mermaid_off_returns_error() -> None:
     assert err is not None
 
 
+def test_kroki_diagram_options_flat_theme_variables() -> None:
+    o = _kroki_diagram_options_for_light_theme()
+    assert o["theme"] == "base"
+    assert o["theme-variables-background"] == "#ffffff"
+    assert o["theme-variables-main-bkg"] == "#ffffff"
+    assert o["theme-variables-primary-text-color"] == "#000000"
+
+
 def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(mermaid_renderer="kroki")
     mock_resp = MagicMock()
@@ -73,6 +83,39 @@ def test_render_kroki_success(monkeypatch: pytest.MonkeyPatch) -> None:
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
     assert out == _PNG_1X1
+    body = mock_client.post.call_args.kwargs["json"]
+    src = body["diagram_source"]
+    assert src.startswith("%%{init: ")
+    assert '"theme":"base"' in src
+    assert '"background":"#ffffff"' in src
+    assert "themeVariables" in src
+    opts = body["diagram_options"]
+    assert opts["theme"] == "base"
+    assert opts["theme-variables-background"] == "#ffffff"
+    assert opts["theme-variables-main-bkg"] == "#ffffff"
+
+
+def test_render_kroki_skips_init_when_user_has_init(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _settings(mermaid_renderer="kroki")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = _PNG_1X1
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = None
+    mock_client.post.return_value = mock_resp
+    monkeypatch.setattr(
+        "bmad_orchestrator.utils.mermaid_render.httpx.Client",
+        lambda **_k: mock_client,
+    )
+    user = '%%{init: {"theme": "dark"}}%%\ngraph TD; A-->B'
+    out, err = render_mermaid_to_png(s, user)
+    assert err is None
+    body = mock_client.post.call_args.kwargs["json"]
+    decoded = body["diagram_source"]
+    assert decoded.strip().startswith('%%{init: {"theme": "dark"}}%%')
+    assert decoded.count("%%{init:") == 1
+    assert body["diagram_options"]["theme"] == "base"
 
 
 def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,6 +124,12 @@ def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(mermaid_renderer="mmdc")
 
     def fake_run(cmd: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
+        assert "-b" in cmd and "white" in cmd
+        assert "-w" in cmd and cmd[cmd.index("-w") + 1] == "1600"
+        assert "-H" in cmd and cmd[cmd.index("-H") + 1] == "1200"
+        assert "-s" in cmd and cmd[cmd.index("-s") + 1] == "1.5"
+        assert "-p" in cmd
+        assert any("mmdc-puppeteer-ci.json" in part for part in cmd)
         out_idx = cmd.index("-o") + 1
         out_path = cmd[out_idx]
         with open(out_path, "wb") as f:
@@ -95,6 +144,32 @@ def test_render_mmdc_success(monkeypatch: pytest.MonkeyPatch) -> None:
     out, err = render_mermaid_to_png(s, "graph TD; A-->B")
     assert err is None
     assert out == _PNG_1X1
+
+
+def test_render_mmdc_writes_prefixed_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    s = _settings(mermaid_renderer="mmdc")
+    written: list[str] = []
+
+    def fake_run(cmd: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
+        in_idx = cmd.index("-i") + 1
+        in_path = cmd[in_idx]
+        written.append(Path(in_path).read_text(encoding="utf-8"))
+        out_idx = cmd.index("-o") + 1
+        out_path = cmd[out_idx]
+        Path(out_path).write_bytes(_PNG_1X1)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(
+        "bmad_orchestrator.utils.mermaid_render.subprocess.run",
+        fake_run,
+    )
+    out, err = render_mermaid_to_png(s, "graph TD; A-->B")
+    assert err is None
+    assert written and written[0].startswith("%%{init: ")
+    assert '"theme":"base"' in written[0]
+    assert '"background":"#ffffff"' in written[0]
 
 
 def test_render_kroki_bad_status(monkeypatch: pytest.MonkeyPatch) -> None:

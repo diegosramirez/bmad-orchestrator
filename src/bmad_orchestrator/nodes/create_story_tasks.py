@@ -13,7 +13,12 @@ from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
-from bmad_orchestrator.utils.jira_checklist_text import tasks_to_checklist_markdown
+from bmad_orchestrator.utils.jira_checklist_text import (
+    CHECKLIST_TASK_DESCRIPTION_MAX_LEN,
+    CHECKLIST_TASK_SUMMARY_MAX_LEN,
+    tasks_to_checklist_markdown,
+    truncate_checklist_field,
+)
 from bmad_orchestrator.utils.jira_template import (
     epic_has_discovery_section,
     load_template,
@@ -63,9 +68,38 @@ def _parse_acceptance_criteria(description: str) -> list[str]:
     return criteria
 
 
+_CHECKLIST_TASK_FIELD = (
+    "Each task is written to Jira Checklist Text as one short row "
+    "(bold title + em dash + detail). "
+    "Keep it scannable in about two lines in Jira: no paragraphs or exhaustive specs — "
+    "put depth in the story description and acceptance criteria instead."
+)
+
+
 class TaskItem(BaseModel):
-    summary: str
-    description: str
+    summary: str = Field(
+        description=(
+            f"Short bold label for the checklist row "
+            f"(max ~{CHECKLIST_TASK_SUMMARY_MAX_LEN} chars). "
+            f"{_CHECKLIST_TASK_FIELD}"
+        ),
+    )
+    description: str = Field(
+        description=(
+            f"Brief implementable detail (max ~{CHECKLIST_TASK_DESCRIPTION_MAX_LEN} chars). "
+            f"{_CHECKLIST_TASK_FIELD}"
+        ),
+    )
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def _truncate_task_summary(cls, v: Any) -> str:
+        return truncate_checklist_field(str(v or ""), CHECKLIST_TASK_SUMMARY_MAX_LEN)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _truncate_task_description(cls, v: Any) -> str:
+        return truncate_checklist_field(str(v or ""), CHECKLIST_TASK_DESCRIPTION_MAX_LEN)
 
 
 _JIRA_SUMMARY_MAX = 255
@@ -138,7 +172,7 @@ class PlannedStoryItem(BaseModel):
 
 
 class EpicStoryBreakdown(BaseModel):
-    """Multiple user stories covering one epic (Forge stories_breakdown mode)."""
+    """One or more user stories for one epic; prefer the minimum count (Forge stories_breakdown)."""
 
     stories: list[PlannedStoryItem] = Field(min_length=1)
 
@@ -159,7 +193,7 @@ def make_create_story_tasks_node(
     system_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
 
     def _stories_breakdown_create(state: OrchestratorState) -> dict[str, Any]:
-        """Create N stories under the epic from epic description (Discovery + Architect)."""
+        """Create stories under the epic (minimum necessary; LLM chooses count)."""
         team_id = state["team_id"]
         prompt = state["input_prompt"]
         epic_id = state.get("current_epic_id")
@@ -212,10 +246,24 @@ def make_create_story_tasks_node(
             )
         user_msg = (
             f"{ctx_block}"
-            "You are breaking down ONE Jira Epic into multiple USER STORIES for BMAD.\n\n"
+            "You are breaking down ONE Jira Epic into USER STORIES for BMAD.\n\n"
+            "Story count (critical):\n"
+            "- Produce the MINIMUM number of stories needed to cover the epic. Default to ONE "
+            "end-to-end vertical story when the epic describes a single shippable feature or "
+            "one user journey.\n"
+            "- Add a second or third story ONLY when the epic clearly contains separate user "
+            "outcomes, separate release slices, or dependencies that should not ship in one "
+            "increment. Do NOT inflate the count.\n"
+            "- Do NOT create separate stories for layers (e.g. service-only vs UI-only), for "
+            "'tests' alone, or one story per bullet in the epic unless each bullet is truly a "
+            "different deliverable.\n\n"
             "Rules:\n"
             "- Each story must be a vertical, end-to-end slice one agent can implement (not "
             "separate frontend-only / backend-only tickets).\n"
+            "- A single story must include every layer needed for that slice to be shippable "
+            "(e.g. UI + client service/data access + tests when applicable; add API/DB only when "
+            "the epic requires them). Do NOT split one user-facing feature into 'service story' "
+            "plus 'screen story'.\n"
             "- Stories must be mutually distinct; together they should cover the epic scope "
             "implied by Discovery and Epic Architect below.\n"
             "- Do NOT propose a story whose summary is essentially the same as an EXISTING "
@@ -223,6 +271,9 @@ def make_create_story_tasks_node(
             "- Each story: summary as 'As a ... I want ... so that ...', concrete description, "
             "at least 2 acceptance criteria.\n"
             "- Tasks are optional; include only when they add value (concrete sub-steps).\n"
+            "- If you include tasks: each is for Jira Checklist Text — a short bold title "
+            "(summary) plus one brief phrase (description); readable in ~2 lines in Jira, "
+            "not a paragraph. Put depth in the story description and ACs.\n"
             f"{format_note}"
             f"- Epic key: {epic_id}\n"
             f"- Team: {team_id}\n"
@@ -372,7 +423,9 @@ def make_create_story_tasks_node(
                 "- Summary must be a single 'As a ... I want ... so that ...' sentence\n"
                 f"{story_format_instruction}"
                 "- Acceptance criteria must be concrete and verifiable (INVEST criteria)\n"
-                "- Tasks must be specific, implementable steps (not vague categories)\n"
+                "- Tasks populate Jira Checklist Text: each has a short `summary` (bold title) and "
+                "a brief `description` (one short phrase). The whole row must stay scannable in "
+                "~2 lines — no multi-sentence paragraphs; details belong in the story and ACs.\n"
                 "- Dependencies must list any upstream systems, teams, or prerequisites\n"
                 "- QA scope must clearly describe what will be tested and how\n"
                 "- Definition of Done must be a concrete checklist the team can tick off\n"
@@ -409,7 +462,8 @@ def make_create_story_tasks_node(
                 "newly proposed story from `/bmad-create-story`.\n\n"
                 "Assess whether:\n"
                 "- Acceptance criteria are concrete, testable, and not vague.\n"
-                "- Tasks are specific, implementable engineering steps (no fuzzy labels).\n"
+                "- Tasks are specific, implementable engineering steps (no fuzzy labels) and each "
+                "is short enough for a compact Jira checklist line.\n"
                 "- Dependencies, QA scope, and Definition of Done are present and actionable.\n\n"
                 "Return a STRICT JSON object with:\n"
                 '{ "is_clear": true | false, "issues": ["..."] }\n\n'
@@ -454,7 +508,7 @@ def make_create_story_tasks_node(
                     "Return ONLY a corrected story in the same structured format "
                     "you used before, with:\n"
                     "- Concrete, testable acceptance criteria\n"
-                    "- Specific, implementable tasks\n"
+                    "- Specific, implementable tasks (each kept short for Jira Checklist Text)\n"
                     "- Clear dependencies, QA scope, and Definition of Done"
                 ),
                 schema=StoryDraft,

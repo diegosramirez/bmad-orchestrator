@@ -22,8 +22,11 @@ def _merge_adjacent_text_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, An
     return out
 
 
-def parse_inline_to_adf(text: str) -> list[dict[str, Any]]:
-    """Convert inline **bold** and *bold* to ADF text nodes with strong marks."""
+_MD_INLINE_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
+
+
+def _parse_double_star_bold_segments(text: str) -> list[dict[str, Any]]:
+    """Parse ``**bold**`` and single-asterisk strong; no markdown links."""
     if not text:
         return []
     nodes: list[dict[str, Any]] = []
@@ -37,6 +40,35 @@ def parse_inline_to_adf(text: str) -> list[dict[str, Any]]:
         pos = m.end()
     if pos < len(text):
         nodes.extend(_single_star_segments(text[pos:]))
+    return nodes
+
+
+def parse_inline_to_adf(text: str) -> list[dict[str, Any]]:
+    """Convert inline ``[label](url)``, ``**bold**``, and ``*bold*`` to ADF text nodes."""
+    if not text:
+        return []
+    nodes: list[dict[str, Any]] = []
+    pos = 0
+    for m in _MD_INLINE_LINK.finditer(text):
+        if m.start() > pos:
+            nodes.extend(_parse_double_star_bold_segments(text[pos : m.start()]))
+        href = (m.group(2) or "").strip()
+        label = m.group(1) or ""
+        inner_nodes = _parse_double_star_bold_segments(label)
+        if not inner_nodes:
+            nodes.append(
+                {"type": "text", "text": "", "marks": [{"type": "link", "attrs": {"href": href}}]},
+            )
+        else:
+            for inner in inner_nodes:
+                n2: dict[str, Any] = dict(inner)
+                marks = list(n2.get("marks") or [])
+                marks.append({"type": "link", "attrs": {"href": href}})
+                n2["marks"] = marks
+                nodes.append(n2)
+        pos = m.end()
+    if pos < len(text):
+        nodes.extend(_parse_double_star_bold_segments(text[pos:]))
     return _merge_adjacent_text_nodes(nodes)
 
 
@@ -221,7 +253,8 @@ def markdown_to_adf(markdown: str) -> dict[str, Any]:
     """
     Convert a subset of Markdown to Jira ADF ``{"type": "doc", ...}``.
 
-    Supports: ATX headings, paragraphs, bullet lists, fenced code blocks, ** / * bold,
+    Supports: ATX headings, paragraphs, bullet lists, fenced code blocks,
+    ``[label](url)`` inline links, ``**`` / ``*`` bold,
     GFM pipe tables (header row + ``---`` separator + body rows).
     """
     text = (markdown or "").replace("\r\n", "\n")
@@ -313,8 +346,13 @@ def _inline_from_adf(nodes: list[dict[str, Any]]) -> str:
         if ntype == "text":
             t = n.get("text") or ""
             marks = n.get("marks") or []
+            link_m = next((m for m in marks if m.get("type") == "link"), None)
+            href = (link_m.get("attrs") or {}).get("href") if isinstance(link_m, dict) else None
             is_strong = any(m.get("type") == "strong" for m in marks)
-            if is_strong:
+            if isinstance(href, str) and href:
+                inner = f"*{t}*" if is_strong else t
+                parts.append(f"[{inner}]({href})")
+            elif is_strong:
                 parts.append(f"*{t}*")
             else:
                 parts.append(t)

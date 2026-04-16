@@ -1,5 +1,5 @@
 /**
- * Build the /bmad command line parsed by the FastAPI webhook (shlex.split).
+ * Build the /bmad command line parsed by slack-worker jira-comment (shlex.split parity).
  * Replaces double quotes in guidance with apostrophes for safe parsing.
  *
  * @param {'refine' | 'retry'} mode

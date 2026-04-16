@@ -2,9 +2,29 @@ from __future__ import annotations
 
 from bmad_orchestrator.nodes.create_story_tasks import TaskItem
 from bmad_orchestrator.utils.jira_checklist_text import (
+    CHECKLIST_LINE_RENDER_MAX,
+    CHECKLIST_TASK_DESCRIPTION_MAX_LEN,
     mark_checklist_items_done,
     tasks_to_checklist_markdown,
+    truncate_checklist_field,
 )
+
+
+def test_truncate_checklist_field_adds_ellipsis() -> None:
+    long = "x" * 50
+    out = truncate_checklist_field(long, 10)
+    assert len(out) == 10
+    assert out.endswith("…")
+
+
+def test_tasks_to_checklist_markdown_truncates_long_description() -> None:
+    long_desc = "word " * 200
+    md = tasks_to_checklist_markdown([
+        TaskItem(summary="Title", description=long_desc),
+    ])
+    line = md.split("\n")[0]
+    assert len(line) <= CHECKLIST_LINE_RENDER_MAX
+    assert len(long_desc) > CHECKLIST_TASK_DESCRIPTION_MAX_LEN
 
 
 def test_tasks_to_checklist_markdown_formats_items() -> None:

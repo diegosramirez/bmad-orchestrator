@@ -22,7 +22,8 @@ const DEFAULT_SUCCESS_BODY =
   'GitHub Actions workflow was dispatched. Check the issue comment for progress.';
 
 /**
- * Story issues only: dispatch full workflow dev pipeline (detect → implementation → QA → PR).
+ * Story issues only: dispatch full workflow dev pipeline (detect → implementation → QA → review → PR).
+ * E2E (Playwright) is skipped in workflow inputs to keep runs lighter and more reliable.
  */
 export function StoryDevPanel() {
   const { issueKey, loading, error, issueTypeName, isStory } = useIssueMetadata();
@@ -138,7 +139,10 @@ export function StoryDevPanel() {
           </SectionMessage>
         )}
 
-        <Text>Implement code and open a GitHub pull request.</Text>
+        <Text>
+          Implement code and open a GitHub pull request. End-to-end (Playwright) tests are not run in
+          this pipeline.
+        </Text>
 
         <Inline space="space.150" alignBlock="center">
           <AgentActionButton

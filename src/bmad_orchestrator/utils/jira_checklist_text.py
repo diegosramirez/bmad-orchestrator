@@ -5,6 +5,24 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# One markdown line per item (required for mark-done regex). Keep each row readable as ~2 lines
+# in Jira: short bold title + brief detail.
+CHECKLIST_TASK_SUMMARY_MAX_LEN = 80
+CHECKLIST_TASK_DESCRIPTION_MAX_LEN = 220
+# Hard cap on the full rendered line (markdown + em dash + text).
+CHECKLIST_LINE_RENDER_MAX = 310
+
+
+def truncate_checklist_field(text: str, max_len: int) -> str:
+    """Trim a single field; add ellipsis when truncating."""
+    s = (text or "").strip()
+    if len(s) <= max_len:
+        return s
+    if max_len < 2:
+        return s[:max_len]
+    return f"{s[: max_len - 1].rstrip()}…"
+
+
 # BMAD / markdown checkbox: ``-`` or ``*`` bullet, ``[ ]`` / ``[x]``, ``**summary**``
 _CHECKLIST_LINE_CHECKBOX = re.compile(
     r"^([-*])\s+\[([ xX])\]\s+(\*\*)(.+?)(\*\*)(.*)$",
@@ -93,16 +111,28 @@ def tasks_to_checklist_markdown(tasks: list[Any]) -> str:
 
     No heading is prepended: Jira Checklist Text treats ``##`` lines as extra checklist rows
     (e.g. ``h2. ...``), so we emit only task lines.
+
+    Summaries and descriptions should already be length-limited (``TaskItem`` validators);
+    this function still truncates so Jira rows stay scannable.
     """
     lines: list[str] = []
     for t in tasks:
-        summary = str(getattr(t, "summary", "") or "").strip()
-        desc = str(getattr(t, "description", "") or "").strip()
-        desc_one_line = " ".join(desc.split())
+        summary = truncate_checklist_field(
+            str(getattr(t, "summary", "") or ""),
+            CHECKLIST_TASK_SUMMARY_MAX_LEN,
+        )
+        desc_raw = str(getattr(t, "description", "") or "").strip()
+        desc_one_line = truncate_checklist_field(
+            " ".join(desc_raw.split()),
+            CHECKLIST_TASK_DESCRIPTION_MAX_LEN,
+        )
         if not summary:
             continue
         if desc_one_line:
-            lines.append(f"* [ ] **{summary}** — {desc_one_line}")
+            line = f"* [ ] **{summary}** — {desc_one_line}"
         else:
-            lines.append(f"* [ ] **{summary}**")
+            line = f"* [ ] **{summary}**"
+        if len(line) > CHECKLIST_LINE_RENDER_MAX:
+            line = truncate_checklist_field(line, CHECKLIST_LINE_RENDER_MAX)
+        lines.append(line)
     return "\n".join(lines)

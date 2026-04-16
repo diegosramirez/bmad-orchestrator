@@ -1,7 +1,7 @@
 import { xcss } from '@forge/react';
 
 /**
- * Jira issue field for BMAD git branch (same as orchestrator webhook + JiraService).
+ * Jira issue field for BMAD git branch (same as slack-worker + JiraService).
  * Refine/retry need this value; it is usually set after a development run.
  */
 /** Match BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID / JiraService (default customfield_10145). */

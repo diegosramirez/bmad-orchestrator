@@ -7,6 +7,7 @@ from bmad_orchestrator.utils.jira_adf import (
     description_for_jira_api,
     description_from_jira_api,
     markdown_to_adf,
+    parse_inline_to_adf,
 )
 
 
@@ -34,6 +35,41 @@ def test_markdown_to_adf_bold_double_star() -> None:
     assert parts[0]["text"] == "Some "
     assert parts[1]["marks"][0]["type"] == "strong"
     assert parts[1]["text"] == "bold"
+
+
+def test_parse_inline_to_adf_markdown_link() -> None:
+    nodes = parse_inline_to_adf("[bmad/kan/x](https://github.com/o/r/tree/bmad/kan/x)")
+    assert len(nodes) == 1
+    assert nodes[0]["text"] == "bmad/kan/x"
+    marks = nodes[0]["marks"]
+    assert any(m.get("type") == "link" for m in marks)
+    link = next(m for m in marks if m.get("type") == "link")
+    assert link["attrs"]["href"] == "https://github.com/o/r/tree/bmad/kan/x"
+
+
+def test_markdown_to_adf_branch_pr_style_line() -> None:
+    md = "**Branch:** [feat/foo](https://github.com/org/repo/tree/feat/foo)\n**PR:** [PR #99](https://github.com/org/repo/pull/99)"
+    doc = markdown_to_adf(md)
+    assert len(doc["content"]) == 2
+    p0 = doc["content"][0]["content"]
+
+    def _has_link(n: dict) -> bool:
+        return "marks" in n and any(m.get("type") == "link" for m in n["marks"])
+
+    link_node = next(n for n in p0 if _has_link(n))
+    assert link_node["text"] == "feat/foo"
+    p1 = doc["content"][1]["content"]
+    pr_link = next(n for n in p1 if _has_link(n))
+    assert pr_link["text"] == "PR #99"
+
+
+def test_adf_to_markdown_preserves_inline_link() -> None:
+    """Link + label survive ADF round-trip; bold uses legacy single-* form in export."""
+    md = "**Branch:** [main](https://github.com/o/r/tree/main)"
+    doc = markdown_to_adf(md)
+    out = adf_to_markdown(doc)
+    assert "[main](https://github.com/o/r/tree/main)" in out
+    assert "Branch" in out
 
 
 def test_markdown_to_adf_fenced_mermaid() -> None:

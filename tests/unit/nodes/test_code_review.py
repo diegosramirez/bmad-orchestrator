@@ -282,6 +282,14 @@ def test_fail_with_state_diagnostic_without_test_failures(settings):
     assert "Test Failures" not in diag
 
 
+def test_router_skips_e2e_when_e2e_node_skipped(settings):
+    """Forge/story dev passes --skip-nodes e2e_*; route straight to commit."""
+    s = settings.model_copy(update={"skip_nodes": ["e2e_automation", "e2e_fix_loop"]})
+    router = make_review_router(s)
+    state = make_state(review_loop_count=0, code_review_issues=[])
+    assert router(state) == "e2e_skip"
+
+
 def test_router_skips_e2e_when_insufficient_time(settings):
     """When remaining time < 10 min, skip E2E and go to commit."""
     # Simulate a log started 25 min ago with a 30 min timeout
