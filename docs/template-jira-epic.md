@@ -23,4 +23,4 @@ After Discovery, the description usually starts with `# Discovery` and short `##
 ## Stories vs Epics
 
 - **Epic** = charter, boundaries, and outcome themes.
-- **Story** = smallest useful BMAD unit for implementation. Prefer a **vertical slice** when one story can ship end-to-end. The orchestrator may also emit **separate backend vs frontend stories** when work is parallelizable under an agreed API contract (frontend uses mocks until integration). Use the story template in `docs/template-jira.md`.
+- **Story** = smallest useful BMAD unit for implementation. **Generate Stories** defaults to **two** stories (backend API/data + frontend with mocks) when Discovery and Architecture describe both a client app and a server/API. Use a **single** story when the epic is one surface or a small cohesive change. Use the story template in `docs/template-jira.md`.

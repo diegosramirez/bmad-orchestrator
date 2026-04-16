@@ -172,10 +172,10 @@ class PlannedStoryItem(BaseModel):
 
 
 class EpicStoryBreakdown(BaseModel):
-    """One or more user stories for one epic; prefer the minimum count (Forge stories_breakdown).
+    """One or more user stories for one epic; minimum count unless UI+server scope (Forge).
 
-    Splits may include intentional backend vs frontend stories when work is parallelizable under
-    an API contract (see _stories_breakdown_create prompt).
+    When Discovery+Architecture describe both a client app and a server/API, prefer two stories
+    (backend + frontend under contract); see _stories_breakdown_create prompt.
     """
 
     stories: list[PlannedStoryItem] = Field(min_length=1)
@@ -197,7 +197,7 @@ def make_create_story_tasks_node(
     system_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
 
     def _stories_breakdown_create(state: OrchestratorState) -> dict[str, Any]:
-        """Create stories under the epic (minimum necessary; LLM may split BE/FE when parallel)."""
+        """Create stories under the epic; default to BE+FE pair when epic spans client and API."""
         team_id = state["team_id"]
         prompt = state["input_prompt"]
         epic_id = state.get("current_epic_id")
@@ -254,29 +254,32 @@ def make_create_story_tasks_node(
             "Story count (critical):\n"
             "- Produce the MINIMUM number of stories needed to cover the epic. Do NOT inflate "
             "the count.\n"
-            "- Default to ONE story when the epic describes a single cohesive deliverable, one "
-            "user journey, or one thread of value.\n"
-            "- Use TWO (or a few) stories ONLY when that reduces risk or enables parallel work "
-            "with clear boundaries, for example:\n"
-            "  - Separate user outcomes, release slices, or increments that should not ship "
-            "together.\n"
-            "  - Server/API work (persistence, business rules, auth guards, integrations) vs "
-            "client (UI, state, accessibility), when the teams can align on an API contract "
-            "(endpoints, request/response shapes, error codes) and the frontend can progress "
-            "using mocks, MSW, or fixtures that match that contract until integration.\n"
-            "- When you split backend vs frontend: reference the contract in the description "
-            "(or point to where it will live); use the dependencies field to state whether work "
-            "is blocked on merged API vs can proceed in parallel with mocks.\n"
+            "- **Client + server split (default when applicable):** If Discovery and Epic "
+            "Architect together describe BOTH (1) a client-side application or rich web/mobile UI "
+            "AND (2) a server/API, persistence, or backend that serves data to that client, "
+            "then default to **TWO** stories unless the epic text explicitly demands a single "
+            "vertical slice or a tiny scope that truly fits one story:\n"
+            "  - Story A (backend): REST/API, data model, persistence if any, business rules, "
+            "consistent JSON/error shapes; deliverable is testable without the UI (e.g. API "
+            "tests, OpenAPI or documented contract).\n"
+            "  - Story B (frontend): UI/UX, components, routing/state, accessibility; use mocks, "
+            "MSW, or fixtures matching the agreed contract until the real API is integrated.\n"
+            "  - Name the contract (endpoints, payloads, errors) in one story or the epic; use "
+            "dependencies to note parallel work with mocks vs blocked on merged API.\n"
+            "- **Single story:** Use ONE story when the epic is genuinely one surface (e.g. only "
+            "API change, only CLI, only content) or one small cohesive change with no separate "
+            "parallelizable client/server track.\n"
+            "- **More than two:** Add a third story only for clearly separate user outcomes, "
+            "release slices, or deliverables that must not ship together — not for extra layers.\n"
             "- Do NOT add stories for: tests-only work, trivial refactors, or one story per epic "
             "bullet unless each bullet is truly a distinct deliverable.\n\n"
             "Rules:\n"
-            "- Prefer one vertical, end-to-end story when a single slice can ship without "
-            "artificial splitting.\n"
-            "- When you do split BE vs FE, each story must still be concrete and completable: "
-            "backend stories own DB/API/server concerns; frontend stories use mock-backed HTTP "
-            "aligned to the agreed contract where the real API is not ready yet.\n"
-            "- Do NOT micro-split (e.g. one story per layer) without parallelizable boundaries "
-            "and a shared contract — that is worse than fewer, clearer stories.\n"
+            "- Do not merge unrelated backend and frontend work into one giant story when the "
+            "epic spans client + API — split as above unless the epic explicitly says otherwise.\n"
+            "- Backend and frontend stories must each be concrete and completable: backend owns "
+            "DB/API/server; frontend uses mock-backed HTTP aligned to the contract when needed.\n"
+            "- Do NOT micro-split beyond that (e.g. one story per minor layer) without clear "
+            "boundaries — fewer clearer stories beat noisy fragmentation.\n"
             "- Stories must be mutually distinct; together they should cover the epic scope "
             "implied by Discovery and Epic Architect below.\n"
             "- Do NOT propose a story whose summary is essentially the same as an EXISTING "
