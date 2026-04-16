@@ -9,6 +9,11 @@ export const BMAD_BRANCH_CUSTOM_FIELD =
   (typeof process !== 'undefined' && process.env?.BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID) ||
   'customfield_10079';
 
+/** Digistore / BMAD target repo (same as resolvers/jiraTargetRepo.js + JiraService). */
+export const BMAD_TARGET_REPO_CUSTOM_FIELD =
+  (typeof process !== 'undefined' && process.env?.BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID) ||
+  'customfield_10080';
+
 /** Human-readable labels for modals and fallbacks. */
 export const ACTION_LABELS = {
   discovery: 'Run Discovery',
