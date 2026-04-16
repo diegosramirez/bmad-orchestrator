@@ -13,7 +13,7 @@
 ## What to avoid in the Epic body
 
 - Exhaustive functional requirement lists (cap bullets; prefer “absolute needs”).
-- Implementation checklists (every service class, every route) — that invites horizontal “layer” tickets later.
+- Implementation checklists (every service class, every route) — that invites treating the epic as a backlog of layers. The epic itself should stay a charter; **Generate Stories** (`stories_breakdown`) may still produce a small number of **intentional** parallel stories (e.g. backend API vs frontend with mocks) when boundaries and a shared API contract are clear — that is not the same as pasting a layer-by-layer spec here.
 - Pasting a full architecture inventory; Epic Architect adds a **concise** `# Architecture` block separately.
 
 ## Shape in BMAD
@@ -23,4 +23,4 @@ After Discovery, the description usually starts with `# Discovery` and short `##
 ## Stories vs Epics
 
 - **Epic** = charter, boundaries, and outcome themes.
-- **Story** = vertical slice (deliver user-visible value with whatever layers apply); use the story template in `docs/template-jira.md`.
+- **Story** = smallest useful BMAD unit for implementation. Prefer a **vertical slice** when one story can ship end-to-end. The orchestrator may also emit **separate backend vs frontend stories** when work is parallelizable under an agreed API contract (frontend uses mocks until integration). Use the story template in `docs/template-jira.md`.
