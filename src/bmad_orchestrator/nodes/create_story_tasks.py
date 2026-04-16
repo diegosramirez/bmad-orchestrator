@@ -172,7 +172,7 @@ class PlannedStoryItem(BaseModel):
 
 
 class EpicStoryBreakdown(BaseModel):
-    """Multiple user stories covering one epic (Forge stories_breakdown mode)."""
+    """One or more user stories for one epic; prefer the minimum count (Forge stories_breakdown)."""
 
     stories: list[PlannedStoryItem] = Field(min_length=1)
 
@@ -193,7 +193,7 @@ def make_create_story_tasks_node(
     system_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
 
     def _stories_breakdown_create(state: OrchestratorState) -> dict[str, Any]:
-        """Create N stories under the epic from epic description (Discovery + Architect)."""
+        """Create stories under the epic (minimum necessary; LLM chooses count)."""
         team_id = state["team_id"]
         prompt = state["input_prompt"]
         epic_id = state.get("current_epic_id")
@@ -246,7 +246,17 @@ def make_create_story_tasks_node(
             )
         user_msg = (
             f"{ctx_block}"
-            "You are breaking down ONE Jira Epic into multiple USER STORIES for BMAD.\n\n"
+            "You are breaking down ONE Jira Epic into USER STORIES for BMAD.\n\n"
+            "Story count (critical):\n"
+            "- Produce the MINIMUM number of stories needed to cover the epic. Default to ONE "
+            "end-to-end vertical story when the epic describes a single shippable feature or "
+            "one user journey.\n"
+            "- Add a second or third story ONLY when the epic clearly contains separate user "
+            "outcomes, separate release slices, or dependencies that should not ship in one "
+            "increment. Do NOT inflate the count.\n"
+            "- Do NOT create separate stories for layers (e.g. service-only vs UI-only), for "
+            "'tests' alone, or one story per bullet in the epic unless each bullet is truly a "
+            "different deliverable.\n\n"
             "Rules:\n"
             "- Each story must be a vertical, end-to-end slice one agent can implement (not "
             "separate frontend-only / backend-only tickets).\n"
