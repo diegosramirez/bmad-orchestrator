@@ -23,4 +23,5 @@ After Discovery, the description usually starts with `# Discovery` and short `##
 ## Stories vs Epics
 
 - **Epic** = charter, boundaries, and outcome themes.
-- **Story** = smallest useful BMAD unit for implementation. **Generate Stories** defaults to **two** stories (backend API/data + frontend with mocks) when Discovery and Architecture describe both a client app and a server/API. Use a **single** story when the epic is one surface or a small cohesive change. Use the story template in `docs/template-jira.md`.
+- **Story** = smallest useful BMAD unit for implementation. **Generate Stories** defaults to **two** stories (**all server-side** work vs **all client-side** work, with mocks when needed) when Discovery and Architecture describe both a client app and backend/server concerns (API, DB, jobs, etc.). Use a **single** story when the epic is one surface or a small cohesive change. Use the story template in `docs/template-jira.md`.
+- If the product needs **your own** REST API, say so in Discovery or `# Architecture` (base path, stack). Say in **Out of scope** if using only a public third-party API as the data source — otherwise story generation may blur backend vs client-only integration.
