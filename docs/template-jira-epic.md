@@ -13,7 +13,7 @@
 ## What to avoid in the Epic body
 
 - Exhaustive functional requirement lists (cap bullets; prefer “absolute needs”).
-- Implementation checklists (every service class, every route) — that invites horizontal “layer” tickets later.
+- Implementation checklists (every service class, every route) — that invites treating the epic as a backlog of layers. The epic itself should stay a charter; **Generate Stories** (`stories_breakdown`) may still produce a small number of **intentional** parallel stories (e.g. backend API vs frontend with mocks) when boundaries and a shared API contract are clear — that is not the same as pasting a layer-by-layer spec here.
 - Pasting a full architecture inventory; Epic Architect adds a **concise** `# Architecture` block separately.
 
 ## Shape in BMAD
@@ -23,4 +23,6 @@ After Discovery, the description usually starts with `# Discovery` and short `##
 ## Stories vs Epics
 
 - **Epic** = charter, boundaries, and outcome themes.
-- **Story** = vertical slice (deliver user-visible value with whatever layers apply); use the story template in `docs/template-jira.md`.
+- **Story** = smallest useful BMAD unit for implementation. **Generate Stories** defaults to **two** stories (**all server-side** work vs **all client-side** work, with mocks when needed) when Discovery and Architecture describe both a client app and backend/server concerns (API, DB, jobs, etc.). Use a **single** story when the epic is one surface or a small cohesive change. Use the story template in `docs/template-jira.md`.
+- If the product needs **your own** REST API, say so in Discovery or `# Architecture` (base path, stack). Say in **Out of scope** if using only a public third-party API as the data source — otherwise story generation may blur backend vs client-only integration.
+- **Default for “database” / persistence:** Unless you explicitly say the data lives **only** in an external system (SaaS, public API as system of record, vendor DB), **Generate Stories** assumes a **team-managed / internal** database or store. Name the external case clearly if that is what you want.

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useProductContext } from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { TARGET_REPO_REQUIRED_MESSAGE_EPIC } from '../../bmadTargetRepoMessages';
 import { ACTION_LABELS, AGENT_INVOKE_CONFIG } from '../constants';
+import { fetchTargetRepoSlugForIssue } from '../utils/targetRepo';
 
 const DEFAULT_SUCCESS_BODY =
   'GitHub Actions workflow was dispatched. Check the issue comment for progress.';
@@ -41,6 +43,16 @@ export function useEpicAiPanel() {
       return;
     }
 
+    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    if (!slug) {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: TARGET_REPO_REQUIRED_MESSAGE_EPIC,
+      });
+      return;
+    }
+
     const result = await invoke(config.invoke, { issueKey });
     if (result?.ok) {
       setBanner({
@@ -56,6 +68,12 @@ export function useEpicAiPanel() {
           result?.message ||
           'A workflow orchestrator run is already in progress for this issue. Wait for it to finish.',
       });
+    } else if (result?.code === 'missing_target_repo') {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: result?.message || TARGET_REPO_REQUIRED_MESSAGE_EPIC,
+      });
     } else {
       setBanner({
         appearance: 'error',
@@ -65,7 +83,34 @@ export function useEpicAiPanel() {
     }
   };
 
-  const openConfirm = (action) => {
+  const openConfirm = async (action) => {
+    setBanner(null);
+    const config = AGENT_INVOKE_CONFIG[action];
+    if (!config) {
+      setBanner({
+        appearance: 'info',
+        title: 'Not available yet',
+        body: `${ACTION_LABELS[action] ?? action} is not wired in this version.`,
+      });
+      return;
+    }
+    if (!issueKey) {
+      setBanner({
+        appearance: 'error',
+        title: 'No issue context',
+        body: config.noIssueBody,
+      });
+      return;
+    }
+    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    if (!slug) {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: TARGET_REPO_REQUIRED_MESSAGE_EPIC,
+      });
+      return;
+    }
     setSelectedAgent(action);
     setPendingAction(action);
     setConfirmOpen(true);

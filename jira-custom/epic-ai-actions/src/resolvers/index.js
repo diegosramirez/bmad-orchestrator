@@ -1,4 +1,8 @@
 import Resolver from '@forge/resolver';
+import {
+  TARGET_REPO_REQUIRED_MESSAGE_EPIC,
+  TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
+} from '../bmadTargetRepoMessages';
 import { fetchTargetRepoSlugFromIssue } from './jiraTargetRepo';
 
 const resolver = new Resolver();
@@ -16,7 +20,7 @@ function forgeWebhookConfig() {
 }
 
 /**
- * JSON body for /bmad/*-run: always issue_key; target_repo from customfield_10112 when set.
+ * JSON body for /bmad/*-run: always issue_key; target_repo from the configured custom field when set.
  */
 async function buildForgePanelPayload(issueKey) {
   const slug = await fetchTargetRepoSlugFromIssue(issueKey);
@@ -69,10 +73,29 @@ async function postBmadEndpoint(path, issueKey, failureLabel) {
   return { ok: true, ...data };
 }
 
+/**
+ * Block panel actions when the Digistore / BMAD target repository field is empty.
+ */
+async function requireTargetRepoOrError(issueKey, message) {
+  const slug = await fetchTargetRepoSlugFromIssue(issueKey);
+  if (!slug) {
+    return {
+      ok: false,
+      code: 'missing_target_repo',
+      message,
+    };
+  }
+  return null;
+}
+
 resolver.define('runDiscovery', async (req) => {
   const issueKey = req.payload?.issueKey;
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
+  }
+  const missing = await requireTargetRepoOrError(issueKey, TARGET_REPO_REQUIRED_MESSAGE_EPIC);
+  if (missing) {
+    return missing;
   }
   return postBmadEndpoint('/bmad/discovery-run', issueKey, 'Discovery request failed');
 });
@@ -82,6 +105,10 @@ resolver.define('runArchitect', async (req) => {
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
   }
+  const missing = await requireTargetRepoOrError(issueKey, TARGET_REPO_REQUIRED_MESSAGE_EPIC);
+  if (missing) {
+    return missing;
+  }
   return postBmadEndpoint('/bmad/architect-run', issueKey, 'Architect request failed');
 });
 
@@ -90,6 +117,10 @@ resolver.define('runStories', async (req) => {
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
   }
+  const missing = await requireTargetRepoOrError(issueKey, TARGET_REPO_REQUIRED_MESSAGE_EPIC);
+  if (missing) {
+    return missing;
+  }
   return postBmadEndpoint('/bmad/stories-run', issueKey, 'Stories request failed');
 });
 
@@ -97,6 +128,10 @@ resolver.define('runDevelopment', async (req) => {
   const issueKey = req.payload?.issueKey;
   if (!issueKey || typeof issueKey !== 'string') {
     return { ok: false, message: 'Missing issueKey' };
+  }
+  const missing = await requireTargetRepoOrError(issueKey, TARGET_REPO_REQUIRED_MESSAGE_ISSUE);
+  if (missing) {
+    return missing;
   }
   return postBmadEndpoint('/bmad/dev-run', issueKey, 'Run development request failed');
 });

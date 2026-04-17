@@ -10,9 +10,11 @@ import {
   xcss,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { TARGET_REPO_REQUIRED_MESSAGE_ISSUE } from '../bmadTargetRepoMessages';
 import { AgentActionButton } from './components/AgentActionButton';
 import { ConfirmActionModal } from './components/ConfirmActionModal';
 import { useIssueMetadata } from './hooks/useIssueMetadata';
+import { fetchTargetRepoSlugForIssue } from './utils/targetRepo';
 
 const HEADER_BOX_STYLES = xcss({
   marginBlockStart: 'space.300',
@@ -48,6 +50,15 @@ export function StoryDevPanel() {
       });
       return;
     }
+    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    if (!slug) {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
+      });
+      return;
+    }
     const result = await invoke('runDevelopment', { issueKey });
     if (result?.ok) {
       setBanner({
@@ -63,6 +74,12 @@ export function StoryDevPanel() {
           result?.message ||
           'A workflow orchestrator run is already in progress for this issue. Wait for it to finish.',
       });
+    } else if (result?.code === 'missing_target_repo') {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: result?.message || TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
+      });
     } else {
       setBanner({
         appearance: 'error',
@@ -70,6 +87,20 @@ export function StoryDevPanel() {
         body: result?.message || 'Unknown error',
       });
     }
+  };
+
+  const openDevConfirm = async () => {
+    setBanner(null);
+    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    if (!slug) {
+      setBanner({
+        appearance: 'warning',
+        title: 'Repository required',
+        body: TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
+      });
+      return;
+    }
+    setConfirmOpen(true);
   };
 
   if (loading) {
@@ -140,8 +171,7 @@ export function StoryDevPanel() {
         )}
 
         <Text>
-          Implement code and open a GitHub pull request. End-to-end (Playwright) tests are not run in
-          this pipeline.
+          Implement code and open a GitHub pull request. 
         </Text>
 
         <Inline space="space.150" alignBlock="center">
@@ -149,7 +179,7 @@ export function StoryDevPanel() {
             label="Run development"
             iconGlyph="branch"
             selected={confirmOpen}
-            onPress={() => setConfirmOpen(true)}
+            onPress={openDevConfirm}
           />
         </Inline>
 
