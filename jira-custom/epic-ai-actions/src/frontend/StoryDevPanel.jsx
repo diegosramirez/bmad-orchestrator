@@ -171,8 +171,7 @@ export function StoryDevPanel() {
         )}
 
         <Text>
-          Implement code and open a GitHub pull request. End-to-end (Playwright) tests are not run in
-          this pipeline.
+          Implement code and open a GitHub pull request. 
         </Text>
 
         <Inline space="space.150" alignBlock="center">
