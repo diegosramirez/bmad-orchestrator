@@ -22,7 +22,7 @@ const ACTIVE_RUN_STATUSES = new Set([
 const GITHUB_ERROR_BODY_MAX = 4000;
 
 export const FORGE_RUN_IN_PROGRESS_MESSAGE =
-  "A BMAD orchestrator run is already in progress for this issue. " +
+  "A workflow orchestrator run is already in progress for this issue. " +
   "Wait for it to finish before starting another.";
 
 export const BMAD_COMMENT_USAGE =
