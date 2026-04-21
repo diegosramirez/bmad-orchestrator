@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -147,9 +147,50 @@ def _normalize_story_summary(summary: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-class PlannedStoryItem(BaseModel):
-    """One story in an epic breakdown batch (tasks optional)."""
+class ContractPlannedStory(BaseModel):
+    """Story A: shared interface / contract — no Jira checklist tasks."""
 
+    role: Literal["contract"]
+    summary: str = Field(max_length=_JIRA_SUMMARY_MAX)
+    description: str
+    acceptance_criteria: list[str] = Field(min_length=2)
+    spec_kind: str = Field(
+        description=(
+            "e.g. OpenAPI 3.1, AsyncAPI, GraphQL SDL, protobuf, JSON Schema, event schema"
+        ),
+    )
+    interface_deliverables: list[str] = Field(
+        min_length=1,
+        description="Concrete paths or locations for the spec (docs/, packages/contracts/, etc.)",
+    )
+    error_and_auth_expectations: str = Field(
+        default="",
+        description="Standard errors, auth, idempotency, versioning expectations if applicable.",
+    )
+    example_fixtures_scope: str = Field(
+        default="",
+        description="Shared fixtures/examples that align FE/BE without shipping product code.",
+    )
+    out_of_scope_explicit: list[str] = Field(
+        min_length=2,
+        description="Explicit exclusions: no SPA, no new HTTP handlers, no migrations, etc.",
+    )
+
+    @field_validator(
+        "acceptance_criteria",
+        "interface_deliverables",
+        "out_of_scope_explicit",
+        mode="before",
+    )
+    @classmethod
+    def _parse_stringified_json(cls, v: Any) -> Any:
+        return parse_stringified_list(v)
+
+
+class ImplementationPlannedStory(BaseModel):
+    """Frontend or backend story in an epic breakdown batch (optional checklist tasks)."""
+
+    role: Literal["frontend", "backend"]
     summary: str = Field(max_length=_JIRA_SUMMARY_MAX)
     description: str
     acceptance_criteria: list[str] = Field(min_length=2)
@@ -171,6 +212,36 @@ class PlannedStoryItem(BaseModel):
         return parse_stringified_list(v)
 
 
+PlannedStoryItem = ImplementationPlannedStory
+
+
+def _contract_planned_story_description(contract: ContractPlannedStory) -> str:
+    """Build Jira description body for a contract story from structured fields."""
+    sections: list[str] = [contract.description.strip()]
+    sections.append("**Spec kind**\n" + contract.spec_kind.strip())
+    sections.append(
+        "**Interface deliverables**\n"
+        + "\n".join(f"- {d}" for d in contract.interface_deliverables),
+    )
+    err = contract.error_and_auth_expectations.strip()
+    if err:
+        sections.append("**Errors / auth / versioning**\n" + err)
+    fixtures = contract.example_fixtures_scope.strip()
+    if fixtures:
+        sections.append("**Example fixtures scope**\n" + fixtures)
+    sections.append(
+        "**Explicitly out of scope**\n"
+        + "\n".join(f"- {x}" for x in contract.out_of_scope_explicit),
+    )
+    return "\n\n".join(sections)
+
+
+PlannedBreakdownStory = Annotated[
+    ContractPlannedStory | ImplementationPlannedStory,
+    Field(discriminator="role"),
+]
+
+
 class EpicStoryBreakdown(BaseModel):
     """One or more user stories for one epic; minimum count unless UI+server scope (Forge).
 
@@ -178,7 +249,7 @@ class EpicStoryBreakdown(BaseModel):
     stories (shared API contract, then all frontend vs all backend); see _stories_breakdown_create.
     """
 
-    stories: list[PlannedStoryItem] = Field(min_length=1)
+    stories: list[PlannedBreakdownStory] = Field(min_length=1)
 
     @field_validator("stories", mode="before")
     @classmethod
@@ -350,10 +421,24 @@ def make_create_story_tasks_node(
             "story summary listed below (same intent).\n"
             "- Each story: summary as 'As a ... I want ... so that ...', concrete description, "
             "at least 2 acceptance criteria.\n"
-            "- Tasks are optional; include only when they add value (concrete sub-steps).\n"
-            "- If you include tasks: each is for Jira Checklist Text — a short bold title "
-            "(summary) plus one brief phrase (description); readable in ~2 lines in Jira, "
-            "not a paragraph. Put depth in the story description and ACs.\n"
+            "- **JSON shape (required):** Every object in the `stories` array MUST include "
+            '`"role"`: `"contract"` | `"frontend"` | `"backend"`.\n'
+            "  - **Story A (contracts / interface):** set `\"role\": \"contract\"`. Include "
+            "`summary`, `description`, `acceptance_criteria` (min 2), `spec_kind` (e.g. OpenAPI "
+            "3.1), `interface_deliverables` (non-empty list of concrete spec paths/locations), "
+            "`error_and_auth_expectations` (string, may be empty), `example_fixtures_scope` "
+            "(string, may be empty), `out_of_scope_explicit` (min 2 bullets: no SPA, no server "
+            "runtime, etc.). Do **NOT** include a `tasks` field — contract stories never use "
+            "Jira Checklist Text.\n"
+            "  - **Story B (frontend) and Story C (backend):** set `\"role\": \"frontend\"` or "
+            '`"role\": \"backend\"` respectively. Same fields as before: `summary`, '
+            "`description`, `acceptance_criteria`, optional `tasks`, `dependencies`, `qa_scope`, "
+            "`definition_of_done`.\n"
+            "- For **frontend** and **backend** only: `tasks` are optional; include only when "
+            "they add value (concrete sub-steps).\n"
+            "- If you include tasks on a frontend/backend story: each is for Jira Checklist Text "
+            "— a short bold title (summary) plus one brief phrase (description); readable in "
+            "~2 lines in Jira, not a paragraph. Put depth in the story description and ACs.\n"
             f"{format_note}"
             f"- Epic key: {epic_id}\n"
             f"- Team: {team_id}\n"
@@ -362,7 +447,9 @@ def make_create_story_tasks_node(
             f"{existing_summaries_text or '(none)'}\n\n"
             "## Epic description (source of truth — includes Discovery and Epic Architect):\n"
             f"{description[:24000]}\n\n"
-            "Return JSON matching the EpicStoryBreakdown schema (field: stories array)."
+            "Return JSON matching the EpicStoryBreakdown schema: a `stories` array where each "
+            "element includes `role` and all fields required for that role (`contract` vs "
+            "`frontend`/`backend`), as described above."
         )
         if jira_template:
             user_msg += f"\n\n## Jira template reference:\n{jira_template[:4000]}"
@@ -389,7 +476,10 @@ def make_create_story_tasks_node(
                 continue
             seen_in_batch.add(norm)
 
-            body = normalise_jira_headings(planned.description)
+            if isinstance(planned, ContractPlannedStory):
+                body = normalise_jira_headings(_contract_planned_story_description(planned))
+            else:
+                body = normalise_jira_headings(planned.description)
             story = jira.create_story(
                 epic_key=epic_id,
                 summary=planned.summary[:_JIRA_SUMMARY_MAX],
@@ -402,7 +492,7 @@ def make_create_story_tasks_node(
             created_keys.append(key)
             existing_keys.add(norm)
 
-            if planned.tasks:
+            if isinstance(planned, ImplementationPlannedStory) and planned.tasks:
                 jira.set_story_checklist_text(
                     key,
                     tasks_to_checklist_markdown(planned.tasks),

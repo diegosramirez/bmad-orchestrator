@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 
 from bmad_orchestrator.nodes.create_story_tasks import (
+    ContractPlannedStory,
     EpicStoryBreakdown,
-    PlannedStoryItem,
+    ImplementationPlannedStory,
     StoryDraft,
     TaskItem,
     make_create_story_tasks_node,
@@ -123,13 +124,15 @@ def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_cl
     mock_jira.list_stories_under_epic.return_value = []
     breakdown = EpicStoryBreakdown(
         stories=[
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="frontend",
                 summary="As a user I want feature alpha so that I succeed",
                 description="**Hypothesis**\nH1\n\n**Intervention**\nI1",
                 acceptance_criteria=["AC a1", "AC a2"],
                 tasks=[],
             ),
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="backend",
                 summary="As a user I want feature beta so that I win",
                 description="**Hypothesis**\nH2\n\n**Intervention**\nI2",
                 acceptance_criteria=["AC b1", "AC b2"],
@@ -169,7 +172,8 @@ def test_stories_breakdown_prompt_three_layer_pattern(settings, mock_jira, mock_
     mock_jira.list_stories_under_epic.return_value = []
     breakdown = EpicStoryBreakdown(
         stories=[
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="frontend",
                 summary="As a dev I want API contracts so that FE and BE align",
                 description="**Hypothesis**\nH\n\n**Intervention**\nI",
                 acceptance_criteria=["AC 1", "AC 2"],
@@ -199,6 +203,67 @@ def test_stories_breakdown_prompt_three_layer_pattern(settings, mock_jira, mock_
     assert "**Intervention**, **Mechanics**, and **Implementation Notes**" in user_message
     assert "src/app/" in user_message
     assert "Do **not** paste client file trees" in user_message
+    assert '"role": "contract"' in user_message
+    assert '"role": "frontend"' in user_message or '"role": "backend"' in user_message
+
+
+def test_stories_breakdown_contract_skips_checklist_impl_keeps_checklist(
+    settings,
+    mock_jira,
+    mock_claude,
+):
+    """Contract story never gets Checklist Text; frontend/backend still can."""
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    mock_jira.get_epic.return_value = _epic_with_discovery()
+    mock_jira.list_stories_under_epic.return_value = []
+    breakdown = EpicStoryBreakdown(
+        stories=[
+            ContractPlannedStory(
+                role="contract",
+                summary="As a dev I want a shared API spec so that FE and BE align",
+                description="**Hypothesis**\nDefine OpenAPI.\n\n**Intervention**\nPR to docs.",
+                acceptance_criteria=["Spec merged", "Review approved"],
+                spec_kind="OpenAPI 3.1",
+                interface_deliverables=["docs/api/openapi.yaml"],
+                error_and_auth_expectations="401/403 JSON body per spec",
+                example_fixtures_scope="examples/*.json for happy path",
+                out_of_scope_explicit=[
+                    "No SPA or UI components",
+                    "No server HTTP handlers or DB migrations",
+                ],
+            ),
+            ImplementationPlannedStory(
+                role="backend",
+                summary="As a dev I want the API implemented so that clients work",
+                description="**Hypothesis**\nH\n\n**Intervention**\nI",
+                acceptance_criteria=["AC 1", "AC 2"],
+                tasks=[
+                    TaskItem(summary="Add handler", description="POST /widgets"),
+                ],
+            ),
+        ]
+    )
+    mock_claude.complete_structured.return_value = breakdown
+    mock_jira.create_story.side_effect = [
+        {"key": "TEST-10", "summary": breakdown.stories[0].summary},
+        {"key": "TEST-11", "summary": breakdown.stories[1].summary},
+    ]
+    mock_jira.get_story.return_value = {
+        "key": "TEST-11",
+        "description": "**Acceptance Criteria:**\n- AC 1\n- AC 2\n",
+    }
+
+    node = make_create_story_tasks_node(mock_jira, mock_claude, sb)
+    node(make_state(current_epic_id="TEST-1", team_id="growth"))
+
+    assert mock_jira.set_story_checklist_text.call_count == 1
+    checklist_key = mock_jira.set_story_checklist_text.call_args[0][0]
+    assert checklist_key == "TEST-11"
+
+    first_desc = mock_jira.create_story.call_args_list[0].kwargs["description"]
+    assert "**Spec kind**" in first_desc
+    assert "**Interface deliverables**" in first_desc
+    assert "openapi.yaml" in first_desc
 
 
 def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):
@@ -213,7 +278,8 @@ def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jir
     mock_jira.get_epic_customfield_10112_value.return_value = {"value": "shared-repo"}
     breakdown = EpicStoryBreakdown(
         stories=[
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="backend",
                 summary="As a user I want one story so that it works",
                 description="**Hypothesis**\nH\n\n**Intervention**\nI",
                 acceptance_criteria=["AC 1", "AC 2"],
@@ -247,13 +313,15 @@ def test_stories_breakdown_skips_duplicate_against_existing(settings, mock_jira,
     ]
     breakdown = EpicStoryBreakdown(
         stories=[
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="frontend",
                 summary="As a user I want feature alpha so that I succeed",
                 description="Dup",
                 acceptance_criteria=["AC 1", "AC 2"],
                 tasks=[],
             ),
-            PlannedStoryItem(
+            ImplementationPlannedStory(
+                role="backend",
                 summary="As a user I want only new work so that it ships",
                 description="**Hypothesis**\nH\n\n**Intervention**\nI",
                 acceptance_criteria=["AC n1", "AC n2"],
