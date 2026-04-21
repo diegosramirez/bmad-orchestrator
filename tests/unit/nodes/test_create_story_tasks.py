@@ -162,6 +162,42 @@ def test_stories_breakdown_creates_multiple_stories(settings, mock_jira, mock_cl
     assert "Sub 1" in mock_jira.set_story_checklist_text.call_args[0][1]
 
 
+def test_stories_breakdown_prompt_three_layer_pattern(settings, mock_jira, mock_claude):
+    """user_message defaults to THREE stories: contracts, frontend, backend."""
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    mock_jira.get_epic.return_value = _epic_with_discovery()
+    mock_jira.list_stories_under_epic.return_value = []
+    breakdown = EpicStoryBreakdown(
+        stories=[
+            PlannedStoryItem(
+                summary="As a dev I want API contracts so that FE and BE align",
+                description="**Hypothesis**\nH\n\n**Intervention**\nI",
+                acceptance_criteria=["AC 1", "AC 2"],
+                tasks=[],
+            ),
+        ]
+    )
+    mock_claude.complete_structured.return_value = breakdown
+    mock_jira.create_story.return_value = {
+        "key": "TEST-10",
+        "summary": breakdown.stories[0].summary,
+    }
+    mock_jira.get_story.return_value = {
+        "key": "TEST-10",
+        "description": "**Acceptance Criteria:**\n- AC 1\n- AC 2\n",
+    }
+
+    node = make_create_story_tasks_node(mock_jira, mock_claude, sb)
+    node(make_state(current_epic_id="TEST-1", team_id="growth"))
+
+    assert mock_claude.complete_structured.call_count == 1
+    user_message = mock_claude.complete_structured.call_args.kwargs["user_message"]
+    assert "default to **THREE** stories" in user_message
+    assert "contracts / interface" in user_message
+    assert "Story B (**frontend**)" in user_message
+    assert "Story C (**backend**)" in user_message
+
+
 def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):
     sb = settings.model_copy(
         update={
