@@ -62,15 +62,17 @@ async function postBmadEndpoint(path, issueKey, failureLabel) {
   }
 
   if (!res.ok) {
+    // Spread data first so body fields (message, dispatch_*) are preserved, then force ok:false —
+    // Vercel may return JSON with ok:true in the body alongside HTTP 500.
     return {
+      ...data,
       ok: false,
       status: res.status,
       message: data.message || res.statusText || failureLabel,
-      ...data,
     };
   }
 
-  return { ok: true, ...data };
+  return { ...data, ok: true };
 }
 
 /**
