@@ -196,6 +196,9 @@ def test_stories_breakdown_prompt_three_layer_pattern(settings, mock_jira, mock_
     assert "contracts / interface" in user_message
     assert "Story B (**frontend**)" in user_message
     assert "Story C (**backend**)" in user_message
+    assert "**Intervention**, **Mechanics**, and **Implementation Notes**" in user_message
+    assert "src/app/" in user_message
+    assert "Do **not** paste client file trees" in user_message
 
 
 def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):
