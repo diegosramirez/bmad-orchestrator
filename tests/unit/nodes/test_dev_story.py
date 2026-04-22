@@ -309,3 +309,13 @@ def test_dev_story_passes_no_mcp_servers_when_disabled(
     node(make_state())
     kwargs = mock_agent_service.run_agent.call_args.kwargs
     assert kwargs["mcp_servers"] is None
+
+
+def test_dev_story_includes_ux_handoff_block(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
+    node(make_state(ux_handoff="## UX design handoff\n\nBuild the login form."))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "UX design handoff" in prompt
+    assert "Build the login form." in prompt

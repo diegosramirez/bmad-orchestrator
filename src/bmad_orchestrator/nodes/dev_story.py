@@ -261,6 +261,7 @@ def make_dev_story_node(
         test_commands = state.get("test_commands") or []
         lint_commands = state.get("lint_commands") or []
         figma_url = state.get("figma_url") or extract_figma_url(story_content)
+        ux_handoff = state.get("ux_handoff") or ""
 
         now = datetime.now(UTC).isoformat()
         cwd_path = str(_resolve_cwd(settings, state))
@@ -306,6 +307,8 @@ def make_dev_story_node(
                 "color tokens from the design rather than guessing.\n\n"
             )
 
+        ux_handoff_block = f"{ux_handoff}\n" if ux_handoff.strip() else ""
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
@@ -313,6 +316,7 @@ def make_dev_story_node(
             f"{obligations_block}"
             f"{checklist_block}"
             f"{figma_block}"
+            f"{ux_handoff_block}"
             f"Implement the following user story.\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"

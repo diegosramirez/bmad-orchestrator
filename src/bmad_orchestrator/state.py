@@ -63,6 +63,8 @@ class OrchestratorState(TypedDict):
 
     # ── Figma design reference (extracted from story content when present) ────
     figma_url: str | None
+    # Markdown handoff produced by the UX designer node when Figma MCP is enabled.
+    ux_handoff: str | None
 
     # ── Party mode outputs ────────────────────────────────────────────────────
     architect_output: str | None
