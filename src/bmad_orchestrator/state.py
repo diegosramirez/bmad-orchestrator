@@ -61,6 +61,9 @@ class OrchestratorState(TypedDict):
     qa_scope: list[str] | None
     definition_of_done: list[str] | None
 
+    # ── Figma design reference (extracted from story content when present) ────
+    figma_url: str | None
+
     # ── Party mode outputs ────────────────────────────────────────────────────
     architect_output: str | None
     developer_output: str | None

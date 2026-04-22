@@ -46,6 +46,7 @@ from bmad_orchestrator.services.service_factory import (
     create_slack_service,
 )
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.figma_url import extract_figma_url
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import (
     gather_project_context,
@@ -751,6 +752,7 @@ def make_initial_state(
         dependencies=None,
         qa_scope=None,
         definition_of_done=None,
+        figma_url=extract_figma_url(story_content),
         architect_output=None,
         developer_output=None,
         base_branch=None,

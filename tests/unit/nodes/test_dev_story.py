@@ -253,3 +253,59 @@ def test_dev_story_skips_checklist_sync_when_empty(
     node(make_state(current_story_id="PROJ-1"))
     mock_claude.complete_structured.assert_not_called()
     mock_jira.set_story_checklist_text.assert_not_called()
+
+
+def test_dev_story_injects_figma_block_when_enabled(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
+    node(make_state(figma_url="https://www.figma.com/design/abc/Home"))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Figma design reference" in prompt
+    assert "https://www.figma.com/design/abc/Home" in prompt
+    assert "mcp__figma__" in prompt
+
+
+def test_dev_story_falls_back_to_story_content_for_figma_url(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
+    node(
+        make_state(
+            story_content="See https://www.figma.com/file/xyz for the layout",
+        )
+    )
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "https://www.figma.com/file/xyz" in prompt
+
+
+def test_dev_story_omits_figma_block_when_mcp_disabled(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
+    node(make_state(figma_url="https://www.figma.com/design/abc/Home"))
+    prompt = mock_agent_service.run_agent.call_args.args[0]
+    assert "Figma design reference" not in prompt
+
+
+def test_dev_story_passes_figma_mcp_servers_when_enabled(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
+    node(make_state())
+    kwargs = mock_agent_service.run_agent.call_args.kwargs
+    assert kwargs["mcp_servers"] == {
+        "figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}
+    }
+
+
+def test_dev_story_passes_no_mcp_servers_when_disabled(
+    settings, mock_agent_service, mock_claude, mock_jira
+):
+    node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, settings)
+    node(make_state())
+    kwargs = mock_agent_service.run_agent.call_args.kwargs
+    assert kwargs["mcp_servers"] is None
