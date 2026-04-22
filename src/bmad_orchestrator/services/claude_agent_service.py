@@ -76,6 +76,7 @@ class ClaudeAgentService:
         cwd: str | Path | None = None,
         allowed_tools: list[str] | None = None,
         disallowed_tools: list[str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
         output_format_schema: type[BaseModel] | None = None,
         max_turns: int = _DEFAULT_MAX_TURNS,
         effort: str = _DEFAULT_EFFORT,
@@ -99,6 +100,7 @@ class ClaudeAgentService:
                     cwd=cwd,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
+                    mcp_servers=mcp_servers,
                     output_format_schema=output_format_schema,
                     max_turns=max_turns,
                     effort=effort,
@@ -132,6 +134,7 @@ class ClaudeAgentService:
         max_turns: int,
         effort: str = _DEFAULT_EFFORT,
         max_budget_usd: float = _DEFAULT_MAX_BUDGET_USD,
+        mcp_servers: dict[str, Any] | None = None,
         on_event: Callable[[str], None] | None = None,
     ) -> AgentResult:
         agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
@@ -146,15 +149,23 @@ class ClaudeAgentService:
                 "schema": output_format_schema.model_json_schema(),
             }
 
+        final_allowed_tools = list(allowed_tools or _DEFAULT_TOOLS)
+        if mcp_servers:
+            for server_name in mcp_servers:
+                prefix = f"mcp__{server_name}"
+                if prefix not in final_allowed_tools:
+                    final_allowed_tools.append(prefix)
+
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             model=self._model_for(agent_id),
             permission_mode="bypassPermissions",
-            allowed_tools=allowed_tools or _DEFAULT_TOOLS,
+            allowed_tools=final_allowed_tools,
             disallowed_tools=(
                 disallowed_tools if disallowed_tools is not None
                 else _DEFAULT_DISALLOWED_TOOLS
             ),
+            mcp_servers=mcp_servers or {},
             cwd=str(cwd) if cwd else None,
             max_turns=max_turns,
             output_format=output_format,
@@ -171,7 +182,8 @@ class ClaudeAgentService:
             agent=agent_name,
             model=self._model_for(agent_id),
             max_turns=max_turns,
-            tools=allowed_tools or _DEFAULT_TOOLS,
+            tools=final_allowed_tools,
+            mcp_servers=list(mcp_servers.keys()) if mcp_servers else [],
         )
 
         result_msg: ResultMessage | None = None

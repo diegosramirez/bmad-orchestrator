@@ -13,6 +13,7 @@ from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
+from bmad_orchestrator.services.service_factory import build_figma_mcp_config
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.cost_tracking import accumulate_cost
 from bmad_orchestrator.utils.jira_checklist_text import mark_checklist_items_done
@@ -340,6 +341,7 @@ def make_dev_story_node(
             agent_id="developer",
             cwd=_resolve_cwd(settings, state),
             max_turns=20,
+            mcp_servers=build_figma_mcp_config(settings),
             on_event=on_event,
         )
 

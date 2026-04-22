@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     # ── Skip nodes ──────────────────────────────────────────────────────────
     skip_nodes: list[str] = []
 
+    # ── Figma MCP (LOCAL DEV ONLY) ───────────────────────────────────────────
+    # Connects the developer agent to the official Figma Dev Mode MCP server.
+    # Requires Figma desktop running locally with Dev Mode; will not work in
+    # GitHub Actions, Cloud Run, or any headless environment.
+    figma_mcp_enabled: bool = False
+    figma_mcp_url: str = "http://127.0.0.1:3845/sse"
+
     @field_validator("jira_target_repo_custom_field_id", mode="before")
     @classmethod
     def _target_repo_cf_default(cls, v: object) -> str:

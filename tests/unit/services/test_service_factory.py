@@ -10,6 +10,7 @@ from bmad_orchestrator.services.github_service import GitHubService
 from bmad_orchestrator.services.jira_service import JiraService
 from bmad_orchestrator.services.null_slack_service import NullSlackService
 from bmad_orchestrator.services.service_factory import (
+    build_figma_mcp_config,
     create_github_service,
     create_jira_service,
     create_slack_service,
@@ -93,3 +94,26 @@ class TestCreateSlackService:
         )
         svc = create_slack_service(s)
         assert isinstance(svc, SlackService)
+
+
+class TestBuildFigmaMcpConfig:
+    def test_returns_none_when_disabled(self) -> None:
+        assert build_figma_mcp_config(_real_settings()) is None
+
+    def test_returns_sse_config_when_enabled(self) -> None:
+        s = _real_settings().model_copy(update={"figma_mcp_enabled": True})
+        cfg = build_figma_mcp_config(s)
+        assert cfg == {
+            "figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}
+        }
+
+    def test_respects_custom_url(self) -> None:
+        s = _real_settings().model_copy(
+            update={
+                "figma_mcp_enabled": True,
+                "figma_mcp_url": "http://localhost:4000/sse",
+            }
+        )
+        cfg = build_figma_mcp_config(s)
+        assert cfg is not None
+        assert cfg["figma"]["url"] == "http://localhost:4000/sse"
