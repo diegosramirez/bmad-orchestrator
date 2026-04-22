@@ -8,6 +8,8 @@ from bmad_orchestrator.nodes.create_story_tasks import (
     ImplementationPlannedStory,
     StoryDraft,
     TaskItem,
+    _contract_context_from_description,
+    _contract_planned_story_description,
     make_create_story_tasks_node,
 )
 from tests.conftest import make_state
@@ -206,7 +208,7 @@ def test_stories_breakdown_prompt_three_layer_pattern(settings, mock_jira, mock_
     assert '"role": "contract"' in user_message
     assert '"role": "frontend"' in user_message or '"role": "backend"' in user_message
     assert "Contract story (`role: contract`)" in user_message
-    assert "full product-style Jira story template" in user_message
+    assert "cuts `description` at the first" in user_message
 
 
 def test_stories_breakdown_prompt_template_note_applies_fe_be_only(
@@ -264,7 +266,10 @@ def test_stories_breakdown_contract_skips_checklist_impl_keeps_checklist(
             ContractPlannedStory(
                 role="contract",
                 summary="As a dev I want a shared API spec so that FE and BE align",
-                description="**Hypothesis**\nDefine OpenAPI.\n\n**Intervention**\nPR to docs.",
+                description=(
+                    "REST contract for country list and detail endpoints.\n\n"
+                    "**Hypothesis**\nThis prose must not appear in Jira."
+                ),
                 acceptance_criteria=["Spec merged", "Review approved"],
                 spec_kind="OpenAPI 3.1",
                 interface_deliverables=["docs/api/openapi.yaml"],
@@ -304,9 +309,40 @@ def test_stories_breakdown_contract_skips_checklist_impl_keeps_checklist(
     assert checklist_key == "TEST-11"
 
     first_desc = mock_jira.create_story.call_args_list[0].kwargs["description"]
+    assert "**Context**" in first_desc
+    assert "REST contract for country list" in first_desc
+    assert "**Hypothesis**" not in first_desc
+    assert "This prose must not appear" not in first_desc
     assert "**Spec kind**" in first_desc
     assert "**Interface deliverables**" in first_desc
     assert "openapi.yaml" in first_desc
+
+
+def test_contract_context_from_description_strips_from_first_template_heading():
+    raw = (
+        "Intro paragraph only.\n\n"
+        "**Intervention**\n"
+        "Should be removed entirely.\n"
+    )
+    assert _contract_context_from_description(raw) == "Intro paragraph only."
+
+
+def test_contract_planned_story_description_fixed_contract_format():
+    c = ContractPlannedStory(
+        role="contract",
+        summary="S",
+        description="One-line context for the shared API.",
+        acceptance_criteria=["AC1", "AC2"],
+        spec_kind="OpenAPI 3.1",
+        interface_deliverables=["docs/api.yaml"],
+        error_and_auth_expectations="",
+        example_fixtures_scope="",
+        out_of_scope_explicit=["No UI", "No server runtime"],
+    )
+    body = _contract_planned_story_description(c)
+    assert body.startswith("**Context**\nOne-line context")
+    assert "**Spec kind**\nOpenAPI 3.1" in body
+    assert "**Explicitly out of scope**" in body
 
 
 def test_stories_breakdown_passes_epic_customfield_to_stories(settings, mock_jira, mock_claude):

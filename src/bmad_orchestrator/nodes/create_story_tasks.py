@@ -20,6 +20,7 @@ from bmad_orchestrator.utils.jira_checklist_text import (
     truncate_checklist_field,
 )
 from bmad_orchestrator.utils.jira_template import (
+    JIRA_TEMPLATE_SECTIONS,
     epic_has_discovery_section,
     load_template,
     normalise_jira_headings,
@@ -104,6 +105,30 @@ class TaskItem(BaseModel):
 
 _JIRA_SUMMARY_MAX = 255
 
+_CONTRACT_NARRATIVE_MAX = 800
+
+_CONTRACT_HEADING_MARKERS_LOWERCASE: tuple[str, ...] = tuple(
+    h.replace("\u200b", "").replace("\u200B", "").lower() for h in JIRA_TEMPLATE_SECTIONS
+) + ("**implementation notes**",)
+
+
+def _zwsp_norm(s: str) -> str:
+    return s.replace("\u200b", "").replace("\u200B", "")
+
+
+def _contract_context_from_description(description: str) -> str:
+    """Keep only text before the first product-style Jira template heading (if any)."""
+    n = _zwsp_norm(str(description).strip())
+    if not n:
+        return ""
+    lower = n.lower()
+    cut = len(n)
+    for marker in _CONTRACT_HEADING_MARKERS_LOWERCASE:
+        pos = lower.find(marker)
+        if pos != -1:
+            cut = min(cut, pos)
+    return n[:cut].strip()
+
 
 class StoryDraft(BaseModel):
     summary: str = Field(
@@ -152,7 +177,13 @@ class ContractPlannedStory(BaseModel):
 
     role: Literal["contract"]
     summary: str = Field(max_length=_JIRA_SUMMARY_MAX)
-    description: str
+    description: str = Field(
+        max_length=_CONTRACT_NARRATIVE_MAX,
+        description=(
+            "Short prose only (max 800 chars). No BMAD/Jira template sections; the server strips "
+            "at the first template heading and renders structured fields as fixed Jira sections."
+        ),
+    )
     acceptance_criteria: list[str] = Field(min_length=2)
     spec_kind: str = Field(
         description=(
@@ -175,6 +206,14 @@ class ContractPlannedStory(BaseModel):
         min_length=2,
         description="Explicit exclusions: no SPA, no new HTTP handlers, no migrations, etc.",
     )
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _truncate_contract_description(cls, v: Any) -> str:
+        s = str(v or "").strip()
+        if len(s) > _CONTRACT_NARRATIVE_MAX:
+            return s[: _CONTRACT_NARRATIVE_MAX - 1].rstrip() + "..."
+        return s
 
     @field_validator(
         "acceptance_criteria",
@@ -216,8 +255,13 @@ PlannedStoryItem = ImplementationPlannedStory
 
 
 def _contract_planned_story_description(contract: ContractPlannedStory) -> str:
-    """Build Jira description body for a contract story from structured fields."""
-    sections: list[str] = [contract.description.strip()]
+    """Build Jira description for a contract story: **Context** (sanitized) + fixed sections."""
+    ctx = _contract_context_from_description(contract.description)
+    if len(ctx) > _CONTRACT_NARRATIVE_MAX:
+        ctx = ctx[: _CONTRACT_NARRATIVE_MAX - 1].rstrip() + "..."
+    sections: list[str] = []
+    if ctx:
+        sections.append("**Context**\n" + ctx)
     sections.append("**Spec kind**\n" + contract.spec_kind.strip())
     sections.append(
         "**Interface deliverables**\n"
@@ -315,16 +359,17 @@ def make_create_story_tasks_node(
         )
         contract_description_rules = (
             "**Contract story (`role: contract`) — `description` format (mandatory):**\n"
-            "- Keep `description` **short**: roughly one short paragraph plus at most 3–6 tight "
-            "bullets for context and scope of the interface work only.\n"
-            "- **Do NOT** use the full product-style Jira story template inside `description`: "
-            "no **Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
-            "**Rationale**, **Designs**, **Mechanics**, **Tracking** tables, long **Implementation "
-            "Notes**, or large Given/When/Then tables in `description`.\n"
-            "- Put machine-readable detail in structured JSON fields: `spec_kind`, "
-            "`interface_deliverables`, `error_and_auth_expectations`, `example_fixtures_scope`, "
-            "`out_of_scope_explicit` — the orchestrator will render those as clear Jira sections; "
-            "do not duplicate them as faux template sections in `description`.\n"
+            "- Hard limit: `description` must be **at most 800 characters** (plain sentences or "
+            "a few `-` bullets only).\n"
+            "- The orchestrator **cuts `description` at the first** product-style heading "
+            "(**Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
+            "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**, "
+            "**Implementation Notes**) and renders the surviving text under **Context** in Jira; "
+            "everything else comes from structured fields — so **do not** paste the BMAD/Jira "
+            "template into `description`.\n"
+            "- Put machine-readable detail in `spec_kind`, `interface_deliverables`, "
+            "`error_and_auth_expectations`, `example_fixtures_scope`, and `out_of_scope_explicit` "
+            "— those become fixed Jira sections after **Context**.\n"
             "- `acceptance_criteria` must be **verifiable contract outcomes** (e.g. spec merged, "
             "schemas validate, review done) — not UI or server implementation tasks.\n\n"
         )
