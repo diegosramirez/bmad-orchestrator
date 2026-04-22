@@ -313,11 +313,28 @@ def make_create_story_tasks_node(
         existing_summaries_text = "\n".join(
             f"- {x.get('summary', '')}" for x in existing_issues[:50]
         )
-        format_note = ""
+        contract_description_rules = (
+            "**Contract story (`role: contract`) — `description` format (mandatory):**\n"
+            "- Keep `description` **short**: roughly one short paragraph plus at most 3–6 tight "
+            "bullets for context and scope of the interface work only.\n"
+            "- **Do NOT** use the full product-style Jira story template inside `description`: "
+            "no **Hypothesis**, **Intervention**, **Data to Collect**, **Success Threshold**, "
+            "**Rationale**, **Designs**, **Mechanics**, **Tracking** tables, long **Implementation "
+            "Notes**, or large Given/When/Then tables in `description`.\n"
+            "- Put machine-readable detail in structured JSON fields: `spec_kind`, "
+            "`interface_deliverables`, `error_and_auth_expectations`, `example_fixtures_scope`, "
+            "`out_of_scope_explicit` — the orchestrator will render those as clear Jira sections; "
+            "do not duplicate them as faux template sections in `description`.\n"
+            "- `acceptance_criteria` must be **verifiable contract outcomes** (e.g. spec merged, "
+            "schemas validate, review done) — not UI or server implementation tasks.\n\n"
+        )
+        implementation_format_note = ""
         if jira_template:
-            format_note = (
-                "Each story description MUST follow the Jira template section order as bold "
-                "markdown (**Hypothesis**, **Intervention**, etc.) like other BMAD stories.\n\n"
+            implementation_format_note = (
+                "**Frontend and backend stories (`role: frontend` or `role: backend`) — "
+                "`description` format:**\n"
+                "Each MUST follow the Jira template section order as bold markdown "
+                "(**Hypothesis**, **Intervention**, etc.) like other BMAD stories.\n\n"
             )
         user_msg = (
             f"{ctx_block}"
@@ -424,7 +441,8 @@ def make_create_story_tasks_node(
             "- **JSON shape (required):** Every object in the `stories` array MUST include "
             '`"role"`: `"contract"` | `"frontend"` | `"backend"`.\n'
             "  - **Story A (contracts / interface):** set `\"role\": \"contract\"`. Include "
-            "`summary`, `description`, `acceptance_criteria` (min 2), `spec_kind` (e.g. OpenAPI "
+            "`summary`, `description` (**brief** — follow the **Contract story** `description` "
+            "rules above), `acceptance_criteria` (min 2), `spec_kind` (e.g. OpenAPI "
             "3.1), `interface_deliverables` (non-empty list of concrete spec paths/locations), "
             "`error_and_auth_expectations` (string, may be empty), `example_fixtures_scope` "
             "(string, may be empty), `out_of_scope_explicit` (min 2 bullets: no SPA, no server "
@@ -439,7 +457,8 @@ def make_create_story_tasks_node(
             "- If you include tasks on a frontend/backend story: each is for Jira Checklist Text "
             "— a short bold title (summary) plus one brief phrase (description); readable in "
             "~2 lines in Jira, not a paragraph. Put depth in the story description and ACs.\n"
-            f"{format_note}"
+            f"{contract_description_rules}"
+            f"{implementation_format_note}"
             f"- Epic key: {epic_id}\n"
             f"- Team: {team_id}\n"
             f"- Orchestrator prompt context: {prompt}\n\n"
@@ -452,7 +471,13 @@ def make_create_story_tasks_node(
             "`frontend`/`backend`), as described above."
         )
         if jira_template:
-            user_msg += f"\n\n## Jira template reference:\n{jira_template[:4000]}"
+            user_msg += (
+                f"\n\n## Jira template reference:\n{jira_template[:4000]}\n\n"
+                "**Note:** The section order and headings in this template apply to **frontend** "
+                "and **backend** stories only. **Contract** stories must follow the **Contract "
+                "story** `description` rules above; do not paste the full template into the "
+                "contract story's `description` field."
+            )
 
         breakdown = claude.complete_structured(
             system_prompt=system_prompt,
