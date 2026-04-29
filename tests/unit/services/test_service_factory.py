@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import SecretStr
+
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.services.dummy_github_service import DummyGitHubService
 from bmad_orchestrator.services.dummy_jira_service import DummyJiraService
@@ -16,7 +18,6 @@ from bmad_orchestrator.services.service_factory import (
     create_slack_service,
 )
 from bmad_orchestrator.services.slack_service import SlackService
-
 
 _FAKE_PEM = "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----"
 
@@ -109,20 +110,38 @@ class TestBuildFigmaMcpConfig:
     def test_returns_none_when_disabled(self) -> None:
         assert build_figma_mcp_config(_real_settings()) is None
 
-    def test_returns_sse_config_when_enabled(self) -> None:
-        s = _real_settings().model_copy(update={"figma_mcp_enabled": True})
+    def test_returns_http_config_when_enabled(self) -> None:
+        s = _real_settings().model_copy(
+            update={
+                "figma_mcp_enabled": True,
+                "figma_mcp_token": SecretStr("figd_abc123"),
+            }
+        )
         cfg = build_figma_mcp_config(s)
         assert cfg == {
-            "figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}
+            "figma": {
+                "type": "http",
+                "url": "https://mcp.figma.com/mcp",
+                "headers": {"Authorization": "Bearer figd_abc123"},
+            }
         }
 
     def test_respects_custom_url(self) -> None:
         s = _real_settings().model_copy(
             update={
                 "figma_mcp_enabled": True,
-                "figma_mcp_url": "http://localhost:4000/sse",
+                "figma_mcp_url": "https://mcp-staging.figma.com/mcp",
+                "figma_mcp_token": SecretStr("figd_xyz"),
             }
         )
         cfg = build_figma_mcp_config(s)
         assert cfg is not None
-        assert cfg["figma"]["url"] == "http://localhost:4000/sse"
+        assert cfg["figma"]["url"] == "https://mcp-staging.figma.com/mcp"
+        assert cfg["figma"]["type"] == "http"
+
+    def test_raises_when_enabled_without_token(self) -> None:
+        s = _real_settings().model_copy(update={"figma_mcp_enabled": True})
+        import pytest
+
+        with pytest.raises(ValueError, match="BMAD_FIGMA_MCP_TOKEN"):
+            build_figma_mcp_config(s)

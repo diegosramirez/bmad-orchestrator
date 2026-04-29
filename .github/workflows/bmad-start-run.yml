@@ -162,6 +162,12 @@ jobs:
       BMAD_AUTO_EXECUTE_ISSUE: ${{ inputs.auto_execute_issue }}
       BMAD_CODE_AGENT: ${{ inputs.code_agent }}
       BMAD_DRAFT_PR: "true"
+
+      # ── Figma MCP (remote, opt-in) ─────────────────────────────────────
+      # Repo variable BMAD_FIGMA_MCP_ENABLED=true turns this on; the secret
+      # is the OAuth Bearer token (see docs/figma-mcp-setup.md).
+      BMAD_FIGMA_MCP_ENABLED: ${{ vars.BMAD_FIGMA_MCP_ENABLED || 'false' }}
+      BMAD_FIGMA_MCP_TOKEN: ${{ secrets.BMAD_FIGMA_MCP_TOKEN }}
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000"
 
     steps:

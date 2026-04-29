@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pydantic import SecretStr
+
 from bmad_orchestrator.nodes.ux_design_handoff import (
     ComponentSpec,
     UxHandoff,
@@ -11,7 +13,12 @@ from tests.conftest import make_state
 
 
 def _figma_settings(settings):
-    return settings.model_copy(update={"figma_mcp_enabled": True})
+    return settings.model_copy(
+        update={
+            "figma_mcp_enabled": True,
+            "figma_mcp_token": SecretStr("figd_test"),
+        }
+    )
 
 
 def test_node_skips_when_mcp_disabled(settings, mock_agent_service):
@@ -65,7 +72,11 @@ def test_node_produces_markdown_handoff(settings, mock_agent_service):
 
     kwargs = mock_agent_service.run_agent.call_args.kwargs
     assert kwargs["mcp_servers"] == {
-        "figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}
+        "figma": {
+            "type": "http",
+            "url": "https://mcp.figma.com/mcp",
+            "headers": {"Authorization": "Bearer figd_test"},
+        }
     }
     assert kwargs["agent_id"] == "designer"
 
