@@ -5,6 +5,7 @@ import re
 import subprocess
 
 from bmad_orchestrator.config import Settings
+from bmad_orchestrator.services.github_token_provider import GitHubAppTokenProvider
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
 from bmad_orchestrator.utils.logger import get_logger
 
@@ -29,12 +30,17 @@ def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _git_env_with_token(settings: Settings) -> dict[str, str] | None:
-    """Build env dict injecting GH_TOKEN for HTTPS git operations."""
-    token = settings.github_token
-    if token is None:
+def _git_env_with_token(
+    token_provider: GitHubAppTokenProvider | None,
+) -> dict[str, str] | None:
+    """Build env dict injecting GH_TOKEN for HTTPS git operations.
+
+    Returns None when no provider is configured (e.g. dummy/dry-run modes), so
+    callers fall through to the parent process environment.
+    """
+    if token_provider is None:
         return None
-    return {**os.environ, "GH_TOKEN": token.get_secret_value()}
+    return {**os.environ, "GH_TOKEN": token_provider.get_installation_token()}
 
 
 def classify_push_error(exc: subprocess.CalledProcessError) -> str:
@@ -60,8 +66,13 @@ def classify_push_error(exc: subprocess.CalledProcessError) -> str:
 
 
 class GitService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        token_provider: GitHubAppTokenProvider | None = None,
+    ) -> None:
         self.settings = settings
+        self._token_provider = token_provider
 
     def make_branch_name(self, team_id: str, story_id: str, story_summary: str) -> str:
         team_slug = _slugify(team_id, max_len=20)
@@ -73,7 +84,7 @@ class GitService:
         return result.stdout.strip()
 
     def branch_exists_remote(self, branch_name: str) -> bool:
-        env = _git_env_with_token(self.settings)
+        env = _git_env_with_token(self._token_provider)
         kwargs: dict[str, object] = {"capture_output": True, "text": True}
         if env is not None:
             kwargs["env"] = env
@@ -95,7 +106,7 @@ class GitService:
     def create_and_checkout_branch(self, branch_name: str) -> None:
         if self.branch_exists_remote(branch_name):
             logger.info("branch_exists_remote_checkout", branch=branch_name)
-            env = _git_env_with_token(self.settings)
+            env = _git_env_with_token(self._token_provider)
             kwargs: dict[str, object] = {}
             if env is not None:
                 kwargs["env"] = env
@@ -172,7 +183,7 @@ class GitService:
         # Use explicit refspec HEAD:refs/heads/<branch> to avoid "cannot be resolved
         # to branch" errors that occur when git can't resolve a hierarchical branch
         # name (e.g. bmad/test/DUMMY-2-...) from the local ref store.
-        env = _git_env_with_token(self.settings)
+        env = _git_env_with_token(self._token_provider)
         kwargs: dict[str, object] = {}
         if env is not None:
             kwargs["env"] = env

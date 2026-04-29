@@ -17,11 +17,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
-    env:
-      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
-
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BMAD_APP_ID }}
+          private-key: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
+
       - name: Verify issue has bmad-orchestrated label
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           LABELS=$(gh issue view "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" --json labels --jq '.labels[].name')
@@ -32,6 +38,8 @@ jobs:
 
       - name: Extract issue metadata
         id: meta
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           BODY=$(gh issue view "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" --json body --jq '.body')
@@ -55,6 +63,8 @@ jobs:
       # ── Path A: BMAD inline pipeline (default) ──────────────────────────────
       - name: Dispatch BMAD inline pipeline
         if: steps.meta.outputs.code_agent != 'copilot'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           EXTRA_FLAGS=""
           if [ -n "${{ steps.meta.outputs.story_key }}" ]; then
@@ -77,6 +87,8 @@ jobs:
 
       - name: Post inline dispatch confirmation
         if: steps.meta.outputs.code_agent != 'copilot'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
@@ -92,6 +104,8 @@ jobs:
       # ── Path B: GitHub Copilot Coding Agent ─────────────────────────────────
       - name: Assign to GitHub Copilot
         if: steps.meta.outputs.code_agent == 'copilot'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh issue edit "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
@@ -99,6 +113,8 @@ jobs:
 
       - name: Post Copilot assignment confirmation
         if: steps.meta.outputs.code_agent == 'copilot'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \

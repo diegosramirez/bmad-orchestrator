@@ -7,6 +7,7 @@
  */
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 
+import { getGitHubAuth } from "./lib/github-auth.js";
 import jiraCommentHandler from "./handlers/jira-comment.js";
 import jiraIssueHandler from "./handlers/jira-issue.js";
 import slackHandler from "./handlers/slack.js";
@@ -111,6 +112,17 @@ const server = createServer(async (req, rawRes) => {
     }
   }
 });
+
+// Fail fast at boot if GitHub App credentials are misconfigured.
+try {
+  getGitHubAuth();
+  console.log(
+    `webhook-worker auth_mode=app app_id=${process.env.BMAD_GITHUB_APP_ID ?? "<unset>"}`
+  );
+} catch (err) {
+  console.error("GitHub App auth misconfigured:", err);
+  process.exit(1);
+}
 
 server.listen(port, host, () => {
   console.log(`webhook-worker listening on http://${host}:${port}`);

@@ -143,8 +143,12 @@ jobs:
       # ── GitHub (target repo) ───────────────────────────────────────────
       BMAD_GITHUB_REPO: ${{ inputs.target_repo }}
       BMAD_GITHUB_BASE_BRANCH: ${{ inputs.base_branch }}
-      BMAD_GITHUB_TOKEN: ${{ secrets.BMAD_GH_PAT }}
-      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+      # GitHub App credentials are passed to the orchestrator step (the
+      # GitHubAppTokenProvider mints fresh installation tokens in-process).
+      # GH_TOKEN for non-orchestrator gh/git steps comes from the
+      # actions/create-github-app-token step below.
+      BMAD_GITHUB_APP_ID: ${{ secrets.BMAD_APP_ID }}
+      BMAD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
 
       # ── Slack (optional) ───────────────────────────────────────────────
       BMAD_SLACK_BOT_TOKEN: ${{ secrets.BMAD_SLACK_BOT_TOKEN }}
@@ -195,20 +199,59 @@ jobs:
             echo "id=run-$(date +%s)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Parse target repo
+        id: target
+        env:
+          INPUT: ${{ inputs.target_repo }}
+        run: |
+          OWNER="${INPUT%/*}"
+          REPO="${INPUT##*/}"
+          echo "owner=${OWNER}" >> "$GITHUB_OUTPUT"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token (target repo + orchestrator repo)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BMAD_APP_ID }}
+          private-key: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
+          owner: ${{ steps.target.outputs.owner }}
+          repositories: |
+            ${{ steps.target.outputs.repo }}
+
+      - name: Determine installation id
+        id: installation
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # The installation id is needed by the orchestrator's
+          # GitHubAppTokenProvider so it can mint fresh tokens in-process.
+          INSTALL_ID=$(gh api /repos/${{ inputs.target_repo }}/installation --jq '.id')
+          echo "id=${INSTALL_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Clone target repository
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh repo clone "${{ inputs.target_repo }}" target-repo -- --branch "${{ inputs.base_branch }}"
 
       - name: Configure git identity and auth
         working-directory: target-repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "BMAD Orchestrator"
           git config user.email "bmad@noreply.local"
-          git config url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # gh auth setup-git installs a credential helper that reads GH_TOKEN
+          # from env at request time — so when the orchestrator exports a
+          # freshly-minted App token before `git push`, that token is used.
+          gh auth setup-git
 
       - name: Checkout existing branch
         if: inputs.branch != ''
         working-directory: target-repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git fetch origin "${{ inputs.branch }}"
           git checkout "${{ inputs.branch }}"
@@ -246,6 +289,8 @@ jobs:
           BMAD_GUIDANCE: ${{ inputs.guidance }}
           BMAD_PROMPT: ${{ inputs.prompt }}
           BMAD_TEAM_ID: ${{ inputs.team_id }}
+          # GitHub App auth — orchestrator builds a token provider per run.
+          BMAD_GITHUB_APP_INSTALLATION_ID: ${{ steps.installation.outputs.id }}
         run: |
           echo "::group::Run Configuration"
           echo "Target repo:  ${{ inputs.target_repo }}"

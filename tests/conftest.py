@@ -10,6 +10,11 @@ from bmad_orchestrator.services.claude_agent_service import AgentResult
 from bmad_orchestrator.state import OrchestratorState
 
 
+# Minimal RSA key shape so Settings validation passes; tests that exchange tokens
+# inject a fake provider rather than signing with this string.
+_FAKE_PEM = "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----"
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
@@ -20,8 +25,19 @@ def settings() -> Settings:
         jira_project_key="TEST",
         github_repo="org/repo",
         github_base_branch="main",
+        github_app_id="12345",
+        github_app_installation_id="67890",
+        github_app_private_key=_FAKE_PEM,  # type: ignore[arg-type]
         dry_run=True,
     )
+
+
+@pytest.fixture
+def mock_token_provider() -> MagicMock:
+    """A fake GitHubAppTokenProvider returning a deterministic token."""
+    m = MagicMock()
+    m.get_installation_token.return_value = "ghs_test_installation_token"
+    return m
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from bmad_orchestrator.config import Settings
+from bmad_orchestrator.services.github_token_provider import GitHubAppTokenProvider
 from bmad_orchestrator.services.protocols import (
     GitHubServiceProtocol,
     JiraServiceProtocol,
@@ -24,16 +25,60 @@ def create_jira_service(settings: Settings) -> JiraServiceProtocol:
     return JiraService(settings)
 
 
-def create_github_service(settings: Settings) -> GitHubServiceProtocol:
-    """Return a GitHub service implementation based on settings."""
+def create_github_token_provider(settings: Settings) -> GitHubAppTokenProvider | None:
+    """Build a GitHub App token provider, or None when running in dummy mode.
+
+    The provider is shared between ``GitHubService`` and ``GitService`` so they
+    hit the same in-memory token cache. Hard-fails on partial App configuration
+    rather than silently degrading.
+    """
+    if settings.dummy_github:
+        return None
+    missing = [
+        name
+        for name in ("github_app_id", "github_app_installation_id")
+        if getattr(settings, name) is None
+    ]
+    if (
+        settings.github_app_private_key is None
+        and settings.github_app_private_key_path is None
+    ):
+        missing.append("github_app_private_key OR github_app_private_key_path")
+    if missing:
+        raise ValueError(
+            f"GitHub App authentication requires: {', '.join(missing)}"
+        )
+    assert settings.github_app_id is not None
+    assert settings.github_app_installation_id is not None
+    return GitHubAppTokenProvider(
+        app_id=settings.github_app_id,
+        installation_id=settings.github_app_installation_id,
+        private_key_pem=settings.resolve_github_app_private_key(),
+    )
+
+
+def create_github_service(
+    settings: Settings,
+    *,
+    token_provider: GitHubAppTokenProvider | None = None,
+) -> GitHubServiceProtocol:
+    """Return a GitHub service implementation based on settings.
+
+    When ``settings.dummy_github`` is False, a token provider is required;
+    callers may pass one to share its cache, or one will be constructed lazily.
+    """
     if settings.dummy_github:
         from bmad_orchestrator.services.dummy_github_service import DummyGitHubService
 
         return DummyGitHubService(settings)
 
+    if token_provider is None:
+        token_provider = create_github_token_provider(settings)
+    assert token_provider is not None  # not dummy_github → provider always built
+
     from bmad_orchestrator.services.github_service import GitHubService
 
-    return GitHubService(settings)
+    return GitHubService(settings, token_provider=token_provider)
 
 
 def build_figma_mcp_config(settings: Settings) -> dict[str, Any] | None:

@@ -2,7 +2,8 @@
 # Auto-installed by the BMAD Orchestrator. Forwards /bmad commands on PRs
 # in this repo to the orchestrator's bmad-start-run workflow.
 #
-# Requires: BMAD_GH_PAT secret with repo + actions scope.
+# Requires: BMAD_APP_ID + BMAD_APP_PRIVATE_KEY secrets. The App must be installed
+# on this repo AND on diegosramirez/bmad-orchestrator (for the cross-repo dispatch).
 
 name: "BMAD — PR Retry Forwarder"
 
@@ -23,9 +24,22 @@ jobs:
     timeout-minutes: 2
 
     steps:
+      - name: Generate GitHub App token (multi-repo)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BMAD_APP_ID }}
+          private-key: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
+          # Token must work on this repo (for PR ops) AND bmad-orchestrator
+          # (for the workflow_dispatch below). Owner is shared.
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            ${{ github.event.repository.name }}
+            bmad-orchestrator
+
       - name: React to comment
         env:
-          GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh api \
             "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
@@ -34,7 +48,7 @@ jobs:
       - name: Parse command and extract PR metadata
         id: meta
         env:
-          GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           # ── Validate command ────────────────────────────────────
@@ -80,7 +94,7 @@ jobs:
       - name: Reject unknown command
         if: steps.meta.outputs.valid == 'false'
         env:
-          GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh pr comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
@@ -90,7 +104,7 @@ jobs:
       - name: Dispatch to orchestrator
         if: steps.meta.outputs.valid == 'true'
         env:
-          GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           EXTRA_FLAGS=""
           if [ -n "${{ steps.meta.outputs.story_key }}" ]; then
@@ -114,7 +128,7 @@ jobs:
       - name: Post confirmation
         if: steps.meta.outputs.valid == 'true'
         env:
-          GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           GUIDANCE_NOTE=""
           if [ -n "${{ steps.meta.outputs.guidance }}" ]; then
