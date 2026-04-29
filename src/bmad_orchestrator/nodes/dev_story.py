@@ -13,8 +13,10 @@ from bmad_orchestrator.personas.loader import build_system_prompt
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
 from bmad_orchestrator.services.claude_service import ClaudeService
 from bmad_orchestrator.services.protocols import JiraServiceProtocol
+from bmad_orchestrator.services.service_factory import build_figma_mcp_config
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
 from bmad_orchestrator.utils.cost_tracking import accumulate_cost
+from bmad_orchestrator.utils.figma_url import extract_figma_url
 from bmad_orchestrator.utils.jira_checklist_text import mark_checklist_items_done
 from bmad_orchestrator.utils.json_repair import parse_stringified_list
 from bmad_orchestrator.utils.logger import get_logger
@@ -258,6 +260,8 @@ def make_dev_story_node(
         build_commands = state.get("build_commands") or []
         test_commands = state.get("test_commands") or []
         lint_commands = state.get("lint_commands") or []
+        figma_url = state.get("figma_url") or extract_figma_url(story_content)
+        ux_handoff = state.get("ux_handoff") or ""
 
         now = datetime.now(UTC).isoformat()
         cwd_path = str(_resolve_cwd(settings, state))
@@ -293,12 +297,26 @@ def make_dev_story_node(
                 "reflected in Jira after this session.\n\n"
             )
 
+        figma_block = ""
+        if figma_url and settings.figma_mcp_enabled:
+            figma_block = (
+                "## Figma design reference\n"
+                f"{figma_url}\n\n"
+                "Use the `mcp__figma__*` tools to read the design (frames, components, "
+                "variables) before writing UI code. Match spacing, typography, and "
+                "color tokens from the design rather than guessing.\n\n"
+            )
+
+        ux_handoff_block = f"{ux_handoff}\n" if ux_handoff.strip() else ""
+
         prompt = (
             f"{ctx_block}"
             f"{guidance_block}"
             f"{guidelines_block}"
             f"{obligations_block}"
             f"{checklist_block}"
+            f"{figma_block}"
+            f"{ux_handoff_block}"
             f"Implement the following user story.\n\n"
             f"IMPORTANT — Working directory and project context:\n"
             f"- Your CWD is: {cwd_path}\n"
@@ -340,6 +358,7 @@ def make_dev_story_node(
             agent_id="developer",
             cwd=_resolve_cwd(settings, state),
             max_turns=20,
+            mcp_servers=build_figma_mcp_config(settings),
             on_event=on_event,
         )
 

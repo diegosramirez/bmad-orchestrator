@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from bmad_orchestrator.config import Settings
 from bmad_orchestrator.services.protocols import (
     GitHubServiceProtocol,
@@ -32,6 +34,22 @@ def create_github_service(settings: Settings) -> GitHubServiceProtocol:
     from bmad_orchestrator.services.github_service import GitHubService
 
     return GitHubService(settings)
+
+
+def build_figma_mcp_config(settings: Settings) -> dict[str, Any] | None:
+    """Return the MCP server config dict for the official Figma Dev Mode server.
+
+    Returns None when the integration is disabled. The server runs inside the
+    Figma desktop app and is reachable over SSE on the local machine only.
+    """
+    if not settings.figma_mcp_enabled:
+        return None
+    return {
+        "figma": {
+            "type": "sse",
+            "url": settings.figma_mcp_url,
+        }
+    }
 
 
 def create_slack_service(settings: Settings) -> SlackServiceProtocol:

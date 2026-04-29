@@ -302,3 +302,97 @@ def test_no_retry_on_non_filter_error(settings):
 
     assert call_count == 1
     assert result.is_error is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_servers_passed_to_options_and_allowed_tools_extended(settings):
+    """mcp_servers should flow into ClaudeAgentOptions and extend allowed_tools."""
+    from claude_agent_sdk import ResultMessage
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    service = ClaudeAgentService(non_dry)
+
+    result_msg = ResultMessage(
+        subtype="success",
+        duration_ms=1000,
+        duration_api_ms=900,
+        is_error=False,
+        num_turns=1,
+        session_id="test-session",
+        usage={"input_tokens": 10, "output_tokens": 5},
+        result="Done",
+    )
+
+    captured: dict[str, object] = {}
+
+    async def fake_query(prompt, options=None):
+        captured["options"] = options
+        yield result_msg
+
+    mcp_servers = {"figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}}
+
+    with patch(
+        "bmad_orchestrator.services.claude_agent_service.query", fake_query
+    ):
+        await service._run_async(
+            prompt="test",
+            system_prompt="test",
+            agent_id="developer",
+            cwd=None,
+            allowed_tools=["Read", "Write"],
+            disallowed_tools=None,
+            output_format_schema=None,
+            max_turns=5,
+            mcp_servers=mcp_servers,
+        )
+
+    options = captured["options"]
+    assert options.mcp_servers == mcp_servers
+    assert "mcp__figma" in options.allowed_tools
+    assert "Read" in options.allowed_tools
+    assert "Write" in options.allowed_tools
+
+
+@pytest.mark.asyncio
+async def test_mcp_servers_none_leaves_allowed_tools_untouched(settings):
+    """Without mcp_servers, allowed_tools should equal the provided list."""
+    from claude_agent_sdk import ResultMessage
+
+    non_dry = settings.model_copy(update={"dry_run": False})
+    service = ClaudeAgentService(non_dry)
+
+    result_msg = ResultMessage(
+        subtype="success",
+        duration_ms=1000,
+        duration_api_ms=900,
+        is_error=False,
+        num_turns=1,
+        session_id="test-session",
+        usage={"input_tokens": 10, "output_tokens": 5},
+        result="Done",
+    )
+
+    captured: dict[str, object] = {}
+
+    async def fake_query(prompt, options=None):
+        captured["options"] = options
+        yield result_msg
+
+    with patch(
+        "bmad_orchestrator.services.claude_agent_service.query", fake_query
+    ):
+        await service._run_async(
+            prompt="test",
+            system_prompt="test",
+            agent_id="developer",
+            cwd=None,
+            allowed_tools=["Read", "Write"],
+            disallowed_tools=None,
+            output_format_schema=None,
+            max_turns=5,
+            mcp_servers=None,
+        )
+
+    options = captured["options"]
+    assert options.allowed_tools == ["Read", "Write"]
+    assert options.mcp_servers == {}

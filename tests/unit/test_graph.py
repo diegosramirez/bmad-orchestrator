@@ -334,6 +334,25 @@ def test_make_initial_state_with_story_content(settings, monkeypatch, tmp_path):
     assert state["acceptance_criteria"] == ["Login works", "Logout works"]
 
 
+def test_make_initial_state_extracts_figma_url_from_story_content(
+    settings, monkeypatch, tmp_path,
+):
+    from bmad_orchestrator.graph import make_initial_state
+    monkeypatch.chdir(tmp_path)
+    state = make_initial_state(
+        "growth", "Ship login UI",
+        story_content="Design: https://www.figma.com/design/abc/Login",
+    )
+    assert state["figma_url"] == "https://www.figma.com/design/abc/Login"
+
+
+def test_make_initial_state_figma_url_none_when_absent(settings, monkeypatch, tmp_path):
+    from bmad_orchestrator.graph import make_initial_state
+    monkeypatch.chdir(tmp_path)
+    state = make_initial_state("growth", "Backend task only")
+    assert state["figma_url"] is None
+
+
 def test_make_initial_state_story_content_defaults_none(
     settings, monkeypatch, tmp_path,
 ):

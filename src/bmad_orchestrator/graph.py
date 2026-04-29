@@ -34,6 +34,7 @@ from bmad_orchestrator.nodes.epic_architect import make_epic_architect_node
 from bmad_orchestrator.nodes.party_mode_refinement import make_party_mode_node
 from bmad_orchestrator.nodes.qa_automation import make_qa_automation_node
 from bmad_orchestrator.nodes.update_jira_branch import make_update_jira_branch_node
+from bmad_orchestrator.nodes.ux_design_handoff import make_ux_design_handoff_node
 from bmad_orchestrator.nodes.validate_environment import make_validate_environment_node
 from bmad_orchestrator.services.bmad_workflow_runner import BmadWorkflowRunner
 from bmad_orchestrator.services.claude_agent_service import ClaudeAgentService
@@ -46,6 +47,7 @@ from bmad_orchestrator.services.service_factory import (
     create_slack_service,
 )
 from bmad_orchestrator.state import ExecutionLogEntry, OrchestratorState
+from bmad_orchestrator.utils.figma_url import extract_figma_url
 from bmad_orchestrator.utils.logger import get_logger
 from bmad_orchestrator.utils.project_context import (
     gather_project_context,
@@ -596,6 +598,10 @@ def build_graph(
         make_create_github_issue_node(github, jira, settings),
     )
     _node(
+        "ux_design_handoff",
+        make_ux_design_handoff_node(claude_agent, settings, on_event=on_event),
+    )
+    _node(
         "dev_story",
         make_dev_story_node(claude_agent, claude, jira, settings, on_event=on_event),
     )
@@ -667,17 +673,18 @@ def build_graph(
     def _after_validate_env(state: OrchestratorState) -> str:
         if state.get("failure_state"):
             return "fail_with_state"
-        return "dev_story"
+        return "ux_design_handoff"
 
     builder.add_conditional_edges(
         "validate_environment",
         _after_validate_env,
         {
-            "dev_story": "dev_story",
+            "ux_design_handoff": "ux_design_handoff",
             "fail_with_state": "fail_with_state",
         },
     )
 
+    builder.add_edge("ux_design_handoff", "dev_story")
     builder.add_edge("dev_story", "qa_automation")
     builder.add_edge("qa_automation", "code_review")
 
@@ -751,6 +758,8 @@ def make_initial_state(
         dependencies=None,
         qa_scope=None,
         definition_of_done=None,
+        figma_url=extract_figma_url(story_content),
+        ux_handoff=None,
         architect_output=None,
         developer_output=None,
         base_branch=None,
