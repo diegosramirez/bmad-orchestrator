@@ -4,6 +4,10 @@ import { invoke } from '@forge/bridge';
 import { TARGET_REPO_REQUIRED_MESSAGE_EPIC } from '../../bmadTargetRepoMessages';
 import { ACTION_LABELS, AGENT_INVOKE_CONFIG } from '../constants';
 import { fetchTargetRepoSlugForIssue } from '../utils/targetRepo';
+import {
+  formatForgeDispatchErrorBody,
+  logForgeDispatchFailure,
+} from '../utils/forgeDispatchDetails';
 
 const DEFAULT_SUCCESS_BODY =
   'GitHub Actions workflow was dispatched. Check the issue comment for progress.';
@@ -75,10 +79,11 @@ export function useEpicAiPanel() {
         body: result?.message || TARGET_REPO_REQUIRED_MESSAGE_EPIC,
       });
     } else {
+      logForgeDispatchFailure(`Forge ${config.invoke}`, issueKey, result);
       setBanner({
         appearance: 'error',
         title: config.errorTitle,
-        body: result?.message || 'Unknown error',
+        body: formatForgeDispatchErrorBody(result),
       });
     }
   };

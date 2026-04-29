@@ -1,0 +1,54 @@
+name: Forge Jira Custom Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "jira-custom/epic-ai-actions/**"
+      - ".github/workflows/forge-jira-custom-deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Jira Custom Forge app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jira-custom/epic-ai-actions
+    env:
+      FORGE_EMAIL: ${{ secrets.BMAD_JIRA_USERNAME }}
+      FORGE_API_TOKEN: ${{ secrets.BMAD_JIRA_FORGE_API_TOKEN }}
+      BMAD_JIRA_BASE_URL: ${{ secrets.BMAD_JIRA_BASE_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Forge CLI
+        run: npm install -g @forge/cli@latest
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Lint Forge app
+        run: forge lint
+
+      - name: Resolve Jira site host
+        shell: bash
+        run: |
+          site="${BMAD_JIRA_BASE_URL#https://}"
+          site="${site#http://}"
+          site="${site%%/}"
+          echo "FORGE_JIRA_SITE=${site}" >> "${GITHUB_ENV}"
+
+      - name: Deploy Forge app
+        run: forge deploy --non-interactive -e production
+
+      - name: Install or upgrade app on Jira site
+        run: forge install --non-interactive --upgrade --site "${FORGE_JIRA_SITE}" --product jira --environment production

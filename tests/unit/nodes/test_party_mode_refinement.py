@@ -198,6 +198,43 @@ def test_stories_breakdown_does_not_refine_epic_fallback(settings):
     assert "no story keys to refine" in result["execution_log"][0]["message"]
 
 
+def test_stories_breakdown_contract_keeps_structured_body_and_skips_checklist(settings):
+    """Contract story should not be converted to Hypothesis template nor checklist-updated."""
+    mock_claude = MagicMock()
+    mock_jira = MagicMock()
+    mock_claude.complete.return_value = "feedback"
+    mock_claude.complete_structured.return_value = RefinedStory(
+        updated_summary="Refined",
+        updated_description="**Hypothesis**\nShould not replace contract body",
+        acceptance_criteria=["AC 1"],
+        implementation_notes="Keep contract focused",
+    )
+    contract_desc = (
+        "**Context**\nDefine contract.\n\n"
+        "**Spec kind**\nOpenAPI 3.1\n\n"
+        "**Interface deliverables**\n- docs/api/openapi.yaml\n\n"
+        "**Explicitly out of scope**\n- No UI\n- No runtime"
+    )
+    mock_jira.get_story.return_value = {
+        "key": "PUG-42",
+        "summary": "As a developer I want an API contract so that teams align",
+        "description": contract_desc,
+    }
+    mock_jira.story_checklist_text_is_empty.return_value = True
+
+    sb = settings.model_copy(update={"execution_mode": "stories_breakdown"})
+    node = make_party_mode_node(mock_claude, mock_jira, sb)
+    node(make_state(created_story_ids=["PUG-42"], current_story_id="PUG-42"))
+
+    mock_jira.update_story_description.assert_called_once()
+    updated = mock_jira.update_story_description.call_args.args[1]
+    assert "**Spec kind**" in updated
+    assert "**Hypothesis**" not in updated
+    assert "**Contract review notes**" in updated
+    mock_jira.story_checklist_text_is_empty.assert_not_called()
+    mock_jira.set_story_checklist_text.assert_not_called()
+
+
 def test_non_webhook_does_not_call_summary_or_checklist(settings):
     """When not webhook (skip_nodes does not include create_story_tasks), skip webhook logic."""
     mock_claude = MagicMock()

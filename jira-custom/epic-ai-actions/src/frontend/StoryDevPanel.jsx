@@ -15,6 +15,10 @@ import { AgentActionButton } from './components/AgentActionButton';
 import { ConfirmActionModal } from './components/ConfirmActionModal';
 import { useIssueMetadata } from './hooks/useIssueMetadata';
 import { fetchTargetRepoSlugForIssue } from './utils/targetRepo';
+import {
+  formatForgeDispatchErrorBody,
+  logForgeDispatchFailure,
+} from './utils/forgeDispatchDetails';
 
 const HEADER_BOX_STYLES = xcss({
   marginBlockStart: 'space.300',
@@ -81,10 +85,11 @@ export function StoryDevPanel() {
         body: result?.message || TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
       });
     } else {
+      logForgeDispatchFailure('Forge runDevelopment', issueKey, result);
       setBanner({
         appearance: 'error',
         title: 'Run failed',
-        body: result?.message || 'Unknown error',
+        body: formatForgeDispatchErrorBody(result),
       });
     }
   };
