@@ -56,7 +56,7 @@ export function App() {
           </SectionMessage>
         )}
 
-        <Text>*** Select an agent to process this epic:</Text>
+        <Text>Select an agent to process this epic:</Text>
 
         <Inline space="space.150" alignBlock="center">
           {AGENT_ACTIONS.map(({ id, label, iconGlyph }) => (
