@@ -1,7 +1,7 @@
 /**
  * POST /api/jira-issue — Jira issue webhook → GitHub Actions workflow_dispatch.
  *
- * Env: BMAD_GITHUB_REPO, BMAD_GITHUB_TOKEN, BMAD_GITHUB_BASE_BRANCH, BMAD_GITHUB_OWNER,
+ * Env: BMAD_GITHUB_REPO, BMAD_GITHUB_APP_*, BMAD_GITHUB_BASE_BRANCH, BMAD_GITHUB_OWNER,
  * DEFAULT_TARGET_REPO, DEFAULT_TEAM_ID, JIRA_*_CUSTOM_FIELD_ID (optional),
  * BMAD_JIRA_WEBHOOK_SECRET (optional; if set, require header X-BMAD-Jira-Secret).
  */

@@ -19,16 +19,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    env:
-      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
-
     steps:
+      - name: Parse target repo
+        id: target
+        env:
+          INPUT: ${{ inputs.target_repo }}
+        run: |
+          OWNER="${INPUT%/*}"
+          REPO="${INPUT##*/}"
+          echo "owner=${OWNER}" >> "$GITHUB_OUTPUT"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token (target repo scope)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BMAD_APP_ID }}
+          private-key: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
+          owner: ${{ steps.target.outputs.owner }}
+          repositories: ${{ steps.target.outputs.repo }}
+
       - name: Clone target repository
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh repo clone "${{ inputs.target_repo }}" target-repo -- --branch "${{ inputs.base_branch }}"
 
       - name: Configure git identity and auth
         working-directory: target-repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "BMAD Orchestrator"
           git config user.email "bmad@noreply.local"
@@ -61,6 +81,8 @@ jobs:
       - name: Create draft PR
         working-directory: target-repo
         id: pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PR_URL=$(gh pr create \
             --title "chore: BMAD smoke test — auto-cleanup [skip ci]" \
@@ -74,6 +96,8 @@ jobs:
       - name: Close PR and delete branch (cleanup)
         if: always() && steps.pr.outputs.url != ''
         working-directory: target-repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Closing PR and deleting branch..."
           gh pr close "${{ steps.pr.outputs.url }}" --delete-branch

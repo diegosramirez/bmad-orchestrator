@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { getGitHubAuth } from "../lib/github-auth.js";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface ParsedCommand {
@@ -167,10 +169,10 @@ const RETRY_SKIP_NODES = [
 
 async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   const ghRepo = process.env.GITHUB_REPO;
-  const ghToken = process.env.GITHUB_TOKEN;
-  if (!ghRepo || !ghToken) {
-    throw new Error("GITHUB_REPO and GITHUB_TOKEN must be configured");
+  if (!ghRepo) {
+    throw new Error("GITHUB_REPO must be configured");
   }
+  const authHeader = await getGitHubAuth().getAuthHeader();
 
   const inputs: Record<string, string> = {
     target_repo: cmd.targetRepo || process.env.DEFAULT_TARGET_REPO || "",
@@ -205,7 +207,7 @@ async function dispatchWorkflow(cmd: ParsedCommand): Promise<boolean> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${ghToken}`,
+      Authorization: authHeader,
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "bmad-slack-worker",
     },

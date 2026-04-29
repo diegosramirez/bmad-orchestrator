@@ -7,6 +7,8 @@
  */
 import { timingSafeEqual } from "node:crypto";
 
+import { getGitHubAuth } from "./github-auth.js";
+
 // ── Constants (defaults match bmad_orchestrator Settings) ─────────────────────
 
 export const BMAD_WORKFLOW_FILE = "bmad-start-run.yml";
@@ -65,10 +67,6 @@ export function getGithubOwner(): string {
 
 export function getGithubRepo(): string {
   return envString("BMAD_GITHUB_REPO", "");
-}
-
-export function getGithubToken(): string {
-  return envString("BMAD_GITHUB_TOKEN", "");
 }
 
 export function getDefaultRef(): string {
@@ -241,13 +239,20 @@ export async function dispatchBmadWorkflow(
   inputs: Record<string, string>
 ): Promise<DispatchResult> {
   const GITHUB_REPO = getGithubRepo();
-  const GITHUB_TOKEN = getGithubToken();
-  if (!GITHUB_REPO || !GITHUB_TOKEN) {
+  if (!GITHUB_REPO) {
     return {
       ok: false,
       dispatch_status: null,
-      dispatch_error: "Missing BMAD_GITHUB_REPO or BMAD_GITHUB_TOKEN",
+      dispatch_error: "Missing BMAD_GITHUB_REPO",
     };
+  }
+
+  let authHeader: string;
+  try {
+    authHeader = await getGitHubAuth().getAuthHeader();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, dispatch_status: null, dispatch_error: `Auth error: ${msg}` };
   }
 
   const ref = getDefaultRef();
@@ -257,7 +262,7 @@ export async function dispatchBmadWorkflow(
     const resp = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        Authorization: authHeader,
         Accept: "application/vnd.github.v3+json",
         "User-Agent": "bmad-jira-webhook",
         "Content-Type": "application/json",
@@ -320,14 +325,20 @@ function runMatchesIssueKey(runData: Record<string, unknown>, key: string): bool
 
 export async function hasActiveBmadRunForPrompt(issueKey: string): Promise<boolean> {
   const repo = getGithubRepo().trim();
-  const token = getGithubToken().trim();
   const key = issueKey.trim();
-  if (!repo || !token || !key) return false;
+  if (!repo || !key) return false;
+
+  let authHeader: string;
+  try {
+    authHeader = await getGitHubAuth().getAuthHeader();
+  } catch {
+    return false;
+  }
 
   const listUrl = `https://api.github.com/repos/${repo}/actions/workflows/${BMAD_WORKFLOW_FILE}/runs?per_page=30`;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
-    Authorization: `Bearer ${token}`,
+    Authorization: authHeader,
     "User-Agent": "bmad-jira-webhook",
   };
 

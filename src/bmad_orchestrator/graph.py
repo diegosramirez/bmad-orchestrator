@@ -43,6 +43,7 @@ from bmad_orchestrator.services.git_service import GitService
 from bmad_orchestrator.services.protocols import SlackServiceProtocol
 from bmad_orchestrator.services.service_factory import (
     create_github_service,
+    create_github_token_provider,
     create_jira_service,
     create_slack_service,
 )
@@ -546,8 +547,11 @@ def build_graph(
 
     # When jira_only, force Git/GitHub into dry-run regardless of global flag
     git_settings = settings.model_copy(update={"dry_run": True}) if settings.jira_only else settings
-    git = GitService(git_settings)
-    github = create_github_service(git_settings)
+    # Build the GitHub App token provider once and share it so the cache (and
+    # rate-limit) is shared between git pushes and gh CLI calls.
+    token_provider = create_github_token_provider(git_settings)
+    git = GitService(git_settings, token_provider=token_provider)
+    github = create_github_service(git_settings, token_provider=token_provider)
     slack = create_slack_service(settings)
 
     # ── Verbose Slack callback (shared mutable holder for thread_ts) ────────

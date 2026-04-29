@@ -6,26 +6,23 @@ import subprocess
 from typing import Any
 
 from bmad_orchestrator.config import Settings
+from bmad_orchestrator.services.github_token_provider import GitHubAppTokenProvider
 from bmad_orchestrator.utils.dry_run import skip_if_dry_run
 from bmad_orchestrator.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def _gh_env(settings: Settings) -> dict[str, str] | None:
-    """Build env dict for ``gh`` CLI, injecting GH_TOKEN if configured."""
-    token = settings.github_token
-    if token is None:
-        return None  # inherit parent environment as-is
-    env = {**os.environ, "GH_TOKEN": token.get_secret_value()}
-    return env
+def _gh_env(token_provider: GitHubAppTokenProvider) -> dict[str, str]:
+    """Build env dict for ``gh`` CLI, injecting GH_TOKEN from the provider."""
+    return {**os.environ, "GH_TOKEN": token_provider.get_installation_token()}
 
 
 def _run_gh(
     args: list[str],
-    settings: Settings,
+    token_provider: GitHubAppTokenProvider,
 ) -> subprocess.CompletedProcess[str]:
-    env = _gh_env(settings)
+    env = _gh_env(token_provider)
     try:
         return subprocess.run(  # noqa: S603
             ["gh", *args],
@@ -45,8 +42,13 @@ def _run_gh(
 
 
 class GitHubService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        token_provider: GitHubAppTokenProvider,
+    ) -> None:
         self.settings = settings
+        self._token_provider = token_provider
 
     def pr_exists(self, branch_name: str) -> str | None:
         """Return the PR URL if a PR already exists for the branch, else None."""
@@ -66,7 +68,7 @@ class GitHubService:
             ],
             capture_output=True,
             text=True,
-            env=_gh_env(self.settings),
+            env=_gh_env(self._token_provider),
         )
         url = result.stdout.strip()
         return url if url else None
@@ -98,7 +100,7 @@ class GitHubService:
         if draft:
             args.append("--draft")
 
-        result = _run_gh(args, self.settings)
+        result = _run_gh(args, self._token_provider)
         url = result.stdout.strip()
         logger.info("pr_created", url=url)
         return url
@@ -110,7 +112,7 @@ class GitHubService:
             try:
                 _run_gh(
                     ["label", "create", label, "--repo", repo, "--force"],
-                    self.settings,
+                    self._token_provider,
                 )
                 usable.append(label)
             except subprocess.CalledProcessError:
@@ -141,7 +143,7 @@ class GitHubService:
             for label in usable:
                 args.extend(["--label", label])
 
-        result = _run_gh(args, self.settings)
+        result = _run_gh(args, self._token_provider)
         url = result.stdout.strip()
         # gh issue create prints the URL; extract the issue number from it
         issue_number = int(url.rstrip("/").rsplit("/", 1)[-1])
@@ -161,7 +163,7 @@ class GitHubService:
                 "--json",
                 "number,title,state,body,url,labels",
             ],
-            self.settings,
+            self._token_provider,
         )
         data: dict[str, Any] = json.loads(result.stdout)
         return data
@@ -180,7 +182,7 @@ class GitHubService:
                 "--body",
                 body,
             ],
-            self.settings,
+            self._token_provider,
         )
 
     @skip_if_dry_run(fake_return=None)
@@ -198,7 +200,7 @@ class GitHubService:
         args = ["workflow", "run", workflow, "--repo", target]
         for key, val in inputs.items():
             args.extend(["-f", f"{key}={val}"])
-        _run_gh(args, self.settings)
+        _run_gh(args, self._token_provider)
         logger.info("workflow_dispatched", workflow=workflow, repo=target)
 
     @skip_if_dry_run(fake_return=None)
@@ -213,5 +215,5 @@ class GitHubService:
                 "--repo",
                 repo,
             ],
-            self.settings,
+            self._token_provider,
         )

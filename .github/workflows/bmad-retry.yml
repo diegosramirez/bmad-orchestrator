@@ -22,11 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
-    env:
-      GH_TOKEN: ${{ secrets.BMAD_GH_PAT }}
-
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BMAD_APP_ID }}
+          private-key: ${{ secrets.BMAD_APP_PRIVATE_KEY }}
+
       - name: React to comment
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh api \
             "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
@@ -55,6 +61,8 @@ jobs:
 
       - name: Reject unknown command
         if: steps.cmd.outputs.action == 'unknown'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh pr comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
@@ -63,6 +71,8 @@ jobs:
 
       - name: Extract PR metadata
         id: pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PR_NUMBER="${{ github.event.issue.number }}"
           PR_JSON=$(gh pr view "$PR_NUMBER" \
@@ -91,6 +101,8 @@ jobs:
           echo "prompt=${PROMPT:-$STORY_KEY}" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch bmad-start-run
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           EXTRA_FLAGS=""
           if [ -n "${{ steps.pr.outputs.story_key }}" ]; then
@@ -112,6 +124,8 @@ jobs:
             -f guidance="${{ steps.cmd.outputs.guidance }}"
 
       - name: Post confirmation
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           GUIDANCE_NOTE=""
           if [ -n "${{ steps.cmd.outputs.guidance }}" ]; then

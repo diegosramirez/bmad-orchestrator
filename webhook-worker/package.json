@@ -13,6 +13,9 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "@octokit/auth-app": "^7.0.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",

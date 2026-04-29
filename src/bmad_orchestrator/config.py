@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,7 +64,13 @@ class Settings(BaseSettings):
     # ── GitHub (optional when dummy_github=True) ──────────────────────────────
     github_repo: str | None = None
     github_base_branch: str = "main"
-    github_token: SecretStr | None = None
+    # GitHub App authentication (PAT auth has been removed). Required in real mode.
+    github_app_id: str | None = None
+    github_app_installation_id: str | None = None
+    # Provide either an inline PEM (BMAD_GITHUB_APP_PRIVATE_KEY) or a path to a
+    # PEM file (BMAD_GITHUB_APP_PRIVATE_KEY_PATH). Path takes precedence.
+    github_app_private_key: SecretStr | None = None
+    github_app_private_key_path: Path | None = None
 
     # ── Git identity ───────────────────────────────────────────────────────────
     git_author_name: str = "BMAD Orchestrator"
@@ -167,6 +174,21 @@ class Settings(BaseSettings):
         self.agent_models = merged
         return self
 
+    def resolve_github_app_private_key(self) -> str:
+        """Return the GitHub App private key as a PEM string.
+
+        Reads from ``github_app_private_key_path`` if set, otherwise from the
+        inline ``github_app_private_key``. Raises if neither is configured.
+        """
+        if self.github_app_private_key_path is not None:
+            return self.github_app_private_key_path.read_text()
+        if self.github_app_private_key is not None:
+            return self.github_app_private_key.get_secret_value()
+        raise ValueError(
+            "GitHub App private key not configured: set BMAD_GITHUB_APP_PRIVATE_KEY "
+            "or BMAD_GITHUB_APP_PRIVATE_KEY_PATH"
+        )
+
     @model_validator(mode="after")
     def _validate_service_credentials(self) -> Settings:
         if not self.dummy_jira:
@@ -183,6 +205,10 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.dummy_github and not self.github_repo:
             self.github_repo = "local/dummy-repo"
+        # App credentials are validated at provider construction time
+        # (services/service_factory.py::create_github_token_provider) so that
+        # tests building Settings for non-GitHub purposes don't have to supply
+        # them. Mismatched/partial App config still hard-fails at app startup.
         if self.slack_notify:
             missing = [
                 name

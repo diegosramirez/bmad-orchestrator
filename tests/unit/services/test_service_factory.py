@@ -18,6 +18,9 @@ from bmad_orchestrator.services.service_factory import (
 from bmad_orchestrator.services.slack_service import SlackService
 
 
+_FAKE_PEM = "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----"
+
+
 def _real_settings() -> Settings:
     return Settings(
         anthropic_api_key="test-key",  # type: ignore[arg-type]
@@ -26,6 +29,9 @@ def _real_settings() -> Settings:
         jira_api_token="test-token",  # type: ignore[arg-type]
         jira_project_key="TEST",
         github_repo="org/repo",
+        github_app_id="12345",
+        github_app_installation_id="67890",
+        github_app_private_key=_FAKE_PEM,  # type: ignore[arg-type]
         dry_run=True,
     )
 
@@ -87,6 +93,9 @@ class TestCreateSlackService:
             jira_api_token="test-token",  # type: ignore[arg-type]
             jira_project_key="TEST",
             github_repo="org/repo",
+            github_app_id="12345",
+            github_app_installation_id="67890",
+            github_app_private_key=_FAKE_PEM,  # type: ignore[arg-type]
             dry_run=True,
             slack_notify=True,
             slack_bot_token="xoxb-test",  # type: ignore[arg-type]
