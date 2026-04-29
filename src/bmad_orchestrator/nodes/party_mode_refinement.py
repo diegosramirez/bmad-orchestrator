@@ -27,6 +27,19 @@ logger = get_logger(__name__)
 NODE_NAME = "party_mode_refinement"
 
 
+def _is_contract_story(summary: str, description: str) -> bool:
+    """Heuristic for contract stories created by stories_breakdown role=contract."""
+    s = (summary or "").lower()
+    d = (description or "").lower()
+    has_contract_sections = (
+        "**spec kind**" in d
+        and "**interface deliverables**" in d
+        and "**explicitly out of scope**" in d
+    )
+    summary_hints = "contract" in s or "api spec" in s or "interface" in s
+    return has_contract_sections or summary_hints
+
+
 def _summary_matches_user_story_format(summary: str) -> bool:
     """Return True if summary follows 'As a... I want... So that...' format."""
     if not (summary or "").strip():
@@ -121,6 +134,7 @@ def make_party_mode_node(
         last_ac: list[str] = []
 
         for iter_key in iteration_keys:
+            story_summary = ""
             if iter_key is None:
                 story_id = state["current_story_id"] or "UNKNOWN"
                 story_content = state.get("story_content") or ""
@@ -137,9 +151,11 @@ def make_party_mode_node(
                     })
                     continue
                 story_content = (story_data.get("description") or "").strip()
+                story_summary = str(story_data.get("summary") or "")
                 acceptance_criteria = _parse_acceptance_criteria(story_content)
 
             log_entries: list[ExecutionLogEntry] = []
+            is_contract_story = _is_contract_story(story_summary, story_content)
 
             # ── Webhook only: ensure story title follows "As a... I want... So that..." ─
             if is_webhook and story_id != "UNKNOWN":
@@ -285,6 +301,14 @@ def make_party_mode_node(
                 "**Rationale**, **Designs**, **Mechanics**, **Tracking**, **Acceptance Criteria**. "
                 "Use only these bold headings and '-' bullet lists or paragraphs—no outline prefixes."
             )
+            if is_contract_story:
+                format_instruction = (
+                    "updated_description MUST be a concise contract-context update only (one short "
+                    "paragraph and optional short '-' bullets). Do NOT use product-story template "
+                    "sections (no **Hypothesis**, **Intervention**, **Data to Collect**, "
+                    "**Success Threshold**, **Rationale**, **Designs**, **Mechanics**, "
+                    "**Tracking**, **Acceptance Criteria**) and no numbered outlines."
+                )
             if jira_template:
                 format_instruction += " Use the reference template below for section order and format."
             aggregator_prompt = build_system_prompt("scrum_master", settings.bmad_install_dir)
@@ -327,10 +351,19 @@ def make_party_mode_node(
             # For Jira, we only want the refined story + implementation notes to
             # follow the strict template. Raw expert feedback stays out of the
             # Description field to avoid extra headings/numbered lists.
-            enriched_description = (
-                f"{refined.updated_description}\n\n"
-                f"## Implementation Notes\n{refined.implementation_notes}"
-            )
+            if is_contract_story:
+                # Keep structured contract sections from create_story_tasks; only append short notes.
+                enriched_description = story_content
+                if refined.implementation_notes.strip():
+                    enriched_description += (
+                        "\n\n**Contract review notes**\n"
+                        f"{refined.implementation_notes.strip()}"
+                    )
+            else:
+                enriched_description = (
+                    f"{refined.updated_description}\n\n"
+                    f"## Implementation Notes\n{refined.implementation_notes}"
+                )
             final_description = normalise_jira_headings(enriched_description)
             jira.update_story_description(story_id, final_description)
             log_entries.append({
@@ -341,7 +374,7 @@ def make_party_mode_node(
             })
 
             # ── Webhook / stories_breakdown: checklist text if field is empty ───────
-            if sync_checklist_after_refinement and story_id != "UNKNOWN":
+            if sync_checklist_after_refinement and story_id != "UNKNOWN" and not is_contract_story:
                 if jira.story_checklist_text_is_empty(story_id):
                     aggregator_prompt_tasks = build_system_prompt(
                         "scrum_master", settings.bmad_install_dir

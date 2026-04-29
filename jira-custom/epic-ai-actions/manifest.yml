@@ -7,7 +7,7 @@ permissions:
     fetch:
       backend:
         # Public HTTPS origin of your BMAD slack-worker (Vercel) deployment (no path). Redeploy after editing.
-        - 'https://service-ai-lemon.vercel.app/'
+        - address: "https://service-ai-lemon.vercel.app"
 
 modules:
   jira:issuePanel:

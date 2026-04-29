@@ -416,6 +416,22 @@ print(result)  # → {"current_epic_id": "PUG-XXX", "execution_log": [...]}
 3. Call `JiraService.create_story(epic_key, summary, description, ac, team_id)`
 4. For each task in the draft → call `JiraService.create_task(story_key, summary, description)`
 
+**`stories_breakdown` mode (`BMAD_EXECUTION_MODE=stories_breakdown`):**
+
+Used by Forge **Generate Stories** flows. The node breaks an existing epic into **multiple** user stories from the epic description (which must include a `# Discovery` section). `party_mode_refinement` then refines each created story.
+
+Default story split when Discovery + Epic Architect describe **both** a **client UI** and **server-side** work:
+
+| Story | Scope |
+|-------|--------|
+| **Contracts** | Shared interface artifacts only (OpenAPI, schemas, events, etc.) — no production UI, no server runtime implementation |
+| **Frontend** | All client-side work; mocks/MSW/fixtures aligned to the contract until backend ships |
+| **Backend** | All server-side implementation; fulfills the contract; verifiable without a SPA |
+
+Fallbacks: **one** story for a single surface (e.g. API-only); **two** stories when the epic explicitly demands one vertical slice or when a separate contract story is redundant; **four+** only for clearly separate outcomes/releases, not micro-layers.
+
+**Prerequisite:** Set `BMAD_EXECUTION_MODE=stories_breakdown` in the environment (see `execution_mode` in [`src/bmad_orchestrator/config.py`](../src/bmad_orchestrator/config.py)).
+
 **Pydantic schemas:**
 - `StoryDraft(summary: str, description: str, acceptance_criteria: list[str], tasks: list[TaskItem])`
 - `TaskItem(summary: str, description: str)`
