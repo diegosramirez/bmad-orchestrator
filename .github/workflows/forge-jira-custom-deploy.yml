@@ -36,6 +36,10 @@ jobs:
       - name: Install app dependencies
         run: npm ci
 
+      # Forge CLI prompts for analytics consent on first run; CI has no TTY — set explicitly.
+      - name: Disable Forge CLI usage analytics (CI)
+        run: forge settings set usage-analytics false
+
       - name: Lint Forge app
         run: forge lint
 
