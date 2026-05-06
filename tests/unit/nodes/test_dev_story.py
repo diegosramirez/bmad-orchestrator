@@ -255,10 +255,19 @@ def test_dev_story_skips_checklist_sync_when_empty(
     mock_jira.set_story_checklist_text.assert_not_called()
 
 
+def _figma_settings_update():
+    from pydantic import SecretStr
+
+    return {
+        "figma_mcp_enabled": True,
+        "figma_mcp_token": SecretStr("figd_test"),
+    }
+
+
 def test_dev_story_injects_figma_block_when_enabled(
     settings, mock_agent_service, mock_claude, mock_jira
 ):
-    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    figma_settings = settings.model_copy(update=_figma_settings_update())
     node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
     node(make_state(figma_url="https://www.figma.com/design/abc/Home"))
     prompt = mock_agent_service.run_agent.call_args.args[0]
@@ -270,7 +279,7 @@ def test_dev_story_injects_figma_block_when_enabled(
 def test_dev_story_falls_back_to_story_content_for_figma_url(
     settings, mock_agent_service, mock_claude, mock_jira
 ):
-    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    figma_settings = settings.model_copy(update=_figma_settings_update())
     node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
     node(
         make_state(
@@ -293,12 +302,16 @@ def test_dev_story_omits_figma_block_when_mcp_disabled(
 def test_dev_story_passes_figma_mcp_servers_when_enabled(
     settings, mock_agent_service, mock_claude, mock_jira
 ):
-    figma_settings = settings.model_copy(update={"figma_mcp_enabled": True})
+    figma_settings = settings.model_copy(update=_figma_settings_update())
     node = make_dev_story_node(mock_agent_service, mock_claude, mock_jira, figma_settings)
     node(make_state())
     kwargs = mock_agent_service.run_agent.call_args.kwargs
     assert kwargs["mcp_servers"] == {
-        "figma": {"type": "sse", "url": "http://127.0.0.1:3845/sse"}
+        "figma": {
+            "type": "http",
+            "url": "https://mcp.figma.com/mcp",
+            "headers": {"Authorization": "Bearer figd_test"},
+        }
     }
 
 

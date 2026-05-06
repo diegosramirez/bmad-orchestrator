@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import re
 from functools import cache
 from pathlib import Path
 
@@ -14,17 +15,25 @@ try:
 except Exception:
     _BUNDLED_PERSONAS_DIR = None
 
-# ── Mapping from logical agent ID to expected YAML filenames ──────────────────
-# v6.2+ uses bmad-skill-manifest.yaml inside skill directories; legacy names kept
-# for backwards-compatibility with older BMAD installs.
+# ── Mapping from logical agent ID to expected source-file candidates ──────────
+# v6.6+ stores persona content in SKILL.md (markdown w/ YAML frontmatter);
+# v6.2-v6.5 used bmad-skill-manifest.yaml; older installs used legacy names.
+# Listed in preference order (first match wins).
 AGENT_FILE_MAP: dict[str, list[str]] = {
-    "architect":    ["bmad-skill-manifest.yaml", "architect.agent.yaml", "architect.yaml"],
-    "designer":     ["bmad-skill-manifest.yaml", "ux-designer.agent.yaml", "ux-designer.yaml"],
-    "developer":    ["bmad-skill-manifest.yaml", "dev.agent.yaml", "developer.agent.yaml"],
-    "qa":           ["bmad-skill-manifest.yaml", "qa.agent.yaml", "qa.yaml"],
-    "e2e_tester":   ["bmad-skill-manifest.yaml", "qa.agent.yaml", "qa.yaml"],
-    "scrum_master": ["bmad-skill-manifest.yaml", "sm.agent.yaml", "scrum-master.agent.yaml"],
-    "pm":           ["bmad-skill-manifest.yaml", "pm.agent.yaml", "product-manager.agent.yaml"],
+    "architect":    ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "architect.agent.yaml", "architect.yaml"],
+    "designer":     ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "ux-designer.agent.yaml", "ux-designer.yaml"],
+    "developer":    ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "dev.agent.yaml", "developer.agent.yaml"],
+    "qa":           ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "qa.agent.yaml", "qa.yaml"],
+    "e2e_tester":   ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "qa.agent.yaml", "qa.yaml"],
+    "scrum_master": ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "sm.agent.yaml", "scrum-master.agent.yaml"],
+    "pm":           ["SKILL.md", "bmad-skill-manifest.yaml",
+                     "pm.agent.yaml", "product-manager.agent.yaml"],
 }
 
 # v6.2+ skill directory names containing the agent manifest for each persona.
@@ -104,34 +113,73 @@ FALLBACK_PERSONAS: dict[str, str] = {
 
 
 def _find_agent_file(agent_id: str, search_dir: Path) -> Path | None:
-    """Search search_dir recursively for a BMAD agent YAML file.
+    """Search search_dir recursively for a BMAD agent persona source file.
 
-    For v6.2+ manifest files (bmad-skill-manifest.yaml), only match when the
-    file lives inside the expected skill directory for this agent_id so we don't
-    accidentally pick up a manifest from an unrelated skill.
+    For ``SKILL.md`` (v6.6+) and ``bmad-skill-manifest.yaml`` (v6.2-v6.5), only
+    match when the file lives inside the expected skill directory for this
+    agent_id — many other skills also ship these filenames and we don't want
+    to pick up the wrong one.
     """
     expected_dir = _AGENT_SKILL_DIRS.get(agent_id)
     candidates = AGENT_FILE_MAP.get(agent_id, [])
     for filename in candidates:
-        is_manifest = filename == "bmad-skill-manifest.yaml"
+        scoped_to_skill_dir = filename in ("SKILL.md", "bmad-skill-manifest.yaml")
         for found in search_dir.rglob(filename):
             if not found.is_file():
                 continue
-            # For manifests, only accept if parent dir matches the expected skill dir.
-            if is_manifest and expected_dir and found.parent.name != expected_dir:
+            if scoped_to_skill_dir and expected_dir and found.parent.name != expected_dir:
                 continue
             return found
     return None
 
 
-def _parse_agent_yaml(path: Path) -> str:
-    """Parse a BMAD agent YAML and return a formatted system prompt string.
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)---\s*\n(.*)$", re.DOTALL)
 
-    Supports two formats:
-    - v6.2+ flat manifest (bmad-skill-manifest.yaml): displayName, role,
-      identity, communicationStyle, principles at top level.
-    - Legacy nested format: name/title, persona.role, persona.identity, etc.
+
+def _parse_skill_md(path: Path) -> str:
+    """Parse a v6.6+ ``SKILL.md`` and return a formatted system prompt string.
+
+    Extracts the H1 title and the ``## Overview`` section body — the rest of
+    the file is BMAD activation/customization boilerplate that's specific to
+    running inside Claude Code's skill harness, not persona content.
     """
+    text = path.read_text(encoding="utf-8")
+    body = text
+    match = _FRONTMATTER_RE.match(text)
+    if match:
+        body = match.group(2)
+
+    parts: list[str] = []
+    title_match = re.search(r"^#\s+(.+?)$", body, re.MULTILINE)
+    if title_match:
+        parts.append(f"Name: {title_match.group(1).strip()}")
+
+    # Capture the "## Overview" section up to the next H2 (or EOF).
+    overview_match = re.search(
+        r"^##\s+Overview\s*\n(.*?)(?=^##\s|\Z)",
+        body,
+        re.MULTILINE | re.DOTALL,
+    )
+    if overview_match:
+        parts.append(overview_match.group(1).strip())
+
+    return "\n\n".join(parts) if parts else body.strip()
+
+
+def _parse_agent_yaml(path: Path) -> str:
+    """Parse a BMAD agent persona file and return a system prompt string.
+
+    Dispatches by file type:
+    - ``SKILL.md`` (v6.6+) — markdown with YAML frontmatter; persona is the
+      H1 title + ``## Overview`` section.
+    - ``bmad-skill-manifest.yaml`` (v6.2-v6.5) — flat YAML manifest with
+      ``displayName``, ``role``, ``identity``, ``communicationStyle``,
+      ``principles`` at top level.
+    - Legacy ``*.agent.yaml`` — nested ``persona`` dict.
+    """
+    if path.name == "SKILL.md":
+        return _parse_skill_md(path)
+
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 

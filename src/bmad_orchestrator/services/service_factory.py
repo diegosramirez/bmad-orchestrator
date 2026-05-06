@@ -82,17 +82,28 @@ def create_github_service(
 
 
 def build_figma_mcp_config(settings: Settings) -> dict[str, Any] | None:
-    """Return the MCP server config dict for the official Figma Dev Mode server.
+    """Return the MCP server config dict for Figma's remote Dev Mode server.
 
-    Returns None when the integration is disabled. The server runs inside the
-    Figma desktop app and is reachable over SSE on the local machine only.
+    Returns None when the integration is disabled. Targets the cloud-hosted
+    server (default: ``https://mcp.figma.com/mcp``) using HTTP transport with
+    a Bearer token, so the integration works from CI/headless environments.
     """
     if not settings.figma_mcp_enabled:
         return None
+    if settings.figma_mcp_token is None:
+        raise ValueError(
+            "BMAD_FIGMA_MCP_TOKEN is required when BMAD_FIGMA_MCP_ENABLED=true. "
+            "Obtain a Bearer token via Figma's MCP OAuth flow and set it in your env."
+        )
     return {
         "figma": {
-            "type": "sse",
+            "type": "http",
             "url": settings.figma_mcp_url,
+            "headers": {
+                "Authorization": (
+                    f"Bearer {settings.figma_mcp_token.get_secret_value()}"
+                ),
+            },
         }
     }
 

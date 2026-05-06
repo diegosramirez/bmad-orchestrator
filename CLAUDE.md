@@ -166,6 +166,10 @@ Auth chokepoints (where tokens enter subprocess env / HTTP calls):
 
 The provider is built once in `graph.py` and shared between `GitService` + `GitHubService` so they hit the same in-memory token cache. Validation lives in `services/service_factory.py::create_github_token_provider` (hard-fails on partial App config).
 
+### Figma MCP Integration (remote)
+
+The orchestrator can drive UI implementation from Figma designs via Figma's **remote** Dev Mode MCP server (`https://mcp.figma.com/mcp`, HTTP transport, OAuth Bearer token). Required env: `BMAD_FIGMA_MCP_ENABLED=true` + `BMAD_FIGMA_MCP_TOKEN`. The integration auto-extracts Figma URLs from prompts via `utils/figma_url.py`, fires the `ux_design_handoff` node before `dev_story` (graph.py), and injects `mcp__figma__*` tool access. Setup guide at [docs/figma-mcp-setup.md](docs/figma-mcp-setup.md). Validation lives in `services/service_factory.py::build_figma_mcp_config` (hard-fails when enabled without a token).
+
 ### General Python Style
 
 - Every file starts with `from __future__ import annotations`
