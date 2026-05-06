@@ -42,12 +42,26 @@ jobs:
         # CI has no TTY; omitting -e triggers interactive default-env prompts and fails.
         run: forge lint -e production
 
+      # forge variables set prompts for encrypt/interactive input when value is omitted; CI has no TTY.
+      - name: Verify Forge variable inputs are set
+        shell: bash
+        run: |
+          missing=""
+          [[ -z "${BMAD_FORGE_WEBHOOK_URL}" ]] && missing+=" BMAD_FORGE_WEBHOOK_URL"
+          [[ -z "${BMAD_FORGE_WEBHOOK_SECRET}" ]] && missing+=" BMAD_FORGE_WEBHOOK_SECRET"
+          [[ -z "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}" ]] && missing+=" BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID"
+          [[ -z "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}" ]] && missing+=" BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID"
+          if [[ -n "${missing}" ]]; then
+            echo "::error::Set these GitHub secrets/vars (empty values make forge variables set open a TTY prompt and fail in CI):${missing}"
+            exit 1
+          fi
+
       - name: Set Forge variables (production)
         run: |
-          forge variables set --environment production BMAD_FORGE_WEBHOOK_URL "${BMAD_FORGE_WEBHOOK_URL}"
-          forge variables set --environment production BMAD_FORGE_WEBHOOK_SECRET "${BMAD_FORGE_WEBHOOK_SECRET}"
-          forge variables set --environment production BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}"
-          forge variables set --environment production BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}"
+          forge variables set -e production BMAD_FORGE_WEBHOOK_URL "${BMAD_FORGE_WEBHOOK_URL}"
+          forge variables set -e production --encrypt BMAD_FORGE_WEBHOOK_SECRET "${BMAD_FORGE_WEBHOOK_SECRET}"
+          forge variables set -e production BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}"
+          forge variables set -e production BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}"
 
       - name: Resolve Jira site host
         shell: bash
