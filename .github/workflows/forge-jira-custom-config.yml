@@ -74,5 +74,18 @@ jobs:
       - name: Deploy Forge app
         run: forge deploy --non-interactive --environment production
 
+      # First site: forge install (--upgrade fails with "Could not find an installation").
+      # Later runs: fresh install fails if already installed; --upgrade succeeds.
       - name: Install or upgrade app on Jira site
-        run: forge install --non-interactive --upgrade --site "${FORGE_JIRA_SITE}" --product jira --environment production
+        shell: bash
+        run: |
+          set +e
+          forge install --non-interactive \
+            --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          code=$?
+          set -e
+          if [[ "${code}" -ne 0 ]]; then
+            echo "Initial install exited ${code}; retrying with --upgrade (app may already be on site)."
+            forge install --non-interactive --upgrade \
+              --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          fi
