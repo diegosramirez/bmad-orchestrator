@@ -14,6 +14,7 @@ import { TARGET_REPO_REQUIRED_MESSAGE_ISSUE } from '../bmadTargetRepoMessages';
 import { AgentActionButton } from './components/AgentActionButton';
 import { ConfirmActionModal } from './components/ConfirmActionModal';
 import { useIssueMetadata } from './hooks/useIssueMetadata';
+import { useRuntimeConfig } from './hooks/useRuntimeConfig';
 import { fetchTargetRepoSlugForIssue } from './utils/targetRepo';
 import {
   formatForgeDispatchErrorBody,
@@ -33,6 +34,7 @@ const DEFAULT_SUCCESS_BODY =
  */
 export function StoryDevPanel() {
   const { issueKey, loading, error, issueTypeName, isStory } = useIssueMetadata();
+  const { targetRepoFieldId } = useRuntimeConfig();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [banner, setBanner] = useState(null);
 
@@ -54,7 +56,7 @@ export function StoryDevPanel() {
       });
       return;
     }
-    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    const slug = await fetchTargetRepoSlugForIssue(issueKey, targetRepoFieldId);
     if (!slug) {
       setBanner({
         appearance: 'warning',
@@ -96,7 +98,7 @@ export function StoryDevPanel() {
 
   const openDevConfirm = async () => {
     setBanner(null);
-    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    const slug = await fetchTargetRepoSlugForIssue(issueKey, targetRepoFieldId);
     if (!slug) {
       setBanner({
         appearance: 'warning',

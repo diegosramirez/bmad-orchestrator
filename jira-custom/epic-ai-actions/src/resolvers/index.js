@@ -3,9 +3,16 @@ import {
   TARGET_REPO_REQUIRED_MESSAGE_EPIC,
   TARGET_REPO_REQUIRED_MESSAGE_ISSUE,
 } from '../bmadTargetRepoMessages';
-import { fetchTargetRepoSlugFromIssue } from './jiraTargetRepo';
+import { fetchTargetRepoSlugFromIssue, TARGET_REPO_CUSTOM_FIELD } from './jiraTargetRepo';
 
 const resolver = new Resolver();
+const BRANCH_CUSTOM_FIELD =
+  process.env.BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID || 'customfield_10079';
+
+resolver.define('getRuntimeConfig', async () => ({
+  targetRepoFieldId: TARGET_REPO_CUSTOM_FIELD,
+  branchFieldId: BRANCH_CUSTOM_FIELD,
+}));
 
 /**
  * Base URL and secret for the BMAD slack-worker (Vercel) Forge routes (/bmad/*-run).

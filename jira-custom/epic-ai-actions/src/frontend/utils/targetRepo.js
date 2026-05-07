@@ -1,5 +1,6 @@
 import { requestJira } from '@forge/bridge';
-import { BMAD_TARGET_REPO_CUSTOM_FIELD } from '../constants';
+
+const DEFAULT_TARGET_REPO_FIELD_ID = 'customfield_10080';
 
 /**
  * Normalize Jira REST value for the target-repo field (string or select-style object).
@@ -23,13 +24,14 @@ export function parseTargetRepoRaw(cf) {
 /**
  * Loads the BMAD target repository slug for an issue (Forge UI, same semantics as backend).
  */
-export async function fetchTargetRepoSlugForIssue(issueKey) {
+export async function fetchTargetRepoSlugForIssue(issueKey, targetRepoFieldId) {
   if (!issueKey || typeof issueKey !== 'string') {
     return '';
   }
+  const fieldId = targetRepoFieldId || DEFAULT_TARGET_REPO_FIELD_ID;
   try {
     const q = new URLSearchParams({
-      fields: BMAD_TARGET_REPO_CUSTOM_FIELD,
+      fields: fieldId,
     });
     const path = `/rest/api/3/issue/${encodeURIComponent(issueKey)}?${q.toString()}`;
     const response = await requestJira(path, {
@@ -40,7 +42,7 @@ export async function fetchTargetRepoSlugForIssue(issueKey) {
     if (!response.ok) {
       return '';
     }
-    const raw = data?.fields?.[BMAD_TARGET_REPO_CUSTOM_FIELD];
+    const raw = data?.fields?.[fieldId];
     return parseTargetRepoRaw(raw);
   } catch (_e) {
     return '';
