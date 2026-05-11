@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Forge CLI
         run: npm install -g @forge/cli@latest
@@ -39,14 +39,29 @@ jobs:
         run: forge settings set usage-analytics false
 
       - name: Lint Forge app
-        run: forge lint
+        # CI has no TTY; omitting -e triggers interactive default-env prompts and fails.
+        run: forge lint -e production
+
+      # forge variables set prompts for encrypt/interactive input when value is omitted; CI has no TTY.
+      - name: Verify Forge variable inputs are set
+        shell: bash
+        run: |
+          missing=""
+          [[ -z "${BMAD_FORGE_WEBHOOK_URL}" ]] && missing+=" BMAD_FORGE_WEBHOOK_URL"
+          [[ -z "${BMAD_FORGE_WEBHOOK_SECRET}" ]] && missing+=" BMAD_FORGE_WEBHOOK_SECRET"
+          [[ -z "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}" ]] && missing+=" BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID"
+          [[ -z "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}" ]] && missing+=" BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID"
+          if [[ -n "${missing}" ]]; then
+            echo "::error::Set these GitHub secrets/vars (empty values make forge variables set open a TTY prompt and fail in CI):${missing}"
+            exit 1
+          fi
 
       - name: Set Forge variables (production)
         run: |
-          forge variables set --environment production BMAD_FORGE_WEBHOOK_URL "${BMAD_FORGE_WEBHOOK_URL}"
-          forge variables set --environment production BMAD_FORGE_WEBHOOK_SECRET "${BMAD_FORGE_WEBHOOK_SECRET}"
-          forge variables set --environment production BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}"
-          forge variables set --environment production BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}"
+          forge variables set -e production BMAD_FORGE_WEBHOOK_URL "${BMAD_FORGE_WEBHOOK_URL}"
+          forge variables set -e production --encrypt BMAD_FORGE_WEBHOOK_SECRET "${BMAD_FORGE_WEBHOOK_SECRET}"
+          forge variables set -e production BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID "${BMAD_JIRA_TARGET_REPO_CUSTOM_FIELD_ID}"
+          forge variables set -e production BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID "${BMAD_JIRA_BRANCH_CUSTOM_FIELD_ID}"
 
       - name: Resolve Jira site host
         shell: bash
@@ -59,5 +74,18 @@ jobs:
       - name: Deploy Forge app
         run: forge deploy --non-interactive --environment production
 
+      # First site: forge install (--upgrade fails with "Could not find an installation").
+      # Later runs: fresh install fails if already installed; --upgrade succeeds.
       - name: Install or upgrade app on Jira site
-        run: forge install --non-interactive --upgrade --site "${FORGE_JIRA_SITE}" --product jira --environment production
+        shell: bash
+        run: |
+          set +e
+          forge install --non-interactive \
+            --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          code=$?
+          set -e
+          if [[ "${code}" -ne 0 ]]; then
+            echo "Initial install exited ${code}; retrying with --upgrade (app may already be on site)."
+            forge install --non-interactive --upgrade \
+              --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          fi

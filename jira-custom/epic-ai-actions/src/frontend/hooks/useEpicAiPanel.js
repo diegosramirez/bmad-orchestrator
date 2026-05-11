@@ -4,6 +4,7 @@ import { invoke } from '@forge/bridge';
 import { TARGET_REPO_REQUIRED_MESSAGE_EPIC } from '../../bmadTargetRepoMessages';
 import { ACTION_LABELS, AGENT_INVOKE_CONFIG } from '../constants';
 import { fetchTargetRepoSlugForIssue } from '../utils/targetRepo';
+import { useRuntimeConfig } from './useRuntimeConfig';
 import {
   formatForgeDispatchErrorBody,
   logForgeDispatchFailure,
@@ -18,6 +19,7 @@ const DEFAULT_SUCCESS_BODY =
  */
 export function useEpicAiPanel() {
   const context = useProductContext();
+  const { targetRepoFieldId } = useRuntimeConfig();
   const issueKey =
     context?.extension?.issue?.key ?? context?.extension?.issueKey ?? null;
 
@@ -47,7 +49,7 @@ export function useEpicAiPanel() {
       return;
     }
 
-    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    const slug = await fetchTargetRepoSlugForIssue(issueKey, targetRepoFieldId);
     if (!slug) {
       setBanner({
         appearance: 'warning',
@@ -107,7 +109,7 @@ export function useEpicAiPanel() {
       });
       return;
     }
-    const slug = await fetchTargetRepoSlugForIssue(issueKey);
+    const slug = await fetchTargetRepoSlugForIssue(issueKey, targetRepoFieldId);
     if (!slug) {
       setBanner({
         appearance: 'warning',

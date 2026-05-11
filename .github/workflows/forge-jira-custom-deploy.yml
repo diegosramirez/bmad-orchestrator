@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Forge CLI
         run: npm install -g @forge/cli@latest
@@ -41,7 +41,8 @@ jobs:
         run: forge settings set usage-analytics false
 
       - name: Lint Forge app
-        run: forge lint
+        # CI has no TTY; omitting -e triggers interactive default-env prompts and fails.
+        run: forge lint -e production
 
       - name: Resolve Jira site host
         shell: bash
@@ -54,5 +55,18 @@ jobs:
       - name: Deploy Forge app
         run: forge deploy --non-interactive -e production
 
+      # First site: forge install (--upgrade fails with "Could not find an installation").
+      # Later runs: fresh install fails if already installed; --upgrade succeeds.
       - name: Install or upgrade app on Jira site
-        run: forge install --non-interactive --upgrade --site "${FORGE_JIRA_SITE}" --product jira --environment production
+        shell: bash
+        run: |
+          set +e
+          forge install --non-interactive \
+            --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          code=$?
+          set -e
+          if [[ "${code}" -ne 0 ]]; then
+            echo "Initial install exited ${code}; retrying with --upgrade (app may already be on site)."
+            forge install --non-interactive --upgrade \
+              --site "${FORGE_JIRA_SITE}" --product jira --environment production
+          fi
