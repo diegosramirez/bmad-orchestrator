@@ -186,13 +186,15 @@ jobs:
       - name: Install orchestrator dependencies
         run: uv sync --dev
 
-      # Mermaid → PNG for Jira (BMAD_MERMAID_RENDERER default: mmdc) needs the CLI on PATH.
+      # Mermaid → PNG for Jira with mmdc: only needed for Forge Design Architect (execution_mode epic_architect).
       - name: Set up Node.js
+        if: inputs.execution_mode == 'epic_architect'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install Mermaid CLI (mmdc)
+        if: inputs.execution_mode == 'epic_architect'
         run: |
           npm install -g @mermaid-js/mermaid-cli
           mmdc --version
